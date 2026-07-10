@@ -1,0 +1,42 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Usuario de la agencia con acceso al panel. Un único usuario por ahora,
+// pero el campo `role` deja preparado el terreno para multi-usuario futuro.
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  role      String   @default("admin")
+  createdAt DateTime @default(now())
+}
+
+// Un cliente/dominio gestionado por la agencia. Es la entidad central de la
+// que cuelgan el resto de módulos (keyword research, rank tracking, auditorías...).
+model Project {
+  id     String  @id @default(cuid())
+  name   String
+  slug   String  @unique
+  domain String?
+
+  // NAP — solo relevante si el proyecto es un negocio local (Módulo 9 Geogrid
+  // solo se activa cuando isLocalBusiness = true).
+  isLocalBusiness Boolean @default(false)
+  businessName    String?
+  address         String?
+  phone           String?
+  hours           Json?
+
+  // Perfil de marca, usado por el generador de contenido (Módulo 7) y de
+  // títulos/metas (Módulo 3).
+  toneOfVoice String?
+  notes       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

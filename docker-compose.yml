@@ -1,0 +1,71 @@
+# ============================================================
+# SEO CIRO — Producción en VPS Contabo (gestión por SSH)
+# Proxy público: Traefik de Coolify (red externa "coolify").
+# La app se descubre por etiquetas Traefik; SSL automático (Let's Encrypt).
+# La DB NO se publica al host ni a Traefik (solo red interna).
+# Dominio placeholder: ajustar seo.agenciaciro.com al subdominio real.
+# ============================================================
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: seo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TZ: Europe/Madrid
+      PGTZ: Europe/Madrid
+    volumes:
+      - seo_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - seo-internal
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: seo-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}?schema=public"
+      NODE_ENV: production
+      TZ: Europe/Madrid
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - seo-internal
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=coolify"
+      - "traefik.http.middlewares.seo-gzip.compress=true"
+      - "traefik.http.middlewares.seo-redir.redirectscheme.scheme=https"
+      - "traefik.http.routers.seo-http.rule=Host(`seo.agenciaciro.com`)"
+      - "traefik.http.routers.seo-http.entryPoints=http"
+      - "traefik.http.routers.seo-http.middlewares=seo-redir"
+      - "traefik.http.routers.seo-http.service=seo-svc"
+      - "traefik.http.routers.seo-https.rule=Host(`seo.agenciaciro.com`)"
+      - "traefik.http.routers.seo-https.entryPoints=https"
+      - "traefik.http.routers.seo-https.middlewares=seo-gzip"
+      - "traefik.http.routers.seo-https.tls=true"
+      - "traefik.http.routers.seo-https.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.seo-https.service=seo-svc"
+      - "traefik.http.services.seo-svc.loadbalancer.server.port=3000"
+
+volumes:
+  seo_pgdata:
+
+networks:
+  seo-internal:
+  coolify:
+    external: true
