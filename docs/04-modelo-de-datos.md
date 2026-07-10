@@ -1,6 +1,6 @@
 # 04 — Modelo de datos
 
-Esquema actual en [`prisma/schema.prisma`](../prisma/schema.prisma), 5 modelos.
+Esquema actual en [`prisma/schema.prisma`](../prisma/schema.prisma), 6 modelos.
 
 ## `User`
 
@@ -17,6 +17,9 @@ resto de módulos a medida que se construyan (keywords, rank tracking, auditorí
   decidir si se muestra el check de seguimiento Geogrid en el listado de keywords.
 - `toneOfVoice` / `notes`: perfil de marca, lo consumirán el Módulo 3 (títulos/metas)
   y el Módulo 7 (generador de contenido).
+- `gscSiteUrl` / `ga4PropertyId` (Módulo 6): propiedad de Search Console / GA4
+  seleccionada. Strings simples, no FK — son identificadores que vienen directos
+  de la API de Google, no filas locales.
 
 ## `TitleMetaGeneration` (Módulo 3)
 
@@ -42,11 +45,21 @@ con tokens y coste si la API los devuelve. `projectId` es opcional con
 el proyecto. Sin topes de gasto ni avisos por email todavía — eso es una tarea
 aparte, cuando haga falta.
 
+## `GoogleConnection` (Módulo 6)
+
+Conexión OAuth2 única de la agencia con Google (una cuenta para toda la agencia,
+no por proyecto). Usa un id fijo (`"singleton"`) en vez de `findFirst` + lógica de
+"borrar si existe" — reconectar es un simple `upsert` sobre ese id, sin hueco de
+condición de carrera ni ambigüedad de qué fila es la buena. `encryptedRefreshToken`
+usa `src/lib/crypto.ts` (su primer consumidor real). Sin tabla de "propiedad por
+API" separada: la propiedad elegida por proyecto vive directamente en `Project`
+(`gscSiteUrl`/`ga4PropertyId`), porque son identificadores opacos de Google, no
+entidades locales.
+
 ## Evolución prevista (no construida todavía)
 
 | Modelo futuro | Módulo | Motivo por el que no está aún |
 |---|---|---|
-| `ProjectSecret` / `ApiCredential` | 6 (Integraciones Google) | No hay flujo OAuth implementado |
 | `KeywordStudy` / `Keyword` | 1 (Keyword Research) | No hay integración con DataForSEO/Google Ads |
 | `AuditRun` | 8 (Auditoría Técnica) | Requiere el crawler + cola de tareas |
 | `GeogridRun` | 9 (Geogrid Local SEO) | Requiere Módulo 5/8 y la cola de tareas |

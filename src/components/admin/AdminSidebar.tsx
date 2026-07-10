@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FolderKanban, LayoutDashboard, X } from "lucide-react";
+import { FolderKanban, LayoutDashboard, Settings, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/admin", label: "Panel general", icon: LayoutDashboard },
   { href: "/admin/proyectos", label: "Proyectos", icon: FolderKanban },
+  { href: "/admin/configuracion", label: "Configuración", icon: Settings },
 ];
 
 // Módulos del spec todavía no construidos — se listan como referencia visual
@@ -15,7 +16,6 @@ const NAV_ITEMS = [
 const UPCOMING_MODULES = [
   "Keyword Research",
   "Rank Tracking",
-  "Integraciones Google",
   "Generador de Contenido",
   "Auditoría Técnica",
   "Geogrid Local SEO",

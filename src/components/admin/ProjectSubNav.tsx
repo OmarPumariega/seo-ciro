@@ -19,6 +19,7 @@ export default function ProjectSubNav({
     { href: base, label: "Perfil" },
     { href: `${base}/titulos-meta`, label: "Título y Meta" },
     { href: `${base}/schema`, label: "Schema" },
+    { href: `${base}/google`, label: "Google" },
   ];
 
   return (

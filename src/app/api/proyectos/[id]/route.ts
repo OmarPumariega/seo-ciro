@@ -63,6 +63,12 @@ export async function PATCH(
         hours: hoursText ? { text: hoursText } : Prisma.DbNull,
         toneOfVoice: normalizeText(body.toneOfVoice, MAX_LONG),
         notes: normalizeText(body.notes, MAX_LONG),
+        // La pestaña "Perfil" nunca manda estas claves en su body, así que
+        // "undefined" (no tocar) es el valor correcto por defecto — solo la
+        // pestaña "Google" las envía explícitamente, incluso como null al
+        // limpiar una selección.
+        gscSiteUrl: "gscSiteUrl" in body ? normalizeText(body.gscSiteUrl) : undefined,
+        ga4PropertyId: "ga4PropertyId" in body ? normalizeText(body.ga4PropertyId) : undefined,
       },
     });
     return NextResponse.json(project);

@@ -37,6 +37,12 @@ model Project {
   toneOfVoice String?
   notes       String?
 
+  // Módulo 6 — propiedad de Search Console / GA4 seleccionada para este
+  // proyecto. String simple (no FK): son identificadores que vienen
+  // directos de la API de Google, no filas locales.
+  gscSiteUrl    String?
+  ga4PropertyId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -94,4 +100,18 @@ model ApiUsageLog {
   createdAt        DateTime @default(now())
 
   @@index([projectId, createdAt])
+}
+
+// Módulo 6 — conexión OAuth2 única de la agencia con Google (una cuenta
+// para toda la agencia, no por proyecto). Id fijo ("singleton") en vez de
+// findFirst + lógica de "borrar si existe" — reconectar es un upsert sobre
+// ese id, sin hueco de condición de carrera ni ambigüedad de qué fila es
+// la buena.
+model GoogleConnection {
+  id                    String   @id @default("singleton")
+  googleEmail           String
+  encryptedRefreshToken String // cifrado con src/lib/crypto.ts
+  scope                 String // scopes concedidos, tal cual los devuelve Google
+  connectedAt           DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
