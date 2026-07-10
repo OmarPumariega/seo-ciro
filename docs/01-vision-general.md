@@ -17,7 +17,8 @@ Esta primera fase construye únicamente la base sobre la que colgará el resto:
 - ⬜ Módulo 5 — Rank Tracking
 - 🟡 Módulo 6 — Integraciones Google: Search Console + GA4 vía OAuth2 único de la
   agencia; Business Profile pendiente de aprobación de acceso de Google
-- ⬜ Módulo 7 — Generador de Contenido
+- ✅ Módulo 7 — Generador de Contenido (Blog/Página/Producto/Novedad GBP vía OpenRouter,
+  reutiliza el tono de marca del proyecto)
 - ⬜ Módulo 8 — Auditoría Técnica
 - ⬜ Módulo 9 — Geogrid Local SEO
 - ⬜ Cola de tareas (BullMQ + Redis) — se añade cuando el primer módulo la necesite

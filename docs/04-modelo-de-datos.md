@@ -1,6 +1,6 @@
 # 04 — Modelo de datos
 
-Esquema actual en [`prisma/schema.prisma`](../prisma/schema.prisma), 6 modelos.
+Esquema actual en [`prisma/schema.prisma`](../prisma/schema.prisma), 7 modelos.
 
 ## `User`
 
@@ -55,6 +55,15 @@ usa `src/lib/crypto.ts` (su primer consumidor real). Sin tabla de "propiedad por
 API" separada: la propiedad elegida por proyecto vive directamente en `Project`
 (`gscSiteUrl`/`ga4PropertyId`), porque son identificadores opacos de Google, no
 entidades locales.
+
+## `ContentGeneration` (Módulo 7)
+
+Un registro por generación exitosa de contenido (`blog` | `pagina` | `producto` |
+`novedad_gbp`). El historial cronológico por proyecto hace de "versionado" (sección 6
+del spec: comparar/recuperar) — no hace falta un modelo padre/hijo aparte, igual que
+`TitleMetaGeneration`. `content` es texto plano con la jerarquía de encabezados marcada
+en Markdown (`#`/`##`/`###`). Reutiliza `Project.toneOfVoice` en el prompt, sin campo
+propio para el tono.
 
 ## Evolución prevista (no construida todavía)
 

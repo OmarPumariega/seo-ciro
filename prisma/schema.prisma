@@ -49,6 +49,7 @@ model Project {
   titleMetaGenerations TitleMetaGeneration[]
   schemaGenerations    SchemaGeneration[]
   apiUsageLogs         ApiUsageLog[]
+  contentGenerations   ContentGeneration[]
 }
 
 // Módulo 3 — un registro por generación exitosa (URL por URL, sin modo
@@ -114,4 +115,24 @@ model GoogleConnection {
   scope                 String // scopes concedidos, tal cual los devuelve Google
   connectedAt           DateTime @default(now())
   updatedAt             DateTime @updatedAt
+}
+
+// Módulo 7 — un registro por generación exitosa. El historial por proyecto
+// hace de "versionado" (sección 6 del spec: comparar/recuperar) — no hace
+// falta un modelo padre/hijo aparte, la lista cronológica ya cumple esa
+// función, igual que el historial del Módulo 3.
+model ContentGeneration {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type      String // "blog" | "pagina" | "producto" | "novedad_gbp"
+  topic     String
+  keyword   String?
+  targetUrl String?
+  content   String // texto plano con jerarquía de encabezados en Markdown (#, ##...)
+  wordCount Int
+  model     String
+  createdAt DateTime @default(now())
+
+  @@index([projectId, createdAt])
 }

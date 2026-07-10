@@ -76,7 +76,7 @@ Proyectos: conexión OAuth2 de la agencia con Google (Módulo 6). Conectar/desco
 ver email y scopes concedidos. La *selección de propiedad* por proyecto vive en la
 ficha de cada proyecto, no aquí — la conexión es una, las propiedades son por proyecto.
 
-### Ficha de proyecto (`/admin/proyectos/[id]/...`) — pestañas Perfil / Título y Meta / Schema / Google
+### Ficha de proyecto (`/admin/proyectos/[id]/...`) — pestañas Perfil / Título y Meta / Schema / Google / Contenido
 Todos los módulos salvo el 2 son inherentemente "de un proyecto", así que en vez de
 añadir ítems al sidebar global se anidan como pestañas dentro de la ficha del proyecto
 (`src/components/admin/ProjectSubNav.tsx`). Establece el patrón para cuando lleguen
@@ -94,6 +94,10 @@ Keyword Research, Rank Tracking, etc.
   pendiente de aprobación de Google) + dashboard de últimos 28 días (clics/impresiones
   de GSC, sesiones/conversiones de GA4). Cada fuente se degrada de forma independiente
   si falla — un token revocado o una propiedad borrada no tumba la otra fuente.
+- **Contenido** (Módulo 7): tema + tipo (Blog/Página/Producto/Novedad GBP) + longitud
+  objetivo → texto vía OpenRouter con encabezados en Markdown, usando el tono de marca
+  del proyecto (`Project.toneOfVoice`). Keyword objetivo y enlaces internos a incluir
+  son manuales (hasta que exista el Módulo 1) — si no se aportan, nunca se inventan.
 
 ## Seguridad
 
