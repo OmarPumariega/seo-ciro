@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { slugify } from "@/lib/utils";
+import { normalizeRequiredText, normalizeText, MAX_LONG } from "@/lib/validation";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -19,8 +20,14 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
-  const body = await req.json();
-  const name = typeof body.name === "string" ? body.name.trim() : "";
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Cuerpo de la petición inválido" }, { status: 400 });
+  }
+
+  const name = normalizeRequiredText(body.name);
   const slug = slugify(typeof body.slug === "string" && body.slug ? body.slug : name);
 
   if (!name || !slug)
@@ -33,18 +40,20 @@ export async function POST(req: NextRequest) {
       { status: 409 }
     );
 
+  const hoursText = normalizeText(body.hours, MAX_LONG);
+
   const project = await prisma.project.create({
     data: {
       name,
       slug,
-      domain: typeof body.domain === "string" && body.domain.trim() ? body.domain.trim() : null,
+      domain: normalizeText(body.domain),
       isLocalBusiness: Boolean(body.isLocalBusiness),
-      businessName: typeof body.businessName === "string" ? body.businessName.trim() || null : null,
-      address: typeof body.address === "string" ? body.address.trim() || null : null,
-      phone: typeof body.phone === "string" ? body.phone.trim() || null : null,
-      hours: typeof body.hours === "string" && body.hours.trim() ? { text: body.hours.trim() } : undefined,
-      toneOfVoice: typeof body.toneOfVoice === "string" ? body.toneOfVoice.trim() || null : null,
-      notes: typeof body.notes === "string" ? body.notes.trim() || null : null,
+      businessName: normalizeText(body.businessName),
+      address: normalizeText(body.address, MAX_LONG),
+      phone: normalizeText(body.phone),
+      hours: hoursText ? { text: hoursText } : undefined,
+      toneOfVoice: normalizeText(body.toneOfVoice, MAX_LONG),
+      notes: normalizeText(body.notes, MAX_LONG),
     },
   });
 

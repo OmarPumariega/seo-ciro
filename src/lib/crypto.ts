@@ -4,7 +4,18 @@ import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
 // OAuth de Módulo 6, API keys de DataForSEO/Claude de Módulo 1/5/9). Se deja
 // lista para cuando esos módulos añadan las columnas que la consuman.
 const ALGORITHM = "aes-256-cbc";
-const KEY = Buffer.from(process.env.ENCRYPTION_KEY!, "utf8").slice(0, 32);
+
+function loadKey(): Buffer {
+  const raw = process.env.ENCRYPTION_KEY;
+  if (!raw || raw.length !== 32) {
+    throw new Error(
+      "ENCRYPTION_KEY debe estar definida y tener exactamente 32 caracteres (genera una con: openssl rand -hex 16)"
+    );
+  }
+  return Buffer.from(raw, "utf8");
+}
+
+const KEY = loadKey();
 
 export function encrypt(text: string): string {
   const iv = randomBytes(16);
