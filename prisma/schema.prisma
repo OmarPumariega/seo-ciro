@@ -39,4 +39,59 @@ model Project {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  titleMetaGenerations TitleMetaGeneration[]
+  schemaGenerations    SchemaGeneration[]
+  apiUsageLogs         ApiUsageLog[]
+}
+
+// Módulo 3 — un registro por generación exitosa (URL por URL, sin modo
+// masivo). Los scrapes fallidos o respuestas mal formadas del LLM no se
+// persisten, para que el historial del proyecto solo muestre resultados
+// usables.
+model TitleMetaGeneration {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  url       String
+  keyword   String? // keyword objetivo manual — hasta que exista el Módulo 1
+  variants  Json // [{ title, description }] x3
+  model     String // modelo de OpenRouter usado para generar
+  createdAt DateTime @default(now())
+
+  @@index([projectId, createdAt])
+}
+
+// Módulo 4 — un registro por generación exitosa y validada.
+model SchemaGeneration {
+  id               String   @id @default(cuid())
+  projectId        String
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  url              String
+  suggestedType    String // heurística automática: LocalBusiness | Article | FAQPage
+  selectedType     String // tipo realmente usado (= suggestedType o override manual)
+  jsonLd           Json
+  valid            Boolean
+  validationErrors Json? // string[] — null si valid = true
+  model            String? // null para LocalBusiness (mapeo determinista, sin LLM)
+  createdAt        DateTime @default(now())
+
+  @@index([projectId, createdAt])
+}
+
+// Infraestructura transversal (sección 5 del spec) — versión mínima: solo
+// el registro de coste, sin topes de gasto ni alertas todavía.
+model ApiUsageLog {
+  id               String   @id @default(cuid())
+  projectId        String?
+  project          Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  api              String // "openrouter"
+  endpoint         String // "modulo3.titulos-meta" | "modulo4.schema.article" | "modulo4.schema.faq"
+  model            String?
+  promptTokens     Int?
+  completionTokens Int?
+  costUsd          Decimal? @db.Decimal(10, 6)
+  createdAt        DateTime @default(now())
+
+  @@index([projectId, createdAt])
 }

@@ -25,6 +25,7 @@ que centraliza el trabajo diario sobre los proyectos (clientes/dominios) de la a
 | [03 — Entorno de desarrollo](./03-entorno-desarrollo.md) | Setup local, variables de entorno, comandos |
 | [04 — Modelo de datos](./04-modelo-de-datos.md) | Esquema Prisma actual y su evolución prevista por módulo |
 | [05 — Autenticación](./05-autenticacion.md) | NextAuth, JWT, roles |
+| [seo-rules.md](./seo-rules.md) | Reglas de título/meta descripción que sigue el Módulo 3 (intención de búsqueda, límites de caracteres, marca, qué evitar) |
 
 ## Convenciones
 

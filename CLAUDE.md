@@ -32,18 +32,23 @@ infraestructura (colas, caché, tablas de coste) para módulos que todavía no e
 - **NextAuth (JWT)** — credentials + bcrypt, un único usuario por ahora, con `role`
   preparado para multi-usuario futuro
 - **Cifrado AES-256-CBC** (`src/lib/crypto.ts`) — listo para cuando haya secretos que
-  guardar (tokens OAuth del Módulo 6, API keys de DataForSEO/Claude)
+  guardar (tokens OAuth del Módulo 6, API keys de DataForSEO)
+- **OpenRouter** (`src/lib/seo/llm.ts`) — SDK `openai` apuntando a `https://openrouter.ai/api/v1`,
+  usado por el Módulo 3 y el Módulo 4. Modelo configurable por `OPENROUTER_MODEL`, no
+  hardcodeado — permite cambiar de proveedor (Claude, GPT, Gemini...) sin tocar código
+- **cheerio** (`src/lib/seo/scrape.ts`) — scraping de URLs reales para Módulo 3 y 4
 - **Infraestructura:** VPS Contabo existente, Docker, Coolify, Traefik
 
 Fuera del esqueleto actual, previstos para cuando el módulo correspondiente lo necesite:
 BullMQ + Redis (cola de tareas), DataForSEO, Google Ads/Search Console/Analytics/Business
-Profile/PageSpeed Insights APIs, Claude API.
+Profile/PageSpeed Insights APIs.
 
 ## Esquema de base de datos (Prisma)
 
 Ver [`docs/04-modelo-de-datos.md`](./docs/04-modelo-de-datos.md) para el detalle y la
-evolución prevista por módulo. Hoy: `User` (login agencia) y `Project` (cliente/dominio,
-con NAP y perfil de marca).
+evolución prevista por módulo. Hoy: `User` (login agencia), `Project` (cliente/dominio,
+con NAP y perfil de marca), `TitleMetaGeneration` y `SchemaGeneration` (historial de los
+Módulos 3 y 4 por proyecto), `ApiUsageLog` (registro básico de coste por llamada a OpenRouter).
 
 ## Estructura de carpetas
 
@@ -59,6 +64,20 @@ pendiente, keywords bajando, tareas vencidas) cuando existan esos módulos.
 Listar, crear y editar proyectos: nombre, dominio, NAP (si es negocio local) y perfil
 de marca (tono de voz, notas). To-do list y protocolos del spec todavía no están
 construidos — se añaden en una sesión dedicada al resto del Módulo 2.
+
+### Ficha de proyecto (`/admin/proyectos/[id]/...`) — pestañas Perfil / Título y Meta / Schema
+Todos los módulos salvo el 2 son inherentemente "de un proyecto", así que en vez de
+añadir ítems al sidebar global se anidan como pestañas dentro de la ficha del proyecto
+(`src/components/admin/ProjectSubNav.tsx`). Establece el patrón para cuando lleguen
+Keyword Research, Rank Tracking, etc.
+
+- **Título y Meta** (Módulo 3): URL → scraping real → 3 variantes de título/meta
+  descripción vía OpenRouter, siguiendo [`docs/seo-rules.md`](./docs/seo-rules.md).
+  Keyword objetivo manual opcional (hasta que exista el Módulo 1).
+- **Schema** (Módulo 4): URL → analizar (heurística, sin LLM) → confirmar/cambiar tipo
+  (LocalBusiness / Article / FAQPage) → generar JSON-LD. `LocalBusiness` es determinista
+  (mapeo directo del NAP del proyecto, sin coste de LLM); `Article`/`FAQPage` usan
+  OpenRouter y quedan registrados en `ApiUsageLog`.
 
 ## Seguridad
 

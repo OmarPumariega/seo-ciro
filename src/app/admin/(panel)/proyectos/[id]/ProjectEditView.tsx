@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft, Loader2, Trash2, AlertTriangle } from "lucide-react";
+import { Loader2, Trash2, AlertTriangle } from "lucide-react";
 import ProjectForm, { type ProjectFormValues } from "@/components/admin/ProjectForm";
 
 type ProjectRecord = ProjectFormValues & { id: string };
@@ -39,14 +38,7 @@ export default function ProjectEditView({ project }: { project: ProjectRecord })
 
   return (
     <div className="max-w-2xl space-y-6">
-      <div className="flex items-center justify-between">
-        <Link
-          href="/admin/proyectos"
-          className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Proyectos
-        </Link>
+      <div className="flex justify-end">
         <button
           onClick={() => setConfirmingDelete(true)}
           className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-red-600"
@@ -55,8 +47,6 @@ export default function ProjectEditView({ project }: { project: ProjectRecord })
           Eliminar proyecto
         </button>
       </div>
-
-      <h1 className="text-xl font-semibold text-gray-900">{project.name}</h1>
 
       <ProjectForm
         initial={project}

@@ -14,8 +14,6 @@ const NAV_ITEMS = [
 // de a dónde va a crecer el panel, deshabilitados hasta que se planifiquen.
 const UPCOMING_MODULES = [
   "Keyword Research",
-  "Título y Meta",
-  "Schema",
   "Rank Tracking",
   "Integraciones Google",
   "Generador de Contenido",
