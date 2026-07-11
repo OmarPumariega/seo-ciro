@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { rankMonthlyCostUsd } from "@/lib/dataforseo/pricing";
+import RankVisibilityChart from "@/components/admin/RankVisibilityChart";
 
 type RankPosition = { id: string; checkedAt: string; position: number | null; url: string | null };
 
@@ -196,6 +197,7 @@ export default function RankView({ projectId }: { projectId: string }) {
   // tres cosas para no volverse inmanejable a partir de 50+ keywords.
   const [search, setSearch] = useState("");
   const [groupFilter, setGroupFilter] = useState("__all__");
+  const [visibilityGroup, setVisibilityGroup] = useState("__all__");
   const [sortKey, setSortKey] = useState<SortKey>("volume");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
@@ -519,6 +521,32 @@ export default function RankView({ projectId }: { projectId: string }) {
       </div>
 
       <SpendBanner spend={spend} />
+
+      {keywords.length > 0 && (
+        <div className="space-y-2">
+          {groups.length > 0 && (
+            <div className="flex justify-end">
+              <Select.Root value={visibilityGroup} onValueChange={setVisibilityGroup}>
+                <Select.Trigger className="flex items-center justify-between gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-gray-400 bg-white min-w-[160px]">
+                  <Select.Value />
+                  <Select.Icon><ChevronDown className="h-3.5 w-3.5 text-gray-400" /></Select.Icon>
+                </Select.Trigger>
+                <Select.Portal>
+                  <Select.Content className="bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50">
+                    <Select.Viewport>
+                      <Select.Item value="__all__" className="px-3 py-1.5 text-xs text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>Visibilidad: todo el proyecto</Select.ItemText></Select.Item>
+                      {groups.map((g) => (
+                        <Select.Item key={g} value={g} className="px-3 py-1.5 text-xs text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>Visibilidad: {g}</Select.ItemText></Select.Item>
+                      ))}
+                    </Select.Viewport>
+                  </Select.Content>
+                </Select.Portal>
+              </Select.Root>
+            </div>
+          )}
+          <RankVisibilityChart projectId={projectId} group={visibilityGroup === "__all__" ? undefined : visibilityGroup} />
+        </div>
+      )}
 
       {/* Añadir keyword */}
       <form onSubmit={handleAdd} className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
