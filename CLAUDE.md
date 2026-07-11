@@ -189,6 +189,16 @@ Mismo patrón que Cirochat: `Dockerfile` multi-stage + `docker-compose.yml` con 
 (Coolify) para SSL automático. Dominio actual en `docker-compose.yml` es un
 **placeholder** (`seo.agenciaciro.com`) — ajustar al subdominio real antes de desplegar.
 
+## Gotcha de desarrollo
+
+**Tras cualquier `prisma migrate`/`prisma generate` hay que reiniciar el dev server
+(`npm run dev`).** Next.js dev NO recarga en caliente el cliente de Prisma: el proceso
+sigue usando el cliente que cargó al arrancar. Si se añaden modelos/migraciones con el
+dev server corriendo, las nuevas tablas (`prisma.geogridRun`, etc.) aparecen como
+`undefined` en runtime (`Cannot read properties of undefined (reading 'findMany')`)
+aunque el código y `tsc` estén bien. Síntoma: errores 500 en rutas que usan modelos
+nuevos que desaparecen al reiniciar el dev.
+
 ## Esqueleto inicial — qué falta
 
 Ver la lista de módulos pendientes en [`docs/01-vision-general.md`](./docs/01-vision-general.md).
