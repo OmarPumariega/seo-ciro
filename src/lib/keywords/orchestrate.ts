@@ -26,11 +26,12 @@ export async function fetchKeywordData(params: {
   keywords: string[];
   languageCode: string;
   locationCode: number;
+  projectId?: string;
 }): Promise<{
   data: Map<string, KeywordDatum>;
   usageLogs: UsageLogInput[];
 }> {
-  const { keywords, languageCode, locationCode } = params;
+  const { keywords, languageCode, locationCode, projectId } = params;
 
   const fresh = await getFreshCache(keywords, languageCode, locationCode);
   const pending = keywords.filter((kw) => !fresh.has(kw));
@@ -58,7 +59,7 @@ export async function fetchKeywordData(params: {
   // Tope de gasto: bloquea ANTES de pagar por keywords nuevas. Las cacheadas
   // ya se sirvieron arriba sin coste, así que un estudio 100% cacheado nunca
   // tropieza con el tope (comportamiento correcto: el dato ya se pagó antes).
-  await assertWithinSpendLimit();
+  await assertWithinSpendLimit(projectId);
 
   // 2. Las pendientes: dos llamadas reales (volumen + intención). Se lanzan
   //    en paralelo — son independientes entre sí.

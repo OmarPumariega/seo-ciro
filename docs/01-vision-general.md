@@ -36,16 +36,19 @@ Esta primera fase construye únicamente la base sobre la que colgará el resto:
 - ✅ Cola de tareas — **no** BullMQ/Redis: cron interno vía `src/instrumentation.ts` +
   `instrumentation-node.ts` (mismo patrón que Cirochat), sondea `AuditRun` cada 60s.
   El Módulo 9 debe reutilizar este mismo poller, no montar Redis
-- 🟡 Control de costes de API — log por llamada (`ApiUsageLog`) + **tope de gasto mensual
-  global de DataForSEO** (`DATAFORSEO_MONTHLY_LIMIT_USD`, bloquea nuevas llamadas al
-  superarlo, la UI avisa); faltan topes por proyecto y avisos por email
+- ✅ Control de costes de API — log por llamada (`ApiUsageLog`) + **tope de gasto
+  mensual global** y **por proyecto** (bloquean nuevas llamadas al superarlo, la
+  UI avisa) + avisos por email + página `/admin/costes` con desglose y estimación
+  pre-confirmación en todas las herramientas que gastan
 - ✅ Caché de resultados — `KeywordDataCache` (Módulo 1), 30 días de frescura por
   (keyword, idioma, ubicación), compartida entre proyectos
 - ✅ Informe imprimible/compartible por proyecto (vista con CSS de impresión →
   "Guardar como PDF") que agrega auditoría, rank tracking, keywords, geogrid y costes
-- ✅ Avisos por email (SMTP vía nodemailer, opcionales) — auditoría completada/fallada,
+- ✅ Avisos por email (SMTP vía nodemailer, opcionales) — auditoría completada/fallida,
   caída de posición ≥10, tope de DataForSEO cercano/superado. Dedupe por evento (sin
   spam) en `NotificationLog`; degradación elegante si no hay SMTP configurado
+- ✅ Versionado de contenido (Módulo 7) — agrupación por tema, comparar versiones con
+  diff línea a línea (LCS), restaurar y regenerar
 
 Cada uno de estos módulos se planifica y construye en una sesión dedicada, siguiendo
 el orden recomendado en la sección 8 de `spec-original.md`.

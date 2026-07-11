@@ -20,7 +20,7 @@ export async function checkRankKeyword(rankKeywordId: string): Promise<{ positio
 
   // Tope de gasto: bloquea ANTES de la llamada (no gastar si ya estamos en el
   // límite mensual). Las posiciones cacheadas no aplican aquí (SERP no cachea).
-  await assertWithinSpendLimit();
+  await assertWithinSpendLimit(rk.projectId);
 
   const projectDomain = normalizeDomain(rk.project.domain);
 

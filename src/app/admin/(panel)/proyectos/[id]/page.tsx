@@ -29,6 +29,7 @@ export default async function ProjectDetailPage({
         lng: project.lng !== null ? String(project.lng) : "",
         gbpName: project.gbpName ?? "",
         gbpPlaceId: project.gbpPlaceId ?? "",
+        spendLimitUsd: project.spendLimitUsd !== null ? String(project.spendLimitUsd) : "",
         toneOfVoice: project.toneOfVoice ?? "",
         notes: project.notes ?? "",
       }}

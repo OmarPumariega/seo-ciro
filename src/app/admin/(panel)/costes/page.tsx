@@ -5,7 +5,7 @@ import { Loader2, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type EndpointRow = { api: string; endpoint: string; cost: number; count: number };
-type ProjectRow = { projectId: string | null; name: string; cost: number };
+type ProjectRow = { projectId: string | null; name: string; cost: number; limit: number | null };
 
 type CostData = {
   monthLabel: string;
@@ -127,7 +127,14 @@ export default function CostesPage() {
               {data.byProject.map((r) => (
                 <tr key={(r.projectId ?? "null") + r.name} className="border-b border-gray-50 last:border-0">
                   <td className="py-2 text-gray-700 truncate">{r.name}</td>
-                  <td className="py-2 text-right text-gray-900 tabular-nums">{r.cost.toFixed(3)}$</td>
+                  <td className="py-2 text-right text-gray-900 tabular-nums">
+                    {r.cost.toFixed(3)}$
+                    {r.limit !== null && (
+                      <span className={cn("text-xs ml-1", r.cost >= r.limit ? "text-red-600" : r.cost >= r.limit * 0.8 ? "text-amber-600" : "text-gray-400")}>
+                        / {r.limit.toFixed(2)}$
+                      </span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

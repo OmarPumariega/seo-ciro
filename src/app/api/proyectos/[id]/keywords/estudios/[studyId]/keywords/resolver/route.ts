@@ -55,7 +55,7 @@ export async function POST(
 
   let data;
   try {
-    data = await fetchKeywordData({ keywords: pending, languageCode: study.languageCode, locationCode: study.locationCode });
+    data = await fetchKeywordData({ keywords: pending, languageCode: study.languageCode, locationCode: study.locationCode, projectId: id });
   } catch (error) {
     if (error instanceof DataForSeoSpendLimitError) {
       return NextResponse.json({ error: error.message }, { status: 422 });

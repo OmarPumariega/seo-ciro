@@ -35,7 +35,7 @@ export async function runGeogridJob(): Promise<{ processed: number }> {
     // Tope de gasto: una rejilla son N² llamadas (hasta 49). Comprobamos ANTES
     // de empezar para no dejar un mapa a medias. Si el tope ya se alcanzó, el
     // run queda failed sin gastar nada.
-    await assertWithinSpendLimit();
+    await assertWithinSpendLimit(run.projectId);
 
     const projectDomain = run.project.domain ? normalizeDomain(run.project.domain) : null;
     const points = generateGridPoints(run.centerLat, run.centerLng, run.gridSize, run.radiusKm);

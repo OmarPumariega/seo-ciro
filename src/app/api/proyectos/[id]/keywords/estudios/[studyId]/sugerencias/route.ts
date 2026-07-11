@@ -33,7 +33,7 @@ export async function GET(
   const limit = Number.isInteger(rawLimit) && rawLimit > 0 && rawLimit <= MAX_LIMIT ? rawLimit : 30;
 
   try {
-    await assertWithinSpendLimit();
+    await assertWithinSpendLimit(id);
   } catch (error) {
     if (error instanceof DataForSeoSpendLimitError) {
       return NextResponse.json({ error: error.message }, { status: 422 });

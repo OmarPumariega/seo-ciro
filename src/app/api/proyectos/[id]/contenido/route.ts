@@ -22,13 +22,35 @@ export async function GET(
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const { id } = await params;
-  const generations = await prisma.contentGeneration.findMany({
+
+  // Se traen TODAS las generaciones (no solo 20) para poder agrupar por tema:
+  // el campo `topic` es la clave de versionado — regenerar el mismo tema
+  // produce otra fila con el mismo topic, y todas esas filas son versiones
+  // del mismo contenido que el usuario puede comparar/restaurar.
+  const all = await prisma.contentGeneration.findMany({
     where: { projectId: id },
     orderBy: { createdAt: "desc" },
-    take: 20,
   });
 
-  return NextResponse.json(generations);
+  const recent = all.slice(0, 20);
+
+  // Agrupa por topic (misma string exacta). `all` ya viene ordenado por
+  // createdAt desc, así que cada grupo hereda ese orden sin reordenar.
+  const groupMap = new Map<string, typeof all>();
+  for (const gen of all) {
+    const arr = groupMap.get(gen.topic);
+    if (arr) arr.push(gen);
+    else groupMap.set(gen.topic, [gen]);
+  }
+  const groups = Array.from(groupMap.entries())
+    .map(([topic, versions]) => ({ topic, versions }))
+    .sort((x, y) => {
+      const aTime = x.versions[0]?.createdAt.getTime() ?? 0;
+      const bTime = y.versions[0]?.createdAt.getTime() ?? 0;
+      return bTime - aTime;
+    });
+
+  return NextResponse.json({ recent, groups });
 }
 
 export async function POST(

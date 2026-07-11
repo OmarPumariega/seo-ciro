@@ -37,9 +37,12 @@ export async function GET() {
     .filter((id): id is string => id !== null);
   const projects = await prisma.project.findMany({
     where: { id: { in: projectIds } },
-    select: { id: true, name: true },
+    select: { id: true, name: true, spendLimitUsd: true },
   });
   const projectName = new Map(projects.map((p) => [p.id, p.name]));
+  const projectLimit = new Map(
+    projects.map((p) => [p.id, p.spendLimitUsd ?? null])
+  );
 
   const dataforseoSpent = await getMonthSpendUsd();
   const limit = getMonthlyLimitUsd();
@@ -66,6 +69,7 @@ export async function GET() {
         projectId: r.projectId,
         name: r.projectId ? (projectName.get(r.projectId) ?? "Proyecto eliminado") : "Sin proyecto",
         cost: r._sum.costUsd ? Number(r._sum.costUsd) : 0,
+        limit: r.projectId ? (projectLimit.get(r.projectId) ?? null) : null,
       }))
       .sort((a, b) => b.cost - a.cost),
   });

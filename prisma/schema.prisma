@@ -61,6 +61,11 @@ model Project {
   auditFrequency String   @default("manual") // "manual" | "monthly"
   auditLastRunAt DateTime?
 
+  // Tope de gasto mensual de DataForSEO propio de este proyecto (USD). Opcional;
+  // si está puesto, las llamadas de este proyecto se bloquean al superarlo (suma
+  // de su ApiUsageLog del mes). Se suma al tope global (DATAFORSEO_MONTHLY_LIMIT_USD).
+  spendLimitUsd Float?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

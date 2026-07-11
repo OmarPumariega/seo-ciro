@@ -113,7 +113,7 @@ export async function POST(
   // --- Resolución de datos (caché → DataForSEO) ---
   let data;
   try {
-    data = await fetchKeywordData({ keywords, languageCode, locationCode });
+    data = await fetchKeywordData({ keywords, languageCode, locationCode, projectId: id });
   } catch (error) {
     if (error instanceof DataForSeoSpendLimitError) {
       return NextResponse.json({ error: error.message }, { status: 422 });

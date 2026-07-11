@@ -48,6 +48,9 @@ export async function POST(req: NextRequest) {
   }
   const lat = parseCoord("lat", -90, 90);
   const lng = parseCoord("lng", -180, 180);
+  const spendRaw = Number(body.spendLimitUsd);
+  const spendLimitUsd =
+    body.spendLimitUsd === "" || !Number.isFinite(spendRaw) || spendRaw < 0 ? undefined : spendRaw;
 
   const project = await prisma.project.create({
     data: {
@@ -65,6 +68,7 @@ export async function POST(req: NextRequest) {
       lng,
       gbpName: normalizeText(body.gbpName),
       gbpPlaceId: normalizeText(body.gbpPlaceId),
+      spendLimitUsd,
     },
   });
 

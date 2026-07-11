@@ -17,6 +17,7 @@ export type ProjectFormValues = {
   lng: string;
   gbpName: string;
   gbpPlaceId: string;
+  spendLimitUsd: string;
   toneOfVoice: string;
   notes: string;
 };
@@ -34,6 +35,7 @@ const EMPTY_VALUES: ProjectFormValues = {
   lng: "",
   gbpName: "",
   gbpPlaceId: "",
+  spendLimitUsd: "",
   toneOfVoice: "",
   notes: "",
 };
@@ -120,6 +122,23 @@ export default function ProjectForm({
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
             />
           </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">
+              Tope de gasto mensual (USD) <span className="text-gray-400 font-normal">(opcional)</span>
+            </label>
+            <input
+              type="number"
+              min="0"
+              step="0.5"
+              value={form.spendLimitUsd}
+              onChange={(e) => set("spendLimitUsd", e.target.value)}
+              placeholder="5"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+            />
+          </div>
+          <p className="text-xs text-gray-400 sm:col-span-1 self-end">
+            Bloquea las llamadas a DataForSEO de este proyecto al superarlo (se suma al tope global).
+          </p>
         </div>
       </div>
 
