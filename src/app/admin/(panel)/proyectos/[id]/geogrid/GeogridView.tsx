@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Sparkles, XCircle, GitCompareArrows, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { geogridCostUsd } from "@/lib/dataforseo/pricing";
 
 type GridPoint = { row: number; col: number; lat: number; lng: number; position: number | null; title: string | null };
 
@@ -249,7 +250,7 @@ export default function GeogridView({ projectId }: { projectId: string }) {
           </div>
         </div>
         <p className="text-xs text-gray-400">
-          {gridSize * gridSize} consultas · coste estimado ~${(gridSize * gridSize * 0.002).toFixed(2)}
+          {gridSize * gridSize} consultas · coste estimado ~${geogridCostUsd(gridSize).toFixed(2)} por escaneo
         </p>
 
         {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}

@@ -91,9 +91,19 @@ Placeholder con contador de proyectos. Crecerá con alertas cruzadas (auditoría
 pendiente, keywords bajando, tareas vencidas) cuando existan esos módulos.
 
 ### Proyectos (`/admin/proyectos`) — Módulo 2
-Listar, crear y editar proyectos: nombre, dominio, NAP (si es negocio local) y perfil
-de marca (tono de voz, notas). To-do list y protocolos del spec todavía no están
-construidos — se añaden en una sesión dedicada al resto del Módulo 2.
+Listar, crear y editar proyectos: nombre, dominio, NAP (si es negocio local, con
+lat/lng para geogrid) y perfil de marca (tono de voz, notas). To-do list y
+protocolos del spec todavía no están construidos.
+
+### Costes (`/admin/costes`)
+Panel de consumo de API del mes en curso (sección 5 del spec): gasto de DataForSEO
+vs tope mensual configurado, total de todas las APIs (DataForSEO + OpenRouter) y
+desglose por tipo de llamada y por proyecto. Además, **toda acción que gasta
+muestra una estimación de coste antes de confirmar** (estilo WebCEO): el rank
+tracking calcula el coste mensual según nº de keywords × depth × frecuencia (vive
+al mover los selectores); el geogrid estima por rejilla; los estudios de keywords
+muestran la tarifa plana. La estimación es orientativa — el coste real es el que
+devuelve la API y se registra en `ApiUsageLog`.
 
 ### Configuración (`/admin/configuracion`)
 Único ítem realmente global (no de proyecto) del sidebar aparte de Panel general y

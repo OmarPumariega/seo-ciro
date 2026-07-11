@@ -14,6 +14,7 @@ import {
   ArrowDownToLine,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { rankMonthlyCostUsd } from "@/lib/dataforseo/pricing";
 
 type RankPosition = { id: string; checkedAt: string; position: number | null; url: string | null };
 
@@ -280,6 +281,19 @@ export default function RankView({ projectId }: { projectId: string }) {
     loadKeywords();
   }
 
+  // Estimaciones de coste (estilo WebCEO): lo que cuesta/mes lo ya seguido y
+  // lo que sumará la nueva keyword o el lote importado, según depth+frecuencia
+  // actuales del formulario. Se recalcula en vivo al mover los selectores.
+  const projectMonthlyCost = keywords.reduce(
+    (sum, kw) => sum + rankMonthlyCostUsd(1, kw.depth, kw.frequency),
+    0
+  );
+  const newKeywordMonthlyCost = rankMonthlyCostUsd(1, Number(newDepth), newFrequency);
+  const importStudy = studies.find((s) => s.id === importStudyId);
+  const importBatchMonthly = importStudy
+    ? rankMonthlyCostUsd(importStudy._count.keywords, Number(newDepth), newFrequency)
+    : 0;
+
   return (
     <div className="max-w-3xl space-y-6">
       <div>
@@ -371,6 +385,10 @@ export default function RankView({ projectId }: { projectId: string }) {
           {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
           Añadir a seguimiento
         </button>
+        <p className="text-xs text-gray-400">
+          Esta keyword costará <strong className="text-gray-600">~${newKeywordMonthlyCost.toFixed(2)}/mes</strong> (Top-{newDepth}, {FREQUENCY_LABELS[newFrequency].toLowerCase()}).
+          {" "}Total del proyecto con ella: ~${(projectMonthlyCost + newKeywordMonthlyCost).toFixed(2)}/mes.
+        </p>
       </form>
 
       {/* Importar desde estudio */}
@@ -408,6 +426,12 @@ export default function RankView({ projectId }: { projectId: string }) {
               Importar
             </button>
           </div>
+          {importStudy && (
+            <p className="text-xs text-gray-400">
+              Importar {importStudy._count.keywords} keywords costará{" "}
+              <strong className="text-gray-600">~${importBatchMonthly.toFixed(2)}/mes</strong> (Top-{newDepth}, {FREQUENCY_LABELS[newFrequency].toLowerCase()}).
+            </p>
+          )}
         </div>
       )}
 

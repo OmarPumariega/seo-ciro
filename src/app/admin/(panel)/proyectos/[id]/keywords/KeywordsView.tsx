@@ -9,6 +9,7 @@ import {
   FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { KEYWORDS_STUDY_FLAT_COST_USD } from "@/lib/dataforseo/pricing";
 
 type Keyword = {
   id: string;
@@ -325,6 +326,10 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
           Resolver datos
         </button>
+        <p className="text-xs text-gray-400">
+          Coste estimado: <strong className="text-gray-600">~${KEYWORDS_STUDY_FLAT_COST_USD.toFixed(2)}</strong> si hay
+          keywords nuevas (las ya cacheadas en los últimos 30 días son gratis).
+        </p>
       </form>
 
       {current && (

@@ -1,0 +1,44 @@
+// Estimaciones de coste de DataForSEO para mostrar ANTES de confirmar una
+// acción que gasta (estilo WebCEO: "este seguimiento mensual costará X"). Las
+// estimaciones se basan en los precios reales verificados contra la API:
+//
+//   • Rank SERP: depth=10 → 0,002$, depth=100 → 0,020$ → ~0,0002$ por unidad
+//     de depth (DataForSEO factura por bloque de 10 resultados).
+//   • Maps SERP: ~0,002$ por punto de la rejilla.
+//
+// El coste REAL es el que devuelve la API en tasks[0].cost (se registra en
+// ApiUsageLog); estas funciones son solo una proyección orientativa para la
+// confirmación previa del usuario.
+
+const RANK_COST_PER_DEPTH_UNIT = 0.0002;
+export const MAPS_COST_PER_POINT = 0.002;
+
+// Estudio del Módulo 1: tarifa plana por llamada (hasta 1000 keywords) — una
+// de volumen (~0,09$) + una de intención (~0,013$). Solo aplica a keywords NO
+// cacheadas; las que ya lo están (30 días) no gastan.
+export const KEYWORDS_STUDY_FLAT_COST_USD = 0.1;
+
+// Chequeos/mes según frecuencia programada (manual no suma: solo al dispararlo).
+export const FREQUENCY_PER_MONTH: Record<string, number> = {
+  manual: 0,
+  daily: 30,
+  weekly: 4.33,
+  monthly: 1,
+};
+
+// Coste de UN chequeo de rank tracking según el depth pedido.
+export function rankCheckCostUsd(depth: number): number {
+  return Math.round(depth * RANK_COST_PER_DEPTH_UNIT * 1000) / 1000;
+}
+
+// Coste mensual estimado de seguir N keywords con un depth y frecuencia dados.
+// Las de frecuencia "manual" no contribuyen (no se chequean solas).
+export function rankMonthlyCostUsd(count: number, depth: number, frequency: string): number {
+  const perMonth = FREQUENCY_PER_MONTH[frequency] ?? 0;
+  return Math.round(count * rankCheckCostUsd(depth) * perMonth * 100) / 100;
+}
+
+// Coste estimado de una rejilla de geogrid (N×N puntos × Maps SERP por punto).
+export function geogridCostUsd(gridSize: number): number {
+  return Math.round(gridSize * gridSize * MAPS_COST_PER_POINT * 1000) / 1000;
+}

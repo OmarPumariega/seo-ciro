@@ -2,24 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FolderKanban, LayoutDashboard, Settings, X } from "lucide-react";
+import { FolderKanban, LayoutDashboard, Settings, Wallet, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/admin", label: "Panel general", icon: LayoutDashboard },
   { href: "/admin/proyectos", label: "Proyectos", icon: FolderKanban },
+  { href: "/admin/costes", label: "Costes", icon: Wallet },
   { href: "/admin/configuracion", label: "Configuración", icon: Settings },
 ];
 
-// Módulos del spec todavía no construidos — se listan como referencia visual
-// de a dónde va a crecer el panel, deshabilitados hasta que se planifiquen.
-const UPCOMING_MODULES = [
-  "Keyword Research",
-  "Rank Tracking",
-  "Generador de Contenido",
-  "Auditoría Técnica",
-  "Geogrid Local SEO",
-];
+// Sin lista de "próximamente": los 9 módulos del spec ya están construidos
+// (cuelgan de la ficha de cada proyecto). El growth del panel va ahora por
+// capas transversales (alertas, email, informes...).
 
 export default function AdminSidebar({
   navOpen,
@@ -73,25 +68,11 @@ export default function AdminSidebar({
                     : "text-gray-600 hover:bg-gray-100"
                 )}
               >
-                <Icon className="h-4 w-4" />
-                {item.label}
-              </Link>
-            );
+              <Icon className="h-4 w-4" />
+              {item.label}
+            </Link>
+          );
           })}
-
-          <div className="pt-4 mt-4 border-t border-gray-100">
-            <p className="px-3 pb-2 text-xs font-semibold text-gray-400 uppercase tracking-wide">
-              Próximamente
-            </p>
-            {UPCOMING_MODULES.map((label) => (
-              <div
-                key={label}
-                className="px-3 py-2 text-sm text-gray-300 cursor-not-allowed"
-              >
-                {label}
-              </div>
-            ))}
-          </div>
         </nav>
       </aside>
     </>
