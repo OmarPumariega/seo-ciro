@@ -8,6 +8,7 @@ import { notify } from "@/lib/notifications/notify";
 
 const STALE_RUN_TIMEOUT_MIN = 30;
 const MONTHLY_AUDIT_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
+const THIN_CONTENT_WORDS = 300; // bajo este nº de palabras → thin content
 
 function buildIssues(page: CrawledPage, inSearchConsole: boolean | null): string[] {
   const issues: string[] = [];
@@ -16,6 +17,7 @@ function buildIssues(page: CrawledPage, inSearchConsole: boolean | null): string
   if (!page.isHttps) issues.push("no_https");
   if (page.brokenLinksCount > 0) issues.push("broken_links");
   if (page.imagesMissingAlt > 0) issues.push("missing_alt");
+  if (page.wordCount !== null && page.wordCount < THIN_CONTENT_WORDS) issues.push("thin_content");
   if (inSearchConsole === false) issues.push("no_gsc_impressions");
   return issues;
 }
@@ -145,6 +147,7 @@ export async function runAuditJob(): Promise<{ processed: number }> {
             imagesMissingAlt: page.imagesMissingAlt,
             brokenLinksCount: page.brokenLinksCount,
             brokenLinksSample: page.brokenLinksSample as Prisma.InputJsonValue,
+            wordCount: page.wordCount,
             inSearchConsole,
             issues: buildIssues(page, inSearchConsole) as Prisma.InputJsonValue,
           };
@@ -161,6 +164,7 @@ export async function runAuditJob(): Promise<{ processed: number }> {
           categoryScores: categoryScores as unknown as Prisma.InputJsonValue,
           psiData: psi ? (psi as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
           gscChecked,
+          linkGraph: crawl.linkGraph as unknown as Prisma.InputJsonValue,
         },
       }),
     ]);

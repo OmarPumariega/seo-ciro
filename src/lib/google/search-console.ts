@@ -61,3 +61,65 @@ export async function listImpressedPages(
 
   return new Set(pages);
 }
+
+export type CannibalizedPage = {
+  url: string;
+  clicks: number;
+  impressions: number;
+  position: number;
+};
+
+export type Cannibalization = { query: string; pages: CannibalizedPage[] };
+
+// Detecta keywords canibalizadas: aquellas para las que el sitio posiciona
+// 2+ URLs distintas en los últimos `range` días. Pide a Search Console el
+// desglose por [query, page] (top 5000 filas) y agrupa en JS por query; las
+// queries con 2+ páginas se devuelven con sus URLs ordenadas por clics desc,
+// y el conjunto se ordena por clics totales desc para mostrar primero las
+// canibalizaciones de mayor impacto.
+export async function listCannibalizations(
+  auth: GoogleOAuthClient,
+  siteUrl: string,
+  range: { startDate: string; endDate: string }
+): Promise<Cannibalization[]> {
+  const searchconsole = google.searchconsole({ version: "v1", auth });
+  const { data } = await searchconsole.searchanalytics.query({
+    siteUrl,
+    requestBody: {
+      startDate: range.startDate,
+      endDate: range.endDate,
+      dimensions: ["query", "page"],
+      rowLimit: 5000,
+    },
+  });
+
+  const byQuery = new Map<string, CannibalizedPage[]>();
+  for (const row of data.rows ?? []) {
+    const query = row.keys?.[0];
+    const page = row.keys?.[1];
+    if (!query || !page) continue;
+    const entry: CannibalizedPage = {
+      url: page,
+      clicks: row.clicks ?? 0,
+      impressions: row.impressions ?? 0,
+      position: row.position ?? 0,
+    };
+    const list = byQuery.get(query);
+    if (list) list.push(entry);
+    else byQuery.set(query, [entry]);
+  }
+
+  const result: Cannibalization[] = [];
+  for (const [query, pages] of byQuery) {
+    if (pages.length >= 2) {
+      pages.sort((a, b) => b.clicks - a.clicks);
+      result.push({ query, pages });
+    }
+  }
+  result.sort((a, b) => {
+    const aClicks = a.pages.reduce((sum, p) => sum + p.clicks, 0);
+    const bClicks = b.pages.reduce((sum, p) => sum + p.clicks, 0);
+    return bClicks - aClicks;
+  });
+  return result;
+}

@@ -26,10 +26,14 @@ export default function ProjectSubNav({
     { href: `${base}/rank`, label: "Rank Tracking" },
     { href: `${base}/google`, label: "Google" },
     { href: `${base}/contenido`, label: "Contenido" },
+    { href: `${base}/tfidf`, label: "TF-IDF" },
     { href: `${base}/auditoria`, label: "Auditoría" },
+    { href: `${base}/enlaces`, label: "Enlaces" },
+    { href: `${base}/canibalizaciones`, label: "Canibalizaciones" },
     // La pestaña Geogrid solo aplica a negocios locales (Módulo 9).
     ...(isLocalBusiness ? [{ href: `${base}/geogrid`, label: "Geogrid" }] : []),
     { href: `${base}/informe`, label: "Informe" },
+    { href: `${base}/copilot`, label: "Copilot" },
   ];
 
   return (

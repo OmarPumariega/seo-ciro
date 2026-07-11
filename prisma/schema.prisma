@@ -78,6 +78,7 @@ model Project {
   rankKeywords         RankKeyword[]
   geogridRuns          GeogridRun[]
   todos                TodoItem[]
+  copilotThreads       CopilotThread[]
 }
 
 // Módulo 3 — un registro por generación exitosa (URL por URL, sin modo
@@ -185,6 +186,7 @@ model AuditRun {
   categoryScores Json? // detalle numérico por categoría, auditable a mano
   psiData        Json? // PageSpeed Insights de la home únicamente
   gscChecked     Boolean   @default(false)
+  linkGraph      Json? // grafo de enlaces internos { url, links[] } (PageRank/enlazado M interno)
   errorMessage   String?
   pages          AuditPage[]
 
@@ -205,6 +207,7 @@ model AuditPage {
   imagesMissingAlt  Int      @default(0)
   brokenLinksCount  Int      @default(0)
   brokenLinksSample Json? // hasta 10 URLs rotas, para mostrar en UI sin tabla aparte
+  wordCount         Int? // nº de palabras del cuerpo (detección de thin content)
   inSearchConsole   Boolean? // null si gscChecked=false en el AuditRun padre
   issues            Json? // ["missing_canonical", "noindex", "no_https"...]
   createdAt         DateTime @default(now())
@@ -367,4 +370,19 @@ model NotificationLog {
 
   @@unique([type, key])
   @@index([type])
+}
+
+// Conversaciones del Copilot SEO (IA que entiende los datos del proyecto).
+// messages = [{role:"user"|"assistant", content}]. Un hilo por proyecto, con
+// título autogenerado del primer mensaje para distinguirlos en la lista.
+model CopilotThread {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title     String
+  messages  Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, updatedAt])
 }

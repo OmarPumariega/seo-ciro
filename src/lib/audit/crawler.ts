@@ -28,12 +28,16 @@ export type CrawledPage = {
   linksCheckedCount: number; // enlaces con estado resuelto (visitados o comprobados)
   brokenLinksCount: number;
   brokenLinksSample: string[];
+  wordCount: number | null; // nº de palabras del cuerpo (thin content); null si no era HTML
 };
 
 export type CrawlResult = {
   pages: CrawledPage[];
   robotsBlocked: boolean;
   sitemapFound: boolean;
+  // Grafo de enlaces internos: { url, links: [urls internas] }. Lo usa el
+  // módulo de PageRank/enlazado interno. Vacío si robots bloqueó.
+  linkGraph: { url: string; links: string[] }[];
 };
 
 function sleep(ms: number) {
@@ -82,6 +86,7 @@ async function fetchAndAnalyzePage(url: string, origin: string): Promise<PageAna
     linksCheckedCount: 0,
     brokenLinksCount: 0,
     brokenLinksSample: [],
+    wordCount: null,
   };
 
   let res: Response;
@@ -107,6 +112,11 @@ async function fetchAndAnalyzePage(url: string, origin: string): Promise<PageAna
 
   base.canonicalUrl = $('link[rel="canonical"]').attr("href")?.trim() || null;
   base.metaRobots = $('meta[name="robots"]').attr("content")?.trim() || null;
+
+  // Thin content: cuenta palabras del cuerpo visible (script/style fuera).
+  $("script, style, noscript").remove();
+  const bodyText = $("body").text().replace(/\s+/g, " ").trim();
+  base.wordCount = bodyText ? bodyText.split(" ").filter(Boolean).length : 0;
 
   $("img").each((_, el) => {
     base.imagesTotal += 1;
@@ -155,13 +165,13 @@ async function checkLinkStatus(url: string): Promise<number | null> {
 
 export async function crawlSite(startUrl: string): Promise<CrawlResult> {
   const start = normalizeUrl(startUrl);
-  if (!start) return { pages: [], robotsBlocked: false, sitemapFound: false };
+  if (!start) return { pages: [], robotsBlocked: false, sitemapFound: false, linkGraph: [] };
 
   const origin = new URL(start).origin;
   const robots = await loadRobotsRules(origin);
 
   if (!robots.isAllowed(start)) {
-    return { pages: [], robotsBlocked: true, sitemapFound: false };
+    return { pages: [], robotsBlocked: true, sitemapFound: false, linkGraph: [] };
   }
 
   const sitemapFound = await checkSitemap(origin);
@@ -245,5 +255,5 @@ export async function crawlSite(startUrl: string): Promise<CrawlResult> {
     page.brokenLinksSample = broken.slice(0, MAX_BROKEN_SAMPLE);
   }
 
-  return { pages, robotsBlocked: false, sitemapFound };
+  return { pages, robotsBlocked: false, sitemapFound, linkGraph: pages.map((p) => ({ url: p.url, links: pageLinks.get(p.url) ?? [] })) };
 }

@@ -49,6 +49,30 @@ Esta primera fase construye únicamente la base sobre la que colgará el resto:
   spam) en `NotificationLog`; degradación elegante si no hay SMTP configurado
 - ✅ Versionado de contenido (Módulo 7) — agrupación por tema, comparar versiones con
   diff línea a línea (LCS), restaurar y regenerar
+- ✅ TF-IDF / prominencia semántica — top-10 de Google para una keyword, scraping y
+  términos recomendados para el contenido (sin coste de API, solo scraping)
+- ✅ PageRank interno + enlazado interno — calculado sobre el grafo de enlaces del crawl
+  del Módulo 8 (persistido en `AuditRun.linkGraph`)
+- ✅ Thin content — conteo de palabras por página en el crawl del Módulo 8
+- ✅ Canibalizaciones — mismas keywords posicionando varias URLs (vía Search Console)
+- ✅ Copilot SEO — chat con IA que entiende los datos del proyecto (`CopilotThread`)
+
+## Roadmap pendiente (futuro, no olvidar)
+
+Funcionalidades de la competencia (Dinorank y similares) aún NO construidas, dejadas
+explícitamente para más adelante:
+
+- **Tier 2 — espionaje de competidores** (DataForSEO Labs, añade coste ~0,01$/resultado):
+  - Gráfica de visibilidad: tráfico orgánico estimado de cualquier dominio
+    (`dataforseo_labs/google/domain_rank_overview`).
+  - Keywords por las que rankea un dominio (`ranked_keywords`).
+  - Content Gap: keywords que rankea un competidor y tú no (`domain_intersection`).
+- **Tier 3 — bloqueadas por coste/terceros**:
+  - SEO para LLMs (menciones en ChatGPT/Gemini/Claude) — DataForSEO LLM Mentions,
+    compromiso mínimo 100$/mes.
+  - Link Building / Link Craft (backlinks) — API de Backlinks de DataForSEO aparte.
+  - Google Ads como fuente alternativa de volumen (Módulo 1) — developer token aprobado.
+  - Business Profile API (Módulo 6) — pendiente de aprobación de Google.
 
 Cada uno de estos módulos se planifica y construye en una sesión dedicada, siguiendo
 el orden recomendado en la sección 8 de `spec-original.md`.

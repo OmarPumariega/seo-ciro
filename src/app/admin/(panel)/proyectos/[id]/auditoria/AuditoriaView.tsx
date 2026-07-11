@@ -24,6 +24,7 @@ type AuditPage = {
   brokenLinksCount: number;
   inSearchConsole: boolean | null;
   issues: string[] | null;
+  wordCount: number | null;
 };
 
 type AuditRun = {
@@ -55,6 +56,7 @@ const ISSUE_LABELS: Record<string, string> = {
   broken_links: "Enlaces rotos",
   missing_alt: "Imágenes sin alt",
   no_gsc_impressions: "Sin impresiones en Search Console (90 días)",
+  thin_content: "Thin content (<300 palabras)",
 };
 
 function ScoreTile({ label, score, max }: { label: string; score: number | null; max: number }) {
@@ -168,6 +170,11 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
   }
 
   const pagesWithIssues = current?.pages?.filter((p) => (p.issues?.length ?? 0) > 0) ?? [];
+
+  const thinContentPages =
+    current?.pages
+      ?.filter((p) => p.wordCount !== null && p.wordCount < 300)
+      .sort((a, b) => (a.wordCount ?? 0) - (b.wordCount ?? 0)) ?? [];
 
   return (
     <div className="space-y-6">
@@ -311,6 +318,32 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
                 ))}
               </div>
             </div>
+          )}
+
+          {thinContentPages.length > 0 ? (
+            <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
+              <h3 className="text-sm font-semibold text-gray-900">
+                Thin content ({thinContentPages.length})
+              </h3>
+              <div className="space-y-2">
+                {thinContentPages.map((page) => (
+                  <div key={page.id} className="border border-gray-100 rounded-lg p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm text-gray-900 truncate">{page.url}</p>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-600 shrink-0">
+                        {page.wordCount} palabras
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            current?.status === "completed" &&
+            !current.robotsBlocked &&
+            current.categoryScores && (
+              <p className="text-sm text-gray-500">Sin thin content.</p>
+            )
           )}
         </>
       )}
