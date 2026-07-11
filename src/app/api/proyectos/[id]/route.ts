@@ -69,7 +69,7 @@ export async function PATCH(
       where: { id },
       data: {
         name,
-        domain: normalizeText(body.domain),
+        domain: normalizeText(body.domain)?.replace(/^https?:\/\//, "").replace(/\/$/, ""),
         isLocalBusiness: Boolean(body.isLocalBusiness),
         businessName: normalizeText(body.businessName),
         address: normalizeText(body.address, MAX_LONG),

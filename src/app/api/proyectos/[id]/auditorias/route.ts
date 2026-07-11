@@ -41,6 +41,9 @@ export async function POST(
     );
   }
 
+  // Limpia el dominio (sin protocolo ni slash final) antes de construir la URL.
+  const cleanDomain = project.domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+
   const existing = await prisma.auditRun.findFirst({
     where: { projectId: id, status: { in: ["pending", "running"] } },
   });
@@ -54,7 +57,7 @@ export async function POST(
   const run = await prisma.auditRun.create({
     data: {
       projectId: id,
-      startUrl: `https://${project.domain}`,
+      startUrl: `https://${cleanDomain}`,
     },
   });
 

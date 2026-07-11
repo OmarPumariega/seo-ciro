@@ -87,7 +87,7 @@ async function scheduleMonthlyAudit() {
     prisma.auditRun.create({
       data: {
         projectId: candidate.id,
-        startUrl: `https://${candidate.domain}`,
+        startUrl: `https://${candidate.domain.replace(/^https?:\/\//, "").replace(/\/$/, "")}`,
       },
     }),
     prisma.project.update({
