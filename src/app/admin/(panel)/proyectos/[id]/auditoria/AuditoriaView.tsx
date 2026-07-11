@@ -4,7 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, Sparkles, AlertTriangle, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import AuditTrendChart from "@/components/admin/AuditTrendChart";
+import AuditIssuesTrendChart from "@/components/admin/AuditIssuesTrendChart";
 import AuditTechnicalDetails from "@/components/admin/AuditTechnicalDetails";
+import AuditIssuesList from "@/components/admin/AuditIssuesList";
+import { TECNICA_ISSUES, ONPAGE_ISSUES } from "@/lib/audit/issue-meta";
 
 type CategoryScore = { score: number; max: number; detail: Record<string, number> };
 type CategoryScores = {
@@ -52,33 +55,20 @@ type AuditRun = {
   pages?: AuditPage[];
 };
 
+type Tab = "resumen" | "tecnica" | "onpage";
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: "resumen", label: "Resumen" },
+  { key: "tecnica", label: "Auditoría Técnica" },
+  { key: "onpage", label: "Elementos SEO" },
+];
+
 const CATEGORY_LABELS: Record<string, string> = {
   indexabilidad: "Indexabilidad",
   enlaces: "Enlaces",
   onpage: "On-page (títulos/metas/H1)",
   rendimiento: "Rendimiento",
   accesibilidadImagenes: "Accesibilidad",
-};
-
-const ISSUE_LABELS: Record<string, string> = {
-  missing_canonical: "Sin canonical",
-  noindex: "Marcada noindex",
-  no_https: "Sin HTTPS",
-  redirect: "Redirección (3xx)",
-  broken_links: "Enlaces rotos",
-  missing_alt: "Imágenes sin alt",
-  no_gsc_impressions: "Sin impresiones GSC (90 días)",
-  thin_content: "Thin content (<300 palabras)",
-  missing_title: "Sin título",
-  title_long: "Título largo (>65)",
-  title_short: "Título corto (<30)",
-  missing_meta: "Sin meta description",
-  meta_long: "Meta larga (>160)",
-  meta_short: "Meta corta (<120)",
-  missing_h1: "Sin H1",
-  multiple_h1: "Múltiples H1",
-  duplicate_title: "Título duplicado",
-  duplicate_meta: "Meta description duplicada",
 };
 
 function ScoreTile({ label, score, max }: { label: string; score: number | null; max: number }) {
@@ -92,6 +82,15 @@ function ScoreTile({ label, score, max }: { label: string; score: number | null;
   );
 }
 
+function KpiTile({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-5">
+      <div className="text-2xl font-semibold text-gray-900 tabular-nums">{value}</div>
+      <div className="text-sm text-gray-500">{label}</div>
+    </div>
+  );
+}
+
 export default function AuditoriaView({ projectId }: { projectId: string }) {
   const [history, setHistory] = useState<AuditRun[]>([]);
   const [current, setCurrent] = useState<AuditRun | null>(null);
@@ -100,6 +99,7 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
   const [error, setError] = useState("");
   const [auditFrequency, setAuditFrequency] = useState("manual");
   const [scheduleBusy, setScheduleBusy] = useState(false);
+  const [tab, setTab] = useState<Tab>("resumen");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   function stopPolling() {
@@ -132,6 +132,11 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
             setCurrent(latest);
             if (latest.status === "pending" || latest.status === "running") {
               pollRun(latest.id);
+            } else if (latest.status === "completed") {
+              // El listado no incluye `pages` — sin este fetch, las tarjetas
+              // KPI y las listas de incidencias se quedarían a 0 hasta que el
+              // usuario hiciera clic en el histórico.
+              loadDetail(latest.id);
             }
           }
         }
@@ -170,6 +175,7 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
 
     setHistory((prev) => [data, ...prev]);
     setCurrent(data);
+    setTab("resumen");
     pollRun(data.id);
   }
 
@@ -191,12 +197,12 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
     }
   }
 
-  const pagesWithIssues = current?.pages?.filter((p) => (p.issues?.length ?? 0) > 0) ?? [];
+  const pages = current?.pages ?? [];
+  const pagesWithIssuesCount = pages.filter((p) => (p.issues?.length ?? 0) > 0).length;
+  const totalIssueInstances = pages.reduce((sum, p) => sum + (p.issues?.length ?? 0), 0);
 
-  const thinContentPages =
-    current?.pages
-      ?.filter((p) => p.wordCount !== null && p.wordCount < 300)
-      .sort((a, b) => (a.wordCount ?? 0) - (b.wordCount ?? 0)) ?? [];
+  const showContent =
+    current?.status === "completed" && !current.robotsBlocked && current.categoryScores;
 
   return (
     <div className="space-y-6">
@@ -288,88 +294,75 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
         </div>
       )}
 
-      {current?.status === "completed" && !current.robotsBlocked && current.categoryScores && (
+      {showContent && current && current.categoryScores && (
         <>
-          <AuditTrendChart projectId={projectId} />
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            <ScoreTile label="Puntuación global" score={current.overallScore} max={100} />
-            {(Object.keys(CATEGORY_LABELS) as (keyof CategoryScores)[]).map((key) => {
-              const cat = current.categoryScores?.[key];
-              return (
-                <ScoreTile
-                  key={key}
-                  label={CATEGORY_LABELS[key]}
-                  score={cat ? cat.score : null}
-                  max={cat ? cat.max : 0}
-                />
-              );
-            })}
+          <div className="flex items-center gap-1 border-b border-gray-200">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={cn(
+                  "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+                  tab === t.key
+                    ? "border-gray-900 text-gray-900"
+                    : "border-transparent text-gray-500 hover:text-gray-800"
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
-          {!current.categoryScores.rendimiento && (
-            <p className="text-xs text-gray-400">
-              Rendimiento sin datos (falta configurar PAGESPEED_API_KEY).
-            </p>
-          )}
-          <p className="text-xs text-gray-400">
-            Rendimiento medido sobre la página de inicio, no sobre todo el sitio · {current.pagesCrawled}{" "}
-            páginas rastreadas
-            {current.gscChecked
-              ? ""
-              : " · sin cruce con Search Console (proyecto sin propiedad GSC o sin conexión de agencia)"}
-          </p>
 
-          {pagesWithIssues.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
-              <h3 className="text-sm font-semibold text-gray-900">
-                Páginas con incidencias ({pagesWithIssues.length})
-              </h3>
-              <div className="space-y-2">
-                {pagesWithIssues.map((page) => (
-                  <div key={page.id} className="border border-gray-100 rounded-lg p-3">
-                    <p className="text-sm text-gray-900 truncate">{page.url}</p>
-                    <div className="flex flex-wrap gap-1.5 mt-1.5">
-                      {(page.issues ?? []).map((issue) => (
-                        <span
-                          key={issue}
-                          className="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-600"
-                        >
-                          {ISSUE_LABELS[issue] ?? issue}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+          {tab === "resumen" && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <KpiTile label="Optimización del sitio" value={`${current.overallScore ?? "—"}%`} />
+                <KpiTile label="Páginas rastreadas" value={current.pagesCrawled} />
+                <KpiTile label="Páginas con incidencias" value={pagesWithIssuesCount} />
+                <KpiTile label="Incidencias totales" value={totalIssueInstances} />
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                {(Object.keys(CATEGORY_LABELS) as (keyof CategoryScores)[]).map((key) => {
+                  const cat = current.categoryScores?.[key];
+                  return (
+                    <ScoreTile
+                      key={key}
+                      label={CATEGORY_LABELS[key]}
+                      score={cat ? cat.score : null}
+                      max={cat ? cat.max : 0}
+                    />
+                  );
+                })}
+              </div>
+              {!current.categoryScores.rendimiento && (
+                <p className="text-xs text-gray-400">
+                  Rendimiento sin datos (falta configurar PAGESPEED_API_KEY).
+                </p>
+              )}
+              <p className="text-xs text-gray-400">
+                Rendimiento medido sobre la página de inicio, no sobre todo el sitio
+                {current.gscChecked
+                  ? ""
+                  : " · sin cruce con Search Console (proyecto sin propiedad GSC o sin conexión de agencia)"}
+              </p>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <AuditTrendChart projectId={projectId} />
+                <AuditIssuesTrendChart runs={history} />
               </div>
             </div>
           )}
 
-          {thinContentPages.length > 0 ? (
-            <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
-              <h3 className="text-sm font-semibold text-gray-900">
-                Thin content ({thinContentPages.length})
-              </h3>
-              <div className="space-y-2">
-                {thinContentPages.map((page) => (
-                  <div key={page.id} className="border border-gray-100 rounded-lg p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm text-gray-900 truncate">{page.url}</p>
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-red-50 text-red-600 shrink-0">
-                        {page.wordCount} palabras
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          {tab === "tecnica" && (
+            <div className="space-y-6">
+              <AuditIssuesList pages={pages} issueCodes={TECNICA_ISSUES} gscChecked={current.gscChecked} />
+              <AuditTechnicalDetails projectId={projectId} auditRunId={current.id} />
             </div>
-          ) : (
-            current?.status === "completed" &&
-            !current.robotsBlocked &&
-            current.categoryScores && (
-              <p className="text-sm text-gray-500">Sin thin content.</p>
-            )
           )}
-          {current?.status === "completed" && (
-            <AuditTechnicalDetails projectId={projectId} auditRunId={current.id} />
+
+          {tab === "onpage" && (
+            <AuditIssuesList pages={pages} issueCodes={ONPAGE_ISSUES} gscChecked={current.gscChecked} />
           )}
         </>
       )}

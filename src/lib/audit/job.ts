@@ -5,6 +5,7 @@ import { getPsiMetrics } from "@/lib/audit/psi";
 import { crossReferenceGsc } from "@/lib/audit/gsc-crossref";
 import { computeScore } from "@/lib/audit/scoring";
 import { notify } from "@/lib/notifications/notify";
+import { ISSUE_META } from "@/lib/audit/issue-meta";
 
 const STALE_RUN_TIMEOUT_MIN = 30;
 const MONTHLY_AUDIT_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -250,28 +251,6 @@ export async function runAuditJob(): Promise<{ processed: number }> {
 
 // --- Generación de tareas desde hallazgos de auditoría ---
 
-// Tipo de incidencia → { etiqueta legible, texto de cómo solucionarlo }.
-// Solo se crean tareas para incidencias accionables (no para señales como
-// noindex que puede ser intencional o sin impresiones GSC que es informativo).
-const ISSUE_FIXES: Record<string, { label: string; fix: string }> = {
-  broken_links: { label: "páginas con enlaces rotos", fix: "Revisa cada enlace roto: actualiza la URL, añade una redirección 301, o elimina el enlace si ya no existe." },
-  missing_alt: { label: "páginas con imágenes sin alt", fix: "Añade atributos alt descriptivos a las imágenes (describen la imagen para accesibilidad y SEO de imágenes)." },
-  thin_content: { label: "páginas con poco contenido (<300 palabras)", fix: "Amplía el contenido a mínimo 300 palabras con información útil, única y relevante para el usuario." },
-  missing_title: { label: "páginas sin etiqueta <title>", fix: "Añade un <title> único de 50-60 caracteres en el <head> de cada página." },
-  title_long: { label: "páginas con título demasiado largo (>65 car.)", fix: "Acorta el título a máximo 65 caracteres (Google lo truncará en los resultados)." },
-  title_short: { label: "páginas con título demasiado corto (<30 car.)", fix: "Amplía el título a mínimo 30 caracteres para mejorar el CTR en los resultados." },
-  missing_meta: { label: "páginas sin meta description", fix: "Añade una meta description de 120-160 caracteres que describa el contenido de la página." },
-  meta_long: { label: "páginas con meta description larga (>160 car.)", fix: "Acorta la meta description a máximo 160 caracteres para que Google no la corte." },
-  meta_short: { label: "páginas con meta corta (<120 car.)", fix: "Amplía la meta description a mínimo 120 caracteres para mejor CTR." },
-  missing_h1: { label: "páginas sin H1", fix: "Añade un único encabezado H1 que describa el tema principal de la página." },
-  multiple_h1: { label: "páginas con múltiples H1", fix: "Deja solo un H1 por página. Convierte los demás en H2 o H3." },
-  missing_canonical: { label: "páginas sin canonical", fix: "Añade <link rel='canonical' href='URL_CANÓNICA'> en el <head> para evitar contenido duplicado." },
-  no_https: { label: "páginas sin HTTPS", fix: "Instala un certificado SSL y configura redirecciones 301 de HTTP a HTTPS en todo el sitio." },
-  duplicate_title: { label: "páginas con título duplicado", fix: "Cada página debe tener un título único. Personaliza los títulos para evitar canibalización." },
-  duplicate_meta: { label: "páginas con meta description duplicada", fix: "Cada meta description debe ser única. Personaliza cada una según el contenido de su página." },
-  redirect: { label: "páginas con redirección (3xx)", fix: "Revisa las redirecciones: si son 301 permanentes, actualiza los enlaces internos para apuntar a la URL final." },
-};
-
 function urlToPath(url: string): string {
   try {
     const u = new URL(url);
@@ -301,7 +280,9 @@ async function generateAuditTasks(
     if (ml && (metaCounts.get(ml) ?? 0) > 1) issues.push("duplicate_meta");
 
     for (const issue of issues) {
-      if (!ISSUE_FIXES[issue]) continue;
+      // Solo incidencias accionables (fix !== null) generan tarea — noindex y
+      // "sin impresiones GSC" son señales informativas, pueden ser intencionales.
+      if (!ISSUE_META[issue]?.fix) continue;
       const path = urlToPath(page.url);
       const arr = issuePages.get(issue) ?? [];
       arr.push(path);
@@ -320,11 +301,11 @@ async function generateAuditTasks(
   // Crea una tarea detallada por tipo de incidencia.
   const dateStr = new Date().toLocaleDateString("es-ES");
   for (const [issue, paths] of issuePages) {
-    const fix = ISSUE_FIXES[issue];
-    if (!fix) continue;
+    const meta = ISSUE_META[issue];
+    if (!meta?.fix) continue;
     const shown = paths.slice(0, 5);
     const more = paths.length > 5 ? ` …y ${paths.length - 5} más` : "";
-    const text = `🔍 [Auditoría ${dateStr}] ${paths.length} ${fix.label}:\n${shown.map((p) => `• ${p}`).join("  ")}${more}\n→ ${fix.fix}`.slice(0, 500);
+    const text = `🔍 [Auditoría ${dateStr}] ${paths.length} página(s) — ${meta.label}:\n${shown.map((p) => `• ${p}`).join("  ")}${more}\n→ ${meta.fix}`.slice(0, 500);
     await prisma.todoItem.create({ data: { projectId, text } });
   }
 }
