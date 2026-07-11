@@ -19,6 +19,7 @@
     "@prisma/client": "^7.8.0",
     "@radix-ui/react-dialog": "^1.1.16",
     "@radix-ui/react-label": "^2.1.9",
+    "@radix-ui/react-popover": "^1.1.19",
     "@radix-ui/react-select": "^2.3.0",
     "@radix-ui/react-slot": "^1.2.5",
     "@types/pg": "^8.20.0",

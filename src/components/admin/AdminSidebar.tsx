@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { FolderKanban, LayoutDashboard, Settings, Wallet, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import ProjectSwitcher, { pushRecent } from "@/components/admin/ProjectSwitcher";
 
 const NAV_ITEMS = [
   { href: "/admin", label: "Panel general", icon: LayoutDashboard },
@@ -78,6 +79,8 @@ export default function AdminSidebar({
         }
       })
       .catch(() => {});
+    // Registra el proyecto actual en "recientes" (localStorage) para el switcher.
+    pushRecent(projectId);
     return () => {
       cancelled = true;
     };
@@ -158,24 +161,7 @@ export default function AdminSidebar({
           {projectId && (
             <div className="pt-4 mt-4 border-t border-gray-100 space-y-2">
               <label className="block px-3 text-xs font-medium text-gray-500">Proyecto</label>
-              <div className="px-3">
-                <select
-                  value={projectId}
-                  onChange={(e) => switchProject(e.target.value)}
-                  disabled={projects.length === 0}
-                  className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-gray-400 disabled:bg-gray-50"
-                >
-                  {projects.length === 0 ? (
-                    <option value={projectId}>Cargando…</option>
-                  ) : (
-                    projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
+              <ProjectSwitcher projects={projects} currentId={projectId} onSelect={switchProject} />
               {project && (
                 <div className="space-y-0.5">
                   {modules.map((m) => {
