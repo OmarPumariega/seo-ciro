@@ -1,6 +1,6 @@
 # 04 — Modelo de datos
 
-Esquema actual en [`prisma/schema.prisma`](../prisma/schema.prisma), 15 modelos.
+Esquema actual en [`prisma/schema.prisma`](../prisma/schema.prisma), 21 modelos.
 
 ## `User`
 
@@ -20,6 +20,10 @@ resto de módulos a medida que se construyan (keywords, rank tracking, auditorí
 - `gscSiteUrl` / `ga4PropertyId` (Módulo 6): propiedad de Search Console / GA4
   seleccionada. Strings simples, no FK — son identificadores que vienen directos
   de la API de Google, no filas locales.
+- `spendLimitUsd` (`Float?`): tope de gasto mensual de DataForSEO específico de este
+  proyecto, opcional y adicional al tope global (env `DATAFORSEO_MONTHLY_LIMIT_USD`).
+  Lo comprueba `assertWithinSpendLimit()` (`src/lib/dataforseo/spend.ts`) antes de
+  cualquier llamada de pago con este proyecto de por medio.
 
 ## `TitleMetaGeneration` (Módulo 3)
 
@@ -85,6 +89,20 @@ y aun así `AuditPage.inSearchConsole` es una señal indirecta (impresiones en S
 Console en 90 días), no el resultado de la API de Inspección de URLs (exigiría un scope
 OAuth nuevo → reconsentimiento de toda cuenta ya conectada).
 
+**Ampliación tipo Screaming Frog** (auditoría on-page): `scoring.ts` pasó de 4 a 5
+categorías — `indexabilidad` 25, `enlaces` 20, `onpage` 20 (nueva), `rendimiento` 25,
+`accesibilidadImagenes` 10, pesos que siguen sumando 100. `onpage` penaliza
+proporcionalmente a `paginasConIssuesOnPage / crawled`, usando los campos nuevos de
+`AuditPage`: `title`/`titleLength` (issue si &lt;30 o &gt;65 caracteres, o ausente),
+`metaDescription`/`metaLength` (&lt;120 o &gt;160), `h1Count` (issue si 0 o &gt;1),
+`isRedirect` (via `res.redirected`), `externalLinksCount` + muestra de dominios
+externos. `AuditRun` además guarda `robotsTxt` (contenido crudo) y datos de
+`sitemap.xml` (`sitemapFound`, `sitemapUrlCount`, hasta 100 URLs de muestra). Sigue
+degradando por categoría igual que el diseño original: sin datos de PSI,
+`rendimiento` se excluye y el total se renormaliza sobre las categorías con dato; sin
+páginas crawleadas con imágenes/enlaces/on-page problemáticos, esas categorías dan
+nota completa en vez de penalizar por ausencia de datos.
+
 ## `KeywordStudy` / `Keyword` (Módulo 1)
 
 Un "estudio" es una lista de keywords pegada por el usuario para un proyecto, con los
@@ -146,6 +164,60 @@ como mapa de calor y nunca se filtran individualmente (a diferencia de las pági
 auditoría). `foundCount`/`averagePosition` resumen cuántos puntos posicionan y la media (solo
 de los puntos donde el negocio apareció). El centro de la rejilla viene de `Project.lat`/`lng`
 — de ahí que el geogrid solo esté disponible para proyectos locales con coordenadas.
+
+## `TodoItem` (Módulo 2, ampliado)
+
+Tarea manual (`text`, `dueDate?`, `done`) creada desde la pestaña Tareas, más un
+segundo origen: al completarse una auditoría, `generateAuditTasks()`
+(`src/lib/audit/job.ts`) crea automáticamente un `TodoItem` por tipo de hallazgo
+accionable (títulos/metas ausentes o mal dimensionados, H1 ausente/duplicado, enlaces
+rotos, contenido fino, sin HTTPS, etc.), con hasta 5 rutas de ejemplo y una sugerencia
+de arreglo. No hay un campo de schema que distinga origen manual de automático — las
+tareas automáticas se identifican por convención de texto (prefijo `🔍 [Auditoría
+&lt;fecha&gt;]`). Antes de crear las nuevas, la siguiente auditoría marca `done` las
+`TodoItem` automáticas de la anterior que empiecen por ese prefijo, así que cada
+auditoría "sustituye" a la anterior en vez de acumular tareas obsoletas; las tareas
+manuales nunca se tocan.
+
+## `NotificationLog` (avisos por email)
+
+Un registro por aviso enviado, con `@@unique([type, key])` como mecanismo de dedupe
+(un mismo evento nunca genera dos correos). `type`: `audit_completed`, `audit_failed`,
+`rank_drop` (caída de posición ≥10 en un chequeo), `spend_warning` (≥80% de un tope),
+`spend_exceeded` (≥100%). El envío usa `nodemailer` (`src/lib/notifications/email.ts`)
+y se degrada con elegancia: si no hay `SMTP_HOST`/`ALERT_TO` configurados
+(`isEmailConfigured()`), simplemente no se envía nada, sin error visible al usuario.
+
+## `CopilotThread` (Copilot SEO)
+
+Un hilo de conversación por proyecto: `title` (derivado de los primeros 40 caracteres
+del primer mensaje del usuario) y `messages` (`Json`, array `{role, content}`). Chat de
+**solo lectura** vía OpenRouter — el contexto del proyecto (última puntuación de
+auditoría, top-10 de rank tracking, nº de estudios de keywords, gasto del mes) se
+inyecta como texto plano en el system prompt; el modelo no tiene tool-calling ni puede
+modificar datos.
+
+## `SerpCache` (caché cruzada Rank Tracking ↔ TF-IDF)
+
+El top-10 orgánico de cada chequeo de posición (Módulo 5) se guarda aquí 7 días. Es una
+relación productor/consumidor de un solo sentido: Rank Tracking la escribe siempre que
+comprueba una keyword; TF-IDF la lee antes de pagar su propia llamada SERP, y solo paga
+si no hay entrada fresca. No es un reemplazo de `KeywordDataCache` (esa cachea volumen/
+intención, esta cachea resultados de SERP).
+
+## `Competitor` / `VisibilitySnapshot` (Competidores, Tier 2)
+
+`Competitor`: dominios competidores que la agencia decide trackear para un proyecto
+(único por `projectId`+`domain`), más `contentGap`/`contentGapAt` cacheados — volver a
+ver el content gap ya calculado es gratis, solo "Analizar" dispara una llamada nueva a
+DataForSEO Labs `domain_intersection`.
+
+`VisibilitySnapshot`: histórico de mediciones de visibilidad, reutilizado tanto para el
+dominio propio del proyecto como para cada competidor (mismo mecanismo de tendencia
+para ambos). Cada snapshot es una llamada de pago a `domain_rank_overview` (tráfico
+orgánico estimado, nº de keywords) + `ranked_keywords` (top keywords, guardadas en
+`topKeywords`) — de ahí que viendo el histórico no se repita el gasto, solo al pedir un
+snapshot nuevo.
 
 ## Evolución prevista (no construida todavía)
 
