@@ -24,7 +24,7 @@ export default async function ConfiguracionPage({
   const errorMessage = params.error ? ERROR_MESSAGES[params.error] ?? "Error al conectar con Google." : null;
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-4xl space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-gray-900">Configuración</h1>
         <p className="text-sm text-gray-500 mt-1">

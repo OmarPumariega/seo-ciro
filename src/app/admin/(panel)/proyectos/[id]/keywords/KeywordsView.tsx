@@ -275,7 +275,7 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
   // ===== Vista del workspace (estudio abierto) =====
   if (current) {
     return (
-      <div className="max-w-3xl space-y-6">
+      <div className="space-y-6">
         <button
           onClick={() => setCurrent(null)}
           className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900"

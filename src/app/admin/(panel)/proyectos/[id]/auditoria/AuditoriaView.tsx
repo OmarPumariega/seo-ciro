@@ -141,7 +141,7 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
   const pagesWithIssues = current?.pages?.filter((p) => (p.issues?.length ?? 0) > 0) ?? [];
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-gray-900">Auditoría Técnica</h2>

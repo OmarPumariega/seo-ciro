@@ -55,7 +55,7 @@ export default function CostesPage() {
   const dfsPct = dfs.limitUsd !== null ? (dfs.spentUsd / dfs.limitUsd) * 100 : 0;
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-gray-900">Costes de API</h1>
         <p className="text-sm text-gray-500 mt-1 capitalize">{data.monthLabel}</p>

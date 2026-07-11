@@ -195,7 +195,7 @@ export default function GeogridView({ projectId }: { projectId: string }) {
   }
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold text-gray-900">Geogrid Local SEO</h2>
         <p className="text-sm text-gray-500 mt-1">
