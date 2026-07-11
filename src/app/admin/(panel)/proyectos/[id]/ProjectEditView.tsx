@@ -37,7 +37,7 @@ export default function ProjectEditView({ project }: { project: ProjectRecord })
   }
 
   return (
-    <div className="max-w-4xl space-y-6">
+    <div className="space-y-6">
       <div className="flex justify-end">
         <button
           onClick={() => setConfirmingDelete(true)}

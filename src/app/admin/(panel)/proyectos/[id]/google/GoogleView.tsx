@@ -106,7 +106,7 @@ export default function GoogleView({
 
   if (notConnected) {
     return (
-      <div className="max-w-2xl bg-white rounded-xl border border-gray-100 p-5">
+      <div className="bg-white rounded-xl border border-gray-100 p-5">
         <p className="text-sm text-gray-600">
           Todavía no hay ninguna cuenta de Google conectada.{" "}
           <Link href="/admin/configuracion" className="text-gray-900 font-medium underline">
@@ -118,7 +118,7 @@ export default function GoogleView({
   }
 
   if (loadError) {
-    return <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg max-w-2xl">{loadError}</p>;
+    return <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{loadError}</p>;
   }
 
   return (
