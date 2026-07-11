@@ -66,6 +66,12 @@ model Project {
   // de su ApiUsageLog del mes). Se suma al tope global (DATAFORSEO_MONTHLY_LIMIT_USD).
   spendLimitUsd Float?
 
+  // Reparto justo del cron de Rank Tracking (Módulo 5): marca cuándo se le
+  // sirvió turno por última vez, independientemente de si se vació todo su
+  // backlog. Sin esto, un proyecto con muchas keywords vencidas podía acaparar
+  // varios ticks seguidos dejando a otros proyectos esperando indefinidamente.
+  rankLastDequeuedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -132,6 +138,11 @@ model ApiUsageLog {
   createdAt        DateTime @default(now())
 
   @@index([projectId, createdAt])
+  // assertWithinSpendLimit() se llama antes de CADA llamada de pago
+  // (rank/geogrid/keywords/TF-IDF/competidores) y agrega por (api, fecha) sin
+  // projectId cuando el tope es global — sin este índice, esa consulta hace
+  // sequential scan y se degrada según crece la tabla (que no tiene retención).
+  @@index([api, createdAt])
 }
 
 // Módulo 6 — conexión OAuth2 única de la agencia con Google (una cuenta

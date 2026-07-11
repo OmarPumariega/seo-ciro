@@ -38,6 +38,16 @@ export async function runRankJob(): Promise<{ processed: number }> {
       return { processed: 0 };
     }
 
+    // Marca el turno servido YA, no al terminar de procesar — así el
+    // reparto por round-robin avanza al siguiente tick aunque este proyecto
+    // tenga tanto backlog que no lo vacíe entero en este tick (ver
+    // findMostOverdueProject: sin esto, un proyecto grande podía acaparar
+    // varios ticks seguidos dejando a otros proyectos esperando).
+    await prisma.project.update({
+      where: { id: projectId },
+      data: { rankLastDequeuedAt: new Date() },
+    });
+
     // Cuando el proyecto vence, chequea TODAS sus keywords programadas a la
     // vez (no solo las vencidas): compartan timestamp → mismo día. Las
     // "manual" no entran aquí (las dispara el usuario desde la UI).
@@ -81,27 +91,45 @@ export async function runRankJob(): Promise<{ processed: number }> {
   }
 }
 
-// Selecciona el proyecto cuyo chequeo programado está MÁS vencido: la keyword
-// programada con lastCheckedAt más antiguo (o null) que ya pasó su ventana de
-// frecuencia. Sobreampleamos por lastCheckedAt asc y filtramos en JS (el
-// intervalo de "vencida" depende de la frecuencia de cada fila, difícil de
-// expresar en una sola query de Prisma). Devuelve solo el projectId: el job
-// procesa 1 proyecto por tick para no machacar la API.
+// Cap de candidatos leídos para detectar qué proyectos tienen trabajo
+// vencido. No hace falta ver TODAS las keywords del sistema para saber qué
+// proyectos están vencidos, solo una muestra suficientemente amplia — si un
+// proyecto real tuviera más de esto en keywords "daily" sin ninguna vencida
+// entre las primeras leídas, seguiría detectándose en el siguiente tick.
+const OVERDUE_SCAN_LIMIT = 1000;
+
+// Reparto justo (round-robin) entre proyectos con trabajo vencido: en vez de
+// elegir siempre la keyword individual más vencida de TODO el sistema (lo
+// que dejaba que un proyecto con cientos de keywords "daily" acaparara tick
+// tras tick), se agrega primero qué proyectos tienen AL MENOS una keyword
+// vencida, y entre esos se elige el que lleva más tiempo sin recibir turno
+// (Project.rankLastDequeuedAt, null = nunca) — independientemente de cuán
+// vencido esté su backlog. Un proyecto con 500 keywords daily y otro con 2
+// alternan turno por igual, en vez de que el grande monopolice el cron.
 async function findMostOverdueProject(): Promise<string | null> {
   const now = Date.now();
   const candidates = await prisma.rankKeyword.findMany({
     where: { frequency: { in: ["daily", "weekly", "monthly"] } },
     orderBy: { lastCheckedAt: "asc" }, // null primero, luego más antiguas
-    take: 200,
+    take: OVERDUE_SCAN_LIMIT,
     select: { projectId: true, frequency: true, lastCheckedAt: true },
   });
 
+  const overdueProjectIds = new Set<string>();
   for (const rk of candidates) {
     const interval = FREQUENCY_MS[rk.frequency];
     if (!interval) continue;
-    if (!rk.lastCheckedAt) return rk.projectId; // nunca chequeada → prioridad máxima
-    if (now - rk.lastCheckedAt.getTime() >= interval) return rk.projectId; // vencida
+    if (!rk.lastCheckedAt || now - rk.lastCheckedAt.getTime() >= interval) {
+      overdueProjectIds.add(rk.projectId);
+    }
   }
+  if (overdueProjectIds.size === 0) return null;
 
-  return null;
+  const projects = await prisma.project.findMany({
+    where: { id: { in: [...overdueProjectIds] } },
+    select: { id: true, rankLastDequeuedAt: true },
+    orderBy: { rankLastDequeuedAt: { sort: "asc", nulls: "first" } },
+  });
+
+  return projects[0]?.id ?? null;
 }
