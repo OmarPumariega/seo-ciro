@@ -75,8 +75,8 @@ export default function EnlacesView({ projectId }: { projectId: string }) {
 
   if (!data) return null;
 
-  const top = data.pages.slice(0, 15);
-  const maxRank = top.length > 0 ? top[0].pagerank : 0;
+  const all = data.pages;
+  const maxRank = all.length > 0 ? all[0].pagerank : 0;
   const hubs = data.topHubs
     .map((url) => data.pages.find((p) => p.url === url))
     .filter((p): p is PageRow => Boolean(p));
@@ -86,42 +86,60 @@ export default function EnlacesView({ projectId }: { projectId: string }) {
       <div>
         <h2 className="text-lg font-semibold text-gray-900">Enlazado interno</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Fuerza de PageRank por URL y detección de páginas huérfanas a partir
-          del último rastreo de auditoría · {new Date(data.auditDate).toLocaleDateString("es-ES")}
+          {all.length} URLs analizadas · PageRank, enlaces entrantes/salientes y páginas huérfanas ·{" "}
+          auditoría del {new Date(data.auditDate).toLocaleDateString("es-ES")}
         </p>
       </div>
 
+      {/* Tabla completa de PageRank por URL */}
       <div className="bg-white rounded-xl border border-gray-100 p-5">
         <div className="flex items-center gap-2 mb-4">
           <Network className="h-4 w-4 text-gray-500" />
           <h3 className="text-sm font-semibold text-gray-900">
-            PageRank por URL (top {top.length})
+            PageRank por URL ({all.length})
           </h3>
         </div>
-        <div className="space-y-2.5">
-          {top.map((page) => {
-            const widthPct = maxRank > 0 ? (page.pagerank / maxRank) * 100 : 0;
-            return (
-              <div key={page.url} className="grid grid-cols-[1fr_auto] gap-3 items-center">
-                <div className="min-w-0">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-xs text-gray-700 truncate" title={page.url}>
+        <div className="overflow-x-auto max-h-[28rem] overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-white">
+              <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
+                <th className="font-medium py-2 pr-4">URL</th>
+                <th className="font-medium py-2 px-2 text-right">PageRank</th>
+                <th className="font-medium py-2 px-2 text-right">Entrantes</th>
+                <th className="font-medium py-2 px-2 text-right">Salientes</th>
+                <th className="font-medium py-2 pl-2 w-32">Fuerza</th>
+              </tr>
+            </thead>
+            <tbody>
+              {all.map((page) => {
+                const widthPct = maxRank > 0 ? (page.pagerank / maxRank) * 100 : 0;
+                return (
+                  <tr key={page.url} className="border-b border-gray-50">
+                    <td className="py-1.5 pr-4 text-gray-700 truncate max-w-[260px]" title={page.url}>
                       {pathOf(page.url)}
-                    </span>
-                    <span className="text-xs text-gray-400 shrink-0 tabular-nums">
+                    </td>
+                    <td className="py-1.5 px-2 text-right text-gray-500 tabular-nums text-xs">
                       {(page.pagerank * 100).toFixed(2)}%
-                    </span>
-                  </div>
-                  <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gray-900 rounded-full"
-                      style={{ width: `${widthPct}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+                    </td>
+                    <td className="py-1.5 px-2 text-right text-gray-500 tabular-nums">
+                      {page.incoming}
+                    </td>
+                    <td className="py-1.5 px-2 text-right text-gray-500 tabular-nums">
+                      {page.outgoing}
+                    </td>
+                    <td className="py-1.5 pl-2">
+                      <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gray-900 rounded-full"
+                          style={{ width: `${widthPct}%` }}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </div>
 
