@@ -79,6 +79,8 @@ model Project {
   geogridRuns          GeogridRun[]
   todos                TodoItem[]
   copilotThreads       CopilotThread[]
+  competitors          Competitor[]
+  visibilitySnapshots  VisibilitySnapshot[]
 }
 
 // Módulo 3 — un registro por generación exitosa (URL por URL, sin modo
@@ -385,4 +387,38 @@ model CopilotThread {
   updatedAt DateTime @updatedAt
 
   @@index([projectId, updatedAt])
+}
+
+// Tier 2 — competidor de un proyecto (espionaje de visibilidad + content gap).
+// El dominio propio del proyecto NO va aquí (se analiza con su `domain`); aquí
+// van los dominios competidores que la agencia quiere vigilar.
+model Competitor {
+  id           String    @id @default(cuid())
+  projectId    String
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  domain       String // dominio normalizado (sin esquema/www)
+  contentGap   Json? // [{keyword, volume, position}] — keywords que rankea y el proyecto no
+  contentGapAt DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@unique([projectId, domain])
+  @@index([projectId])
+}
+
+// Snapshot de visibilidad de un dominio (el del proyecto o un competidor):
+// tráfico orgánico estimado (metrics.organic.etv), nº de keywords orgánicas
+// (metrics.organic.count) y top keywords. Se añade uno por análisis → con el
+// tiempo acumula tendencia. El coste real se paga al ANALIZAR (explícito); ver
+// los resultados es gratis (lee el snapshot más reciente).
+model VisibilitySnapshot {
+  id              String   @id @default(cuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  domain          String // dominio analizado (proyecto o competidor)
+  organicTraffic  Float? // metrics.organic.etv (tráfico orgánico estimado mensual)
+  organicKeywords Int? // metrics.organic.count (nº de SERPs orgánicas)
+  topKeywords     Json? // [{keyword, position, volume}]
+  fetchedAt       DateTime @default(now())
+
+  @@index([projectId, domain, fetchedAt])
 }

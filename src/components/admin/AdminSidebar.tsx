@@ -32,6 +32,7 @@ function projectModules(base: string, isLocalBusiness: boolean) {
     { href: `${base}/auditoria`, label: "Auditoría" },
     { href: `${base}/enlaces`, label: "Enlaces" },
     { href: `${base}/canibalizaciones`, label: "Canibalizaciones" },
+    { href: `${base}/competidores`, label: "Competidores" },
   ];
   if (isLocalBusiness) mods.push({ href: `${base}/geogrid`, label: "Geogrid" });
   mods.push({ href: `${base}/informe`, label: "Informe" });

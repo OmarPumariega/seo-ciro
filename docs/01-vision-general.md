@@ -57,16 +57,15 @@ Esta primera fase construye únicamente la base sobre la que colgará el resto:
 - ✅ Canibalizaciones — mismas keywords posicionando varias URLs (vía Search Console)
 - ✅ Copilot SEO — chat con IA que entiende los datos del proyecto (`CopilotThread`)
 
+- ✅ Competidores (Tier 2) — espionaje vía DataForSEO Labs: visibilidad de
+  cualquier dominio (tráfico orgánico estimado + nº keywords + top keywords),
+  histórico de snapshots para tendencia, y content gap (keywords que ranquea un
+  competidor y el proyecto no, vía domain_intersection)
+
 ## Roadmap pendiente (futuro, no olvidar)
 
-Funcionalidades de la competencia (Dinorank y similares) aún NO construidas, dejadas
-explícitamente para más adelante:
+Funcionalidades de la competencia aún NO construidas:
 
-- **Tier 2 — espionaje de competidores** (DataForSEO Labs, añade coste ~0,01$/resultado):
-  - Gráfica de visibilidad: tráfico orgánico estimado de cualquier dominio
-    (`dataforseo_labs/google/domain_rank_overview`).
-  - Keywords por las que rankea un dominio (`ranked_keywords`).
-  - Content Gap: keywords que rankea un competidor y tú no (`domain_intersection`).
 - **Tier 3 — bloqueadas por coste/terceros**:
   - SEO para LLMs (menciones en ChatGPT/Gemini/Claude) — DataForSEO LLM Mentions,
     compromiso mínimo 100$/mes.
