@@ -1,4 +1,5 @@
 import { postTask } from "@/lib/dataforseo/client";
+import { saveSerpCache, type CachedSerpItem } from "@/lib/dataforseo/serp-cache";
 
 // Cliente de SERP de DataForSEO (Módulo 5 — Rank Tracking). Llama al
 // endpoint Live Advanced de orgánicos de Google y localiza en qué posición
@@ -48,6 +49,7 @@ type OrganicItem = {
   rank_absolute?: number;
   domain?: string;
   url?: string;
+  title?: string;
 };
 
 export async function checkSerpRank(params: {
@@ -77,6 +79,24 @@ export async function checkSerpRank(params: {
   const resultArr = Array.isArray(task.result) ? (task.result as Array<Record<string, unknown>>) : [];
   const resultObj = resultArr[0] ?? {};
   const organicItems = Array.isArray(resultObj.items) ? (resultObj.items as Array<Record<string, unknown>>) : [];
+
+  // Guarda el top-10 orgánico en la caché de SERP para que el TF-IDF (u otros
+  // módulos) lo reutilicen sin pagar otro SERP. Fire-and-forget (no bloquea la
+  // respuesta del rank).
+  const topForCache: CachedSerpItem[] = [];
+  for (const raw of organicItems) {
+    const item = raw as OrganicItem;
+    if (item.type !== "organic") continue;
+    topForCache.push({
+      url: typeof item.url === "string" ? item.url : "",
+      title: typeof item.title === "string" ? item.title : "",
+      domain: typeof item.domain === "string" ? item.domain : "",
+    });
+    if (topForCache.length >= 10) break;
+  }
+  if (topForCache.length > 0) {
+    saveSerpCache({ keyword, locationCode, languageCode, device, results: topForCache }).catch(() => {});
+  }
 
   // El dominio puede aparecer varias veces (varias URLs del mismo proyecto).
   // Nos quedamos con la mejor posición (rank_absolute más bajo = más arriba).

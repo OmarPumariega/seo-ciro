@@ -389,6 +389,26 @@ model CopilotThread {
   @@index([projectId, updatedAt])
 }
 
+// Cache de SERP orgánico compartida entre módulos (sección 5 del spec:
+// "evitar pagar dos veces por el mismo dato"). Rank tracking (M5) y TF-IDF
+// piden el mismo SERP orgánico para una keyword — el primero para sacar la
+// posición, el segundo para el top-10 de URLs. Aquí se cachea el top-10
+// orgánico (url, title, domain) para que el TF-IDF lo reuse gratis si la
+// keyword ya se sigue. TTL 7 días (el top-10 cambia despacio). Clave por
+// (keyword, idioma, ubicación, device).
+model SerpCache {
+  id           String   @id @default(cuid())
+  keyword      String
+  locationCode Int
+  languageCode String
+  device       String
+  results      Json // [{url, title, domain}] top orgánico
+  fetchedAt    DateTime @default(now())
+
+  @@unique([keyword, locationCode, languageCode, device])
+  @@index([keyword, locationCode, languageCode, device])
+}
+
 // Tier 2 — competidor de un proyecto (espionaje de visibilidad + content gap).
 // El dominio propio del proyecto NO va aquí (se analiza con su `domain`); aquí
 // van los dominios competidores que la agencia quiere vigilar.
