@@ -13,6 +13,7 @@ flowchart LR
     subgraph "SEO Ciro (Next.js)"
         ADM[Panel Admin<br/>/admin/*]
         API[API REST<br/>/api/*]
+        CRON[Cron interno<br/>instrumentation.ts]
     end
 
     subgraph "Persistencia"
@@ -20,13 +21,14 @@ flowchart LR
     end
 
     subgraph "Futuro (por módulo)"
-        Q[BullMQ + Redis<br/>crawler / rank tracking]
-        EXT[DataForSEO / Google APIs / Claude API]
+        EXT[DataForSEO / Google Ads API]
     end
 
     ADM --> API
     API --> DB
-    API -.-> Q
+    API -->|crea AuditRun pending| DB
+    CRON -->|sondea cada 60s| DB
+    CRON -->|crawler + PSI + GSC| WEB[sitios de los proyectos]
     API -.-> EXT
 ```
 
@@ -35,6 +37,8 @@ flowchart LR
 ```
 src/
 ├── middleware.ts          # protege /admin/* excepto /admin/acceso
+├── instrumentation.ts     # único fichero que Next.js auto-descubre para el hook
+├── instrumentation-node.ts # lógica real del cron (Módulo 8), solo runtime Node
 ├── app/
 │   ├── admin/
 │   │   ├── (auth)/acceso/         # login
@@ -50,20 +54,38 @@ src/
 └── lib/
     ├── db/prisma.ts        # cliente Prisma (adapter PrismaPg)
     ├── auth.ts              # NextAuthOptions (credentials + JWT)
-    ├── crypto.ts            # AES-256-CBC, listo para secretos futuros
+    ├── crypto.ts            # AES-256-CBC, secretos (refresh token de Google)
     ├── rate-limit.ts        # limitador de intentos de login
-    └── utils.ts
+    ├── utils.ts
+    ├── seo/                 # Módulos 3/4/7: scraping, cliente OpenRouter, log de coste
+    ├── google/               # Módulo 6: OAuth2, Search Console, GA4
+    └── audit/                # Módulo 8: robots.txt, crawler, PSI, scoring, cron
 ```
 
 ## Decisiones de esta fase
 
-- **Sin BullMQ/Redis todavía:** no hay ningún job en background real (crawler, rank
-  tracking) construido aún, así que no se monta infraestructura de cola vacía. Se añade
-  cuando el Módulo 5, 8 o 9 la necesiten de verdad.
-- **Sin tablas de caché/coste de API:** no hay llamadas a DataForSEO/Claude todavía.
-  Se añaden junto con el Módulo 1.
-- **`lib/crypto.ts` sí está listo** aunque no haya ninguna columna que lo consuma —
-  cifrar es barato de tener preparado y el Módulo 6 (tokens OAuth) lo necesitará pronto.
+- **Sin tablas de caché/coste de API para DataForSEO:** no hay llamadas todavía.
+  Se añaden junto con el Módulo 1. (El coste de OpenRouter sí se registra desde el
+  Módulo 3, ver `ApiUsageLog` en `docs/04-modelo-de-datos.md`.)
+- **Trabajo en segundo plano sin BullMQ/Redis (decisión del Módulo 8):** el spec
+  original asume BullMQ+Redis para el crawler, pero se optó por el mismo patrón que
+  usa Cirochat para su resumen periódico de conversaciones — un cron interno vía el
+  hook de instrumentación de Next.js, sondeando una tabla de Postgres cada 60s. Motivo:
+  las auditorías son manuales o como mucho mensuales, no tiempo real; evitar Redis
+  significa un servicio menos que desplegar y monitorizar en el VPS de la agencia. El
+  Módulo 9 (Geogrid) debe reutilizar este mismo poller, no montar Redis.
+  - **Gotcha real encontrado al construirlo:** Next.js solo auto-descubre un fichero
+    llamado exactamente `instrumentation.ts` en la raíz de `src/` — el sufijo `-node`
+    que usa Cirochat (`src/instrumentation-node.ts`) **no** es una convención que Next
+    reconozca por sí sola, es solo el nombre de un módulo pensado para ser importado
+    desde el `instrumentation.ts` real. Cirochat **no tiene** ese `instrumentation.ts`
+    en ningún sitio del repo — su cron de resumen probablemente nunca se ejecuta en
+    producción. SEO Ciro sí tiene el fichero correcto (`src/instrumentation.ts`
+    importa condicionalmente `./instrumentation-node` solo cuando
+    `process.env.NEXT_RUNTIME === "nodejs"`) — si se toca Cirochat, vale la pena
+    verificarlo y arreglarlo igual.
+- **`lib/crypto.ts`**: primer consumidor real en el Módulo 6 (refresh token de Google
+  cifrado en BD).
 
 ## Relación con Cirochat
 

@@ -33,3 +33,31 @@ export async function getSearchAnalyticsTotals(
     position: row?.position ?? 0,
   };
 }
+
+// Usado por el Módulo 8 (Auditoría Técnica) para saber qué URLs reciben
+// impresiones reales en Search Console — señal indirecta de indexación,
+// no una comprobación exacta (esa sería la API de Inspección de URLs, que
+// exige un scope OAuth que no pedimos). Devuelve las URLs con al menos una
+// impresión en el rango de fechas dado.
+export async function listImpressedPages(
+  auth: GoogleOAuthClient,
+  siteUrl: string,
+  range: { startDate: string; endDate: string }
+): Promise<Set<string>> {
+  const searchconsole = google.searchconsole({ version: "v1", auth });
+  const { data } = await searchconsole.searchanalytics.query({
+    siteUrl,
+    requestBody: {
+      startDate: range.startDate,
+      endDate: range.endDate,
+      dimensions: ["page"],
+      rowLimit: 5000,
+    },
+  });
+
+  const pages = (data.rows ?? [])
+    .map((row) => row.keys?.[0])
+    .filter((url): url is string => Boolean(url));
+
+  return new Set(pages);
+}

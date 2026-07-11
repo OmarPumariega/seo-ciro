@@ -40,11 +40,19 @@ infraestructura (colas, caché, tablas de coste) para módulos que todavía no e
 - **googleapis** (`src/lib/google/`) — OAuth2 + Search Console + GA4 (Admin y Data API)
   para el Módulo 6, un único paquete cubre las tres. Business Profile queda fuera hasta
   que Google apruebe el acceso a su API.
+- **Cron interno sin Redis** (`src/instrumentation.ts` + `instrumentation-node.ts`,
+  Módulo 8) — sondea `AuditRun` cada 60s, mismo patrón que Cirochat pero corregido (ver
+  `docs/02-arquitectura.md` para el gotcha de por qué el patrón de Cirochat
+  probablemente nunca se ejecuta). **Solo corre con `NODE_ENV=production`** — en
+  `npm run dev` el crawler nunca se dispara, hace falta `npm run build && npm run start`.
+- **robots-parser** + fetch/cheerio propios (`src/lib/audit/`) — crawler del Módulo 8,
+  identificado como `SEOCiroBot/1.0`, no como un navegador (a diferencia del scraper de
+  Módulo 3/4). `PAGESPEED_API_KEY` (Google Cloud, sin OAuth) solo se consulta sobre la
+  home del proyecto, nunca por página rastreada.
 - **Infraestructura:** VPS Contabo existente, Docker, Coolify, Traefik
 
 Fuera del esqueleto actual, previstos para cuando el módulo correspondiente lo necesite:
-BullMQ + Redis (cola de tareas), DataForSEO, Google Ads API, Business Profile API,
-PageSpeed Insights API.
+DataForSEO, Google Ads API, Business Profile API.
 
 ## Esquema de base de datos (Prisma)
 
@@ -53,7 +61,8 @@ evolución prevista por módulo. Hoy: `User` (login agencia), `Project` (cliente
 con NAP, perfil de marca y propiedad de Google seleccionada), `TitleMetaGeneration` y
 `SchemaGeneration` (historial de los Módulos 3 y 4 por proyecto), `ApiUsageLog`
 (registro básico de coste por llamada a OpenRouter), `GoogleConnection` (conexión OAuth2
-única de la agencia con Google, Módulo 6).
+única de la agencia con Google, Módulo 6), `ContentGeneration` (Módulo 7), `AuditRun` +
+`AuditPage` (Módulo 8, primer módulo con datos anidados N-por-ejecución).
 
 ## Estructura de carpetas
 
@@ -76,7 +85,7 @@ Proyectos: conexión OAuth2 de la agencia con Google (Módulo 6). Conectar/desco
 ver email y scopes concedidos. La *selección de propiedad* por proyecto vive en la
 ficha de cada proyecto, no aquí — la conexión es una, las propiedades son por proyecto.
 
-### Ficha de proyecto (`/admin/proyectos/[id]/...`) — pestañas Perfil / Título y Meta / Schema / Google / Contenido
+### Ficha de proyecto (`/admin/proyectos/[id]/...`) — pestañas Perfil / Título y Meta / Schema / Google / Contenido / Auditoría
 Todos los módulos salvo el 2 son inherentemente "de un proyecto", así que en vez de
 añadir ítems al sidebar global se anidan como pestañas dentro de la ficha del proyecto
 (`src/components/admin/ProjectSubNav.tsx`). Establece el patrón para cuando lleguen
@@ -98,6 +107,13 @@ Keyword Research, Rank Tracking, etc.
   objetivo → texto vía OpenRouter con encabezados en Markdown, usando el tono de marca
   del proyecto (`Project.toneOfVoice`). Keyword objetivo y enlaces internos a incluir
   son manuales (hasta que exista el Módulo 1) — si no se aportan, nunca se inventan.
+- **Auditoría** (Módulo 8): botón "Ejecutar auditoría ahora" → crea `AuditRun` pending
+  → el cron interno la procesa en segundo plano (hasta 60s de latencia) → rastreo del
+  sitio (enlaces rotos, HTTPS, canonicals, meta robots, sitemap.xml, alts de imagen),
+  PageSpeed Insights de la home, y cruce de impresiones con Search Console si el
+  proyecto tiene GSC conectado. Puntuación 0-100 explicable por categorías (nunca caja
+  negra). Solo disparo manual esta sesión — la programación automática mensual queda
+  pendiente.
 
 ## Seguridad
 

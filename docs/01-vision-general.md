@@ -19,9 +19,13 @@ Esta primera fase construye únicamente la base sobre la que colgará el resto:
   agencia; Business Profile pendiente de aprobación de acceso de Google
 - ✅ Módulo 7 — Generador de Contenido (Blog/Página/Producto/Novedad GBP vía OpenRouter,
   reutiliza el tono de marca del proyecto)
-- ⬜ Módulo 8 — Auditoría Técnica
+- 🟡 Módulo 8 — Auditoría Técnica: crawler propio + PageSpeed Insights (solo home) +
+  cruce de impresiones con Search Console; falta la programación automática mensual
+  (solo disparo manual esta sesión)
 - ⬜ Módulo 9 — Geogrid Local SEO
-- ⬜ Cola de tareas (BullMQ + Redis) — se añade cuando el primer módulo la necesite
+- ✅ Cola de tareas — **no** BullMQ/Redis: cron interno vía `src/instrumentation.ts` +
+  `instrumentation-node.ts` (mismo patrón que Cirochat), sondea `AuditRun` cada 60s.
+  El Módulo 9 debe reutilizar este mismo poller, no montar Redis
 - 🟡 Control de costes de API — log básico por llamada (`ApiUsageLog`) ya en marcha desde
   el Módulo 3/4; faltan topes de gasto y avisos por email
 - ⬜ Caché de resultados — se añade cuando el Módulo 1 empiece a llamar a DataForSEO

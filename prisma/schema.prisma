@@ -50,6 +50,7 @@ model Project {
   schemaGenerations    SchemaGeneration[]
   apiUsageLogs         ApiUsageLog[]
   contentGenerations   ContentGeneration[]
+  auditRuns            AuditRun[]
 }
 
 // Módulo 3 — un registro por generación exitosa (URL por URL, sin modo
@@ -135,4 +136,52 @@ model ContentGeneration {
   createdAt DateTime @default(now())
 
   @@index([projectId, createdAt])
+}
+
+// Módulo 8 — una fila por auditoría disparada. Primer módulo con datos
+// genuinamente anidados N-por-ejecución (hasta ~50 páginas), a diferencia
+// de las generaciones de una sola fila de los módulos 3/4/7 — de ahí una
+// tabla hija (AuditPage) en vez de un JSON dentro de esta.
+model AuditRun {
+  id             String    @id @default(cuid())
+  projectId      String
+  project        Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status         String    @default("pending") // pending | running | completed | failed
+  startUrl       String
+  triggeredAt    DateTime  @default(now())
+  startedAt      DateTime?
+  completedAt    DateTime?
+  pagesCrawled   Int       @default(0)
+  sitemapFound   Boolean?
+  robotsBlocked  Boolean   @default(false)
+  overallScore   Int? // 0-100, null si no completada o robotsBlocked
+  categoryScores Json? // detalle numérico por categoría, auditable a mano
+  psiData        Json? // PageSpeed Insights de la home únicamente
+  gscChecked     Boolean   @default(false)
+  errorMessage   String?
+  pages          AuditPage[]
+
+  @@index([projectId, triggeredAt])
+}
+
+// Una fila por URL rastreada en una auditoría.
+model AuditPage {
+  id                String   @id @default(cuid())
+  auditRunId        String
+  auditRun          AuditRun @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
+  url               String
+  statusCode        Int?
+  isHttps           Boolean
+  canonicalUrl      String?
+  metaRobots        String?
+  imagesTotal       Int      @default(0)
+  imagesMissingAlt  Int      @default(0)
+  brokenLinksCount  Int      @default(0)
+  brokenLinksSample Json? // hasta 10 URLs rotas, para mostrar en UI sin tabla aparte
+  inSearchConsole   Boolean? // null si gscChecked=false en el AuditRun padre
+  issues            Json? // ["missing_canonical", "noindex", "no_https"...]
+  createdAt         DateTime @default(now())
+
+  @@unique([auditRunId, url])
+  @@index([auditRunId])
 }

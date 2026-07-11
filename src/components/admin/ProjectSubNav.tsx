@@ -21,6 +21,7 @@ export default function ProjectSubNav({
     { href: `${base}/schema`, label: "Schema" },
     { href: `${base}/google`, label: "Google" },
     { href: `${base}/contenido`, label: "Contenido" },
+    { href: `${base}/auditoria`, label: "Auditoría" },
   ];
 
   return (

@@ -1,6 +1,6 @@
 # 04 — Modelo de datos
 
-Esquema actual en [`prisma/schema.prisma`](../prisma/schema.prisma), 7 modelos.
+Esquema actual en [`prisma/schema.prisma`](../prisma/schema.prisma), 9 modelos.
 
 ## `User`
 
@@ -65,13 +65,32 @@ del spec: comparar/recuperar) — no hace falta un modelo padre/hijo aparte, igu
 en Markdown (`#`/`##`/`###`). Reutiliza `Project.toneOfVoice` en el prompt, sin campo
 propio para el tono.
 
+## `AuditRun` / `AuditPage` (Módulo 8)
+
+Primer módulo con datos genuinamente anidados N-por-ejecución (hasta ~50 páginas), a
+diferencia de las generaciones de una sola fila de los módulos 3/4/7 — de ahí una tabla
+hija (`AuditPage`) en vez de un JSON dentro de `AuditRun`: la UI necesita listar/filtrar
+páginas con problemas, y el histórico ("evolución") solo necesita los campos de
+`AuditRun`, así que separarlos mantiene la consulta de historial ligera (`findMany` sin
+`include`) frente a la de detalle (`include: { pages: true }`).
+
+`AuditRun.status` (`pending`/`running`/`completed`/`failed`) lo gestiona el cron interno
+de `src/instrumentation.ts` (ver `docs/02-arquitectura.md`), no una cola externa.
+`categoryScores` guarda el detalle numérico de cada categoría (no solo el número final),
+para que la puntuación sea auditable a mano. `psiData` es PageSpeed Insights **solo de
+la home**, no por página — cada llamada tarda varios segundos, auditar cada página del
+crawl sería impracticable en un job de fondo. `gscChecked` distingue "sin conexión de
+Google/sin propiedad configurada" (no se afirma nada sobre indexación) de "sí se cruzó" —
+y aun así `AuditPage.inSearchConsole` es una señal indirecta (impresiones en Search
+Console en 90 días), no el resultado de la API de Inspección de URLs (exigiría un scope
+OAuth nuevo → reconsentimiento de toda cuenta ya conectada).
+
 ## Evolución prevista (no construida todavía)
 
 | Modelo futuro | Módulo | Motivo por el que no está aún |
 |---|---|---|
 | `KeywordStudy` / `Keyword` | 1 (Keyword Research) | No hay integración con DataForSEO/Google Ads |
-| `AuditRun` | 8 (Auditoría Técnica) | Requiere el crawler + cola de tareas |
-| `GeogridRun` | 9 (Geogrid Local SEO) | Requiere Módulo 5/8 y la cola de tareas |
+| `GeogridRun` | 9 (Geogrid Local SEO) | Requiere Módulo 5/8 y el poller ya construido |
 
 Se añaden en la sesión de planificación de cada módulo, no por adelantado, para no
 migrar tablas que luego cambian de forma al conocer el caso de uso real.
