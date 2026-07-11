@@ -24,13 +24,23 @@ export async function checkRankKeyword(rankKeywordId: string): Promise<{ positio
 
   const projectDomain = normalizeDomain(rk.project.domain);
 
-  const { rank, costUsd } = await checkSerpRank({
+  // Competidores trackeados del proyecto (módulo Competidores) — se
+  // localizan en el MISMO SERP que ya se paga para la keyword propia, coste
+  // marginal cero. No es una llamada nueva, solo se deja de descartar dato
+  // que ya venía en la respuesta.
+  const competitors = await prisma.competitor.findMany({
+    where: { projectId: rk.projectId },
+    select: { domain: true },
+  });
+
+  const { rank, costUsd, competitors: competitorRanks } = await checkSerpRank({
     keyword: rk.keyword,
     locationCode: rk.locationCode,
     languageCode: rk.languageCode,
     device: rk.device,
     projectDomain,
     depth: rk.depth,
+    competitorDomains: competitors.map((c) => c.domain),
   });
 
   const now = new Date();
@@ -58,6 +68,19 @@ export async function checkRankKeyword(rankKeywordId: string): Promise<{ positio
             : rk.bestPosition,
       },
     }),
+    ...(competitors.length > 0
+      ? [
+          prisma.rankCompetitorPosition.createMany({
+            data: competitors.map((c) => ({
+              rankKeywordId: rk.id,
+              competitorDomain: c.domain,
+              checkedAt: now,
+              position: competitorRanks[c.domain]?.position ?? null,
+              url: competitorRanks[c.domain]?.url ?? null,
+            })),
+          }),
+        ]
+      : []),
   ]);
 
   if (costUsd !== null) {

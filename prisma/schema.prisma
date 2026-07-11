@@ -58,7 +58,7 @@ model Project {
   // disparar desde la UI; "monthly" = el cron crea una AuditRun pending cuando
   // toca (cada ~30 días). auditLastRunAt marca el último disparo (manual o auto)
   // para calcular cuándo toca la siguiente.
-  auditFrequency String   @default("manual") // "manual" | "monthly"
+  auditFrequency String    @default("manual") // "manual" | "monthly"
   auditLastRunAt DateTime?
 
   // Tope de gasto mensual de DataForSEO propio de este proyecto (USD). Opcional;
@@ -173,58 +173,58 @@ model ContentGeneration {
 // de las generaciones de una sola fila de los módulos 3/4/7 — de ahí una
 // tabla hija (AuditPage) en vez de un JSON dentro de esta.
 model AuditRun {
-  id             String    @id @default(cuid())
-  projectId      String
-  project        Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  status         String    @default("pending") // pending | running | completed | failed
-  startUrl       String
-  triggeredAt    DateTime  @default(now())
-  startedAt      DateTime?
-  completedAt    DateTime?
-  pagesCrawled   Int       @default(0)
-  sitemapFound   Boolean?
-  robotsBlocked  Boolean   @default(false)
-  robotsContent  String? // texto plano del robots.txt (para mostrar las reglas)
+  id              String      @id @default(cuid())
+  projectId       String
+  project         Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status          String      @default("pending") // pending | running | completed | failed
+  startUrl        String
+  triggeredAt     DateTime    @default(now())
+  startedAt       DateTime?
+  completedAt     DateTime?
+  pagesCrawled    Int         @default(0)
+  sitemapFound    Boolean?
+  robotsBlocked   Boolean     @default(false)
+  robotsContent   String? // texto plano del robots.txt (para mostrar las reglas)
   sitemapUrlCount Int? // nº de URLs encontradas en sitemap.xml
-  sitemapUrls    Json? // muestra de URLs del sitemap (hasta 100)
-  overallScore   Int? // 0-100, null si no completada o robotsBlocked
-  categoryScores Json? // detalle numérico por categoría, auditable a mano
-  psiData        Json? // PageSpeed Insights de la home únicamente
-  gscChecked     Boolean   @default(false)
-  linkGraph      Json? // grafo de enlaces internos { url, links[] } (PageRank/enlazado M interno)
-  errorMessage   String?
-  pages          AuditPage[]
+  sitemapUrls     Json? // muestra de URLs del sitemap (hasta 100)
+  overallScore    Int? // 0-100, null si no completada o robotsBlocked
+  categoryScores  Json? // detalle numérico por categoría, auditable a mano
+  psiData         Json? // PageSpeed Insights de la home únicamente
+  gscChecked      Boolean     @default(false)
+  linkGraph       Json? // grafo de enlaces internos { url, links[] } (PageRank/enlazado M interno)
+  errorMessage    String?
+  pages           AuditPage[]
 
   @@index([projectId, triggeredAt])
 }
 
 // Una fila por URL rastreada en una auditoría.
 model AuditPage {
-  id                String   @id @default(cuid())
-  auditRunId        String
-  auditRun          AuditRun @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
-  url               String
-  statusCode        Int?
-  isHttps           Boolean
-  isRedirect        Boolean  @default(false) // la página implicó una redirección 3xx
-  canonicalUrl      String?
-  metaRobots        String?
-  title             String? // <title> de la página
-  titleLength       Int? // caracteres del título
-  metaDescription   String? // <meta name="description">
-  metaLength        Int? // caracteres de la meta description
-  h1Count           Int? // nº de etiquetas H1
-  h1Text            String? // primer H1
-  imagesTotal       Int      @default(0)
-  imagesMissingAlt  Int      @default(0)
-  brokenLinksCount  Int      @default(0)
-  brokenLinksSample Json? // hasta 10 URLs rotas, para mostrar en UI sin tabla aparte
-  externalLinksCount Int     @default(0) // enlaces salientes a dominios externos
-  externalDomains   Json? // hasta 10 dominios externos enlazados
-  wordCount         Int? // nº de palabras del cuerpo (detección de thin content)
-  inSearchConsole   Boolean? // null si gscChecked=false en el AuditRun padre
-  issues            Json? // ["missing_canonical", "noindex", "no_https", "title_long"...]
-  createdAt         DateTime @default(now())
+  id                 String   @id @default(cuid())
+  auditRunId         String
+  auditRun           AuditRun @relation(fields: [auditRunId], references: [id], onDelete: Cascade)
+  url                String
+  statusCode         Int?
+  isHttps            Boolean
+  isRedirect         Boolean  @default(false) // la página implicó una redirección 3xx
+  canonicalUrl       String?
+  metaRobots         String?
+  title              String? // <title> de la página
+  titleLength        Int? // caracteres del título
+  metaDescription    String? // <meta name="description">
+  metaLength         Int? // caracteres de la meta description
+  h1Count            Int? // nº de etiquetas H1
+  h1Text             String? // primer H1
+  imagesTotal        Int      @default(0)
+  imagesMissingAlt   Int      @default(0)
+  brokenLinksCount   Int      @default(0)
+  brokenLinksSample  Json? // hasta 10 URLs rotas, para mostrar en UI sin tabla aparte
+  externalLinksCount Int      @default(0) // enlaces salientes a dominios externos
+  externalDomains    Json? // hasta 10 dominios externos enlazados
+  wordCount          Int? // nº de palabras del cuerpo (detección de thin content)
+  inSearchConsole    Boolean? // null si gscChecked=false en el AuditRun padre
+  issues             Json? // ["missing_canonical", "noindex", "no_https", "title_long"...]
+  createdAt          DateTime @default(now())
 
   @@unique([auditRunId, url])
   @@index([auditRunId])
@@ -234,16 +234,16 @@ model AuditPage {
 // para un proyecto, con los datos de DataForSEO ya resueltos y la
 // estructura de URLs/encabezados opcionalmente generada encima.
 model KeywordStudy {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   projectId      String
-  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project        Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   name           String
-  languageCode   String   @default("es")
-  locationCode   Int      @default(2724) // España
+  languageCode   String    @default("es")
+  locationCode   Int       @default(2724) // España
   structure      Json? // { pages: [{ slug, h1, headings, navLabel, keywords }] }
   structureModel String? // modelo de OpenRouter usado; null hasta que se genera
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
   keywords       Keyword[]
 
   @@index([projectId, createdAt])
@@ -257,7 +257,7 @@ model Keyword {
   keyword      String // normalizada (minúsculas, espacios colapsados)
   searchVolume Int? // null = DataForSEO no tiene dato, nunca 0 fabricado
   competition  String? // "HIGH" | "MEDIUM" | "LOW", tal cual DataForSEO
-  cpc          Decimal? @db.Decimal(10, 2)
+  cpc          Decimal?     @db.Decimal(10, 2)
   intent       String? // "informacional" | "mixta" | "transaccional"
   priority     Int // 0-100, cuota de volumen dentro del estudio
 
@@ -291,22 +291,23 @@ model KeywordDataCache {
 // El device (desktop/mobile) define un SERP distinto → es parte de la clave
 // única (se puede seguir la misma keyword en los dos devices por separado).
 model RankKeyword {
-  id            String   @id @default(cuid())
-  projectId     String
-  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  keyword       String // normalizada
-  group         String? // etiqueta libre tipo carpeta ("Servicios", "Blog"...) para filtrar/agrupar la tabla
-  locationCode  Int      @default(2724)
-  languageCode  String   @default("es")
-  device        String   @default("desktop") // "desktop" | "mobile"
-  frequency     String   @default("weekly") // "manual" | "daily" | "weekly" | "monthly"
-  depth         Int      @default(10) // resultados a parsear: 10/30/50/100 (coste ~proporcional)
-  lastPosition  Int? // null = nunca comprobada, o fuera del depth pedido
-  bestPosition  Int? // mejor (más baja) posición histórica
-  lastCheckedAt DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  positions     RankPosition[]
+  id                  String                   @id @default(cuid())
+  projectId           String
+  project             Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword             String // normalizada
+  group               String? // etiqueta libre tipo carpeta ("Servicios", "Blog"...) para filtrar/agrupar la tabla
+  locationCode        Int                      @default(2724)
+  languageCode        String                   @default("es")
+  device              String                   @default("desktop") // "desktop" | "mobile"
+  frequency           String                   @default("weekly") // "manual" | "daily" | "weekly" | "monthly"
+  depth               Int                      @default(10) // resultados a parsear: 10/30/50/100 (coste ~proporcional)
+  lastPosition        Int? // null = nunca comprobada, o fuera del depth pedido
+  bestPosition        Int? // mejor (más baja) posición histórica
+  lastCheckedAt       DateTime?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  positions           RankPosition[]
+  competitorPositions RankCompetitorPosition[]
 
   @@unique([projectId, keyword, locationCode, languageCode, device])
   @@index([projectId])
@@ -327,6 +328,22 @@ model RankPosition {
   @@index([rankKeywordId, checkedAt])
 }
 
+// Posición de un competidor (Competitor.domain) en el MISMO SERP que ya se
+// pagó para comprobar la keyword propia — coste marginal cero, el dato ya
+// venía en la respuesta de DataForSEO y antes se descartaba. Misma forma que
+// RankPosition para poder dibujar el mismo tipo de histórico/sparkline.
+model RankCompetitorPosition {
+  id               String      @id @default(cuid())
+  rankKeywordId    String
+  rankKeyword      RankKeyword @relation(fields: [rankKeywordId], references: [id], onDelete: Cascade)
+  competitorDomain String
+  checkedAt        DateTime    @default(now())
+  position         Int? // null = el competidor no apareció en el depth pedido
+  url              String?
+
+  @@index([rankKeywordId, competitorDomain, checkedAt])
+}
+
 // Módulo 9 — una ejecución de geogrid: rejilla N×N de puntos alrededor del
 // negocio, cada uno consultando Maps SERP para ver en qué posición aparece el
 // negocio para la keyword dada en ese punto. Procesada en background por el
@@ -337,23 +354,23 @@ model RankPosition {
 // como mapa de calor, nunca se filtran individualmente (a diferencia de las
 // páginas de una auditoría, que sí se listan/filtran).
 model GeogridRun {
-  id            String   @id @default(cuid())
-  projectId     String
-  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  keyword       String
-  gridSize      Int // 3 | 5 | 7
-  radiusKm      Float // distancia del centro al borde de la rejilla
-  centerLat     Float
-  centerLng     Float
-  zoom          Int      @default(15) // zoom fijo por punto (área ~vecinal)
-  status        String   @default("pending") // pending | running | completed | failed
-  points        Json? // [{ row, col, lat, lng, position, title }]
+  id              String    @id @default(cuid())
+  projectId       String
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword         String
+  gridSize        Int // 3 | 5 | 7
+  radiusKm        Float // distancia del centro al borde de la rejilla
+  centerLat       Float
+  centerLng       Float
+  zoom            Int       @default(15) // zoom fijo por punto (área ~vecinal)
+  status          String    @default("pending") // pending | running | completed | failed
+  points          Json? // [{ row, col, lat, lng, position, title }]
   averagePosition Float? // media de posiciones (solo de los puntos donde apareció)
-  foundCount    Int? // nº de puntos donde el negocio apareció (sobre gridSize²)
-  errorMessage  String?
-  triggeredAt   DateTime @default(now())
-  startedAt     DateTime?
-  completedAt   DateTime?
+  foundCount      Int? // nº de puntos donde el negocio apareció (sobre gridSize²)
+  errorMessage    String?
+  triggeredAt     DateTime  @default(now())
+  startedAt       DateTime?
+  completedAt     DateTime?
 
   @@index([projectId, triggeredAt])
 }

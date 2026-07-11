@@ -21,6 +21,10 @@ export type SerpRank = {
 export type SerpResult = {
   rank: SerpRank;
   costUsd: number | null;
+  // Posición de cada dominio competidor DENTRO DEL MISMO SERP ya pagado —
+  // coste marginal cero, antes se descartaba. Clave = dominio competidor tal
+  // cual se pidió (normalizado por el caller).
+  competitors: Record<string, SerpRank>;
 };
 
 // Normaliza el dominio de un proyecto a su forma registrable: quita esquema,
@@ -59,9 +63,13 @@ export async function checkSerpRank(params: {
   device: string;
   projectDomain: string; // ya normalizado (sin esquema/www)
   depth?: number; // 10/30/50/100, default DEFAULT_DEPTH
+  // Dominios de competidores (Módulo Competidores) a localizar en el mismo
+  // SERP — opcional, no cambia el coste de la llamada.
+  competitorDomains?: string[];
 }): Promise<SerpResult> {
   const { keyword, locationCode, languageCode, device, projectDomain } = params;
   const depth = params.depth ?? DEFAULT_DEPTH;
+  const competitorDomains = params.competitorDomains ?? [];
 
   const task = await postTask(
     "/v3/serp/google/organic/live/advanced",
@@ -98,25 +106,34 @@ export async function checkSerpRank(params: {
     saveSerpCache({ keyword, locationCode, languageCode, device, results: topForCache }).catch(() => {});
   }
 
-  // El dominio puede aparecer varias veces (varias URLs del mismo proyecto).
+  // El dominio puede aparecer varias veces (varias URLs del mismo dominio).
   // Nos quedamos con la mejor posición (rank_absolute más bajo = más arriba).
-  let bestPosition: number | null = null;
-  let bestUrl: string | null = null;
-  for (const raw of organicItems) {
-    const item = raw as OrganicItem;
-    if (item.type !== "organic") continue;
-    const itemDomain = typeof item.domain === "string" ? item.domain : "";
-    if (!domainMatches(itemDomain, projectDomain)) continue;
-    const pos = typeof item.rank_absolute === "number" ? item.rank_absolute : null;
-    if (pos === null) continue;
-    if (bestPosition === null || pos < bestPosition) {
-      bestPosition = pos;
-      bestUrl = typeof item.url === "string" ? item.url : null;
+  function bestMatch(domain: string): SerpRank {
+    let bestPosition: number | null = null;
+    let bestUrl: string | null = null;
+    for (const raw of organicItems) {
+      const item = raw as OrganicItem;
+      if (item.type !== "organic") continue;
+      const itemDomain = typeof item.domain === "string" ? item.domain : "";
+      if (!domainMatches(itemDomain, domain)) continue;
+      const pos = typeof item.rank_absolute === "number" ? item.rank_absolute : null;
+      if (pos === null) continue;
+      if (bestPosition === null || pos < bestPosition) {
+        bestPosition = pos;
+        bestUrl = typeof item.url === "string" ? item.url : null;
+      }
     }
+    return { position: bestPosition, url: bestUrl };
+  }
+
+  const competitors: Record<string, SerpRank> = {};
+  for (const domain of competitorDomains) {
+    competitors[domain] = bestMatch(domain);
   }
 
   return {
-    rank: { position: bestPosition, url: bestUrl },
+    rank: bestMatch(projectDomain),
     costUsd: typeof task.cost === "number" ? task.cost : null,
+    competitors,
   };
 }

@@ -45,6 +45,8 @@ type SortKey = "keyword" | "volume" | "position" | "best";
 
 type StudyListItem = { id: string; name: string; _count: { keywords: number }; hasStructure: boolean };
 
+type CompetitorPosition = { domain: string; position: number | null; url: string | null; checkedAt: string };
+
 const FREQUENCY_LABELS: Record<string, string> = {
   manual: "Manual",
   daily: "Diaria",
@@ -211,6 +213,8 @@ export default function RankView({ projectId }: { projectId: string }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [history, setHistory] = useState<RankPosition[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [competitors, setCompetitors] = useState<CompetitorPosition[]>([]);
+  const [loadingCompetitors, setLoadingCompetitors] = useState(false);
 
   function loadKeywords() {
     return fetch(`/api/proyectos/${projectId}/rank/keywords`)
@@ -254,11 +258,27 @@ export default function RankView({ projectId }: { projectId: string }) {
     }
   }
 
+  async function loadCompetitors(kwId: string) {
+    setLoadingCompetitors(true);
+    try {
+      const d: CompetitorPosition[] = await fetch(
+        `/api/proyectos/${projectId}/rank/keywords/${kwId}/competidores`
+      ).then((r) => r.json());
+      if (Array.isArray(d)) setCompetitors(d);
+    } finally {
+      setLoadingCompetitors(false);
+    }
+  }
+
   function selectKeyword(kwId: string) {
     setSelectedId((prev) => {
       const next = prev === kwId ? null : kwId;
       setHistory([]);
-      if (next) loadHistory(next);
+      setCompetitors([]);
+      if (next) {
+        loadHistory(next);
+        loadCompetitors(next);
+      }
       return next;
     });
   }
@@ -353,7 +373,7 @@ export default function RankView({ projectId }: { projectId: string }) {
     await loadKeywords();
     loadSpend();
     if (selectedId === kwId) {
-      await loadHistory(kwId);
+      await Promise.all([loadHistory(kwId), loadCompetitors(kwId)]);
     }
   }
 
@@ -425,6 +445,20 @@ export default function RankView({ projectId }: { projectId: string }) {
     // (positions ya viene ordenado desc por checkedAt).
     const match = kw.positions.find((p) => dayKey(p.checkedAt) === key);
     return positionCell(match?.position, Boolean(match));
+  }
+
+  // Variación (R5): compara el primer y el último chequeo con posición real
+  // dentro de la ventana de columnas visible (dateColumns, ya ordenada
+  // cronológicamente). Positivo = ha mejorado (el número de posición bajó).
+  // Null si no hay al menos dos chequeos con posición real en la ventana.
+  function deltaFor(kw: RankKeyword): number | null {
+    const withPos = dateColumns
+      .map((d) => kw.positions.find((p) => dayKey(p.checkedAt) === d.toDateString()))
+      .filter((p): p is RankPosition => Boolean(p) && p!.position !== null);
+    if (withPos.length < 2) return null;
+    const first = withPos[0].position as number;
+    const last = withPos[withPos.length - 1].position as number;
+    return first - last;
   }
 
   // Grupos existentes entre las keywords ya seguidas, para el desplegable de
@@ -784,6 +818,7 @@ export default function RankView({ projectId }: { projectId: string }) {
                     </th>
                   ))}
                   <SortableTh label="Actual" sortKey="position" active={sortKey} dir={sortDir} onClick={toggleSort} align="right" className="px-3" />
+                  <th className="py-2.5 px-3 font-medium text-right whitespace-nowrap" title="Variación entre el primer y el último chequeo visible en la tabla">Δ</th>
                   <SortableTh label="Mejor" sortKey="best" active={sortKey} dir={sortDir} onClick={toggleSort} align="right" className="px-3" />
                   <th className="py-2.5 pr-4 pl-3 font-medium text-right whitespace-nowrap">Acciones</th>
                 </tr>
@@ -833,6 +868,19 @@ export default function RankView({ projectId }: { projectId: string }) {
                       <td className="py-2 px-3 text-right text-gray-900 font-medium tabular-nums whitespace-nowrap">
                         {kw.lastPosition === null ? <span className="text-gray-300 font-normal">—</span> : `#${kw.lastPosition}`}
                       </td>
+                      <td className="py-2 px-3 text-right tabular-nums whitespace-nowrap">
+                        {(() => {
+                          const d = deltaFor(kw);
+                          if (d === null) return <span className="text-gray-300">—</span>;
+                          if (d === 0) return <span className="text-gray-400">±0</span>;
+                          return (
+                            <span className={d > 0 ? "text-emerald-600" : "text-red-600"}>
+                              {d > 0 ? "+" : ""}
+                              {d}
+                            </span>
+                          );
+                        })()}
+                      </td>
                       <td className="py-2 px-3 text-right text-gray-500 tabular-nums whitespace-nowrap">
                         {kw.bestPosition === null ? "—" : `#${kw.bestPosition}`}
                       </td>
@@ -858,7 +906,7 @@ export default function RankView({ projectId }: { projectId: string }) {
                     </tr>
                     {selectedId === kw.id && (
                       <tr className="border-b border-gray-50 last:border-0 bg-gray-50/40">
-                        <td colSpan={dateColumns.length + 5} className="p-4">
+                        <td colSpan={dateColumns.length + 6} className="p-4">
                           <div className="space-y-3">
                             <div className="flex flex-wrap items-center gap-4">
                               <div className="flex items-center gap-2">
@@ -935,6 +983,49 @@ export default function RankView({ projectId }: { projectId: string }) {
                                 </div>
                               </div>
                             )}
+
+                            {/* Competidores en el mismo SERP (R1) — coste marginal cero: la
+                                posición ya venía en la respuesta pagada para la keyword propia. */}
+                            <div className="pt-2 border-t border-gray-100">
+                              <p className="text-xs font-medium text-gray-600 mb-1.5">Competidores en este SERP</p>
+                              {loadingCompetitors ? (
+                                <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                              ) : competitors.length === 0 ? (
+                                <p className="text-xs text-gray-400">
+                                  Sin competidores trackeados todavía (o el último chequeo fue anterior a esta
+                                  función) — añádelos en la pestaña Competidores.
+                                </p>
+                              ) : (
+                                <table className="w-full text-xs">
+                                  <tbody>
+                                    {competitors.map((c) => (
+                                      <tr key={c.domain} className="border-b border-gray-50 last:border-0">
+                                        <td className="py-1 text-gray-700 font-mono">{c.domain}</td>
+                                        <td className="py-1 text-gray-400">
+                                          {new Date(c.checkedAt).toLocaleDateString("es-ES")}
+                                        </td>
+                                        <td className="py-1 text-right text-gray-900 tabular-nums">
+                                          {c.position === null ? (
+                                            <span className="text-gray-300">fuera top-{kw.depth}</span>
+                                          ) : (
+                                            `#${c.position}`
+                                          )}
+                                        </td>
+                                        <td className="py-1 pl-2 text-right whitespace-nowrap">
+                                          {c.position !== null && kw.lastPosition !== null ? (
+                                            <span className={kw.lastPosition < c.position ? "text-emerald-600" : "text-red-600"}>
+                                              {kw.lastPosition < c.position ? "vas delante" : "vas detrás"}
+                                            </span>
+                                          ) : (
+                                            "—"
+                                          )}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
                           </div>
                         </td>
                       </tr>
