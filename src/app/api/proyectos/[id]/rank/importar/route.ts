@@ -1,0 +1,83 @@
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/db/prisma";
+import { NextRequest, NextResponse } from "next/server";
+
+const DEVICES = ["desktop", "mobile"] as const;
+const FREQUENCIES = ["manual", "daily", "weekly", "monthly"] as const;
+
+// Importa las keywords de un estudio del Módulo 1 como keywords de
+// seguimiento. Reutiliza el idioma/ubicación del estudio (tiene sentido
+// rastrear con la misma configuración geográfica con la que se investigó).
+// Las duplicadas (mismo keyword+idioma+ubicación+device ya seguidas) se
+// ignoran, no se duplican.
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+
+  const { id } = await params;
+  const project = await prisma.project.findUnique({ where: { id } });
+  if (!project) return NextResponse.json({ error: "Proyecto no encontrado" }, { status: 404 });
+  if (!project.domain) {
+    return NextResponse.json(
+      { error: "El proyecto no tiene dominio configurado." },
+      { status: 422 }
+    );
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Cuerpo de la petición inválido" }, { status: 400 });
+  }
+
+  const studyId = typeof body.studyId === "string" ? body.studyId : "";
+  const study = await prisma.keywordStudy.findUnique({
+    where: { id: studyId },
+    include: { keywords: true },
+  });
+  if (!study || study.projectId !== id) {
+    return NextResponse.json({ error: "Estudio no encontrado" }, { status: 404 });
+  }
+
+  const device = typeof body.device === "string" && (DEVICES as readonly string[]).includes(body.device) ? body.device : "desktop";
+  const frequency =
+    typeof body.frequency === "string" && (FREQUENCIES as readonly string[]).includes(body.frequency)
+      ? body.frequency
+      : "weekly";
+
+  // Construye el set de (keyword) ya seguidas con esta misma config para
+  // saltar duplicados sin hacer N queries.
+  const already = await prisma.rankKeyword.findMany({
+    where: { projectId: id, locationCode: study.locationCode, languageCode: study.languageCode, device },
+    select: { keyword: true },
+  });
+  const tracked = new Set(already.map((k) => k.keyword));
+
+  let created = 0;
+  let skipped = 0;
+  for (const k of study.keywords) {
+    if (tracked.has(k.keyword)) {
+      skipped++;
+      continue;
+    }
+    await prisma.rankKeyword.create({
+      data: {
+        projectId: id,
+        keyword: k.keyword,
+        locationCode: study.locationCode,
+        languageCode: study.languageCode,
+        device,
+        frequency,
+      },
+    });
+    tracked.add(k.keyword);
+    created++;
+  }
+
+  return NextResponse.json({ created, skipped, total: study.keywords.length }, { status: 201 });
+}

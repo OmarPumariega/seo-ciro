@@ -17,7 +17,10 @@ Esta primera fase construye únicamente la base sobre la que colgará el resto:
   token aprobado). Sin expansión de keywords semilla todavía.
 - ✅ Módulo 3 — Título y Meta Descripción (vía OpenRouter, reglas en `docs/seo-rules.md`)
 - ✅ Módulo 4 — Schema (LocalBusiness determinista + Article/FAQPage vía OpenRouter)
-- ⬜ Módulo 5 — Rank Tracking
+- ✅ Módulo 5 — Rank Tracking: seguimiento de posiciones orgánicas (top-100)
+  vía DataForSEO SERP API. "Comprobar ahora" síncrono + frecuencias
+  programadas (diaria/semanal/mensual) vía el cron interno. Solo orgánico
+  (Geogrid → Módulo 9), sin competidores en esta fase.
 - 🟡 Módulo 6 — Integraciones Google: Search Console + GA4 vía OAuth2 único de la
   agencia; Business Profile pendiente de aprobación de acceso de Google
 - ✅ Módulo 7 — Generador de Contenido (Blog/Página/Producto/Novedad GBP vía OpenRouter,

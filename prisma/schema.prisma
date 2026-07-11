@@ -52,6 +52,7 @@ model Project {
   contentGenerations   ContentGeneration[]
   auditRuns            AuditRun[]
   keywordStudies       KeywordStudy[]
+  rankKeywords         RankKeyword[]
 }
 
 // Módulo 3 — un registro por generación exitosa (URL por URL, sin modo
@@ -239,4 +240,44 @@ model KeywordDataCache {
   fetchedAt    DateTime @default(now())
 
   @@unique([keyword, languageCode, locationCode])
+}
+
+// Módulo 5 — una keyword que se sigue posicionalmente para un proyecto
+// (dominio). Desacoplada de los estudios (Módulo 1): la misma keyword en
+// varios estudios se rastrea una sola vez para el dominio, porque la
+// posición es un atributo del proyecto, no del estudio de investigación.
+// El device (desktop/mobile) define un SERP distinto → es parte de la clave
+// única (se puede seguir la misma keyword en los dos devices por separado).
+model RankKeyword {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword       String // normalizada
+  locationCode  Int      @default(2724)
+  languageCode  String   @default("es")
+  device        String   @default("desktop") // "desktop" | "mobile"
+  frequency     String   @default("weekly") // "manual" | "daily" | "weekly" | "monthly"
+  lastPosition  Int? // null = nunca comprobada, o fuera del top-100
+  bestPosition  Int? // mejor (más baja) posición histórica
+  lastCheckedAt DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  positions     RankPosition[]
+
+  @@unique([projectId, keyword, locationCode, languageCode, device])
+  @@index([projectId])
+  @@index([lastCheckedAt])
+}
+
+// Una fila por chequeo de posición (histórico para la gráfica de evolución).
+// position null = el dominio no aparecía entre los resultados pedidos (top-100).
+model RankPosition {
+  id            String      @id @default(cuid())
+  rankKeywordId String
+  rankKeyword   RankKeyword @relation(fields: [rankKeywordId], references: [id], onDelete: Cascade)
+  checkedAt     DateTime    @default(now())
+  position      Int? // null = fuera del top-100 (depth)
+  url           String? // URL del proyecto que posiciona, si apareció
+
+  @@index([rankKeywordId, checkedAt])
 }

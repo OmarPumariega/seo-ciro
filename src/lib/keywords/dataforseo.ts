@@ -11,14 +11,12 @@
 // respuesta real de DataForSEO; si la llamada falla se lanza DataForSeoError
 // con el status_message real de la API, nunca un dato fabricado.
 
-const API_BASE = "https://api.dataforseo.com";
+import {
+  DataForSeoError,
+  postTask,
+} from "@/lib/dataforseo/client";
 
-export class DataForSeoError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "DataForSeoError";
-  }
-}
+export { DataForSeoError };
 
 export type Competition = "HIGH" | "MEDIUM" | "LOW";
 
@@ -42,75 +40,6 @@ export type IntentResult = {
   byKeyword: Map<string, IntentValue | null>;
   costUsd: number | null;
 };
-
-function authHeader(): string {
-  const login = process.env.DATAFORSEO_LOGIN;
-  const password = process.env.DATAFORSEO_PASSWORD;
-  if (!login || !password) {
-    throw new DataForSeoError(
-      "Faltan las credenciales de DataForSEO (DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD)"
-    );
-  }
-  const token = Buffer.from(`${login}:${password}`).toString("base64");
-  return `Basic ${token}`;
-}
-
-// Envoltorio común de cada task de DataForSEO. La API devuelve HTTP 200 aun
-// en fallos lógicos, así que hay dos status_code que comprobar: el del
-// top-level (response.status_code) y el de la task concreta
-// (response.tasks[0].status_code). 20000 = Ok en ambos.
-type TaskEnvelope = {
-  status_code?: number;
-  status_message?: string;
-  cost?: number;
-  result?: unknown;
-};
-
-function extractTask(json: unknown, endpoint: string): TaskEnvelope {
-  const top = json as { status_code?: number; status_message?: string; tasks?: TaskEnvelope[] };
-  if (top.status_code !== 20000) {
-    throw new DataForSeoError(
-      `DataForSEO ${endpoint}: ${top.status_message ?? "error desconocido"} (código ${top.status_code ?? "?"})`
-    );
-  }
-  const task = top.tasks?.[0];
-  if (!task || task.status_code !== 20000) {
-    throw new DataForSeoError(
-      `DataForSEO ${endpoint}: ${task?.status_message ?? top.status_message ?? "error de tarea"} (código ${task?.status_code ?? "?"})`
-    );
-  }
-  return task;
-}
-
-async function postTask(
-  path: string,
-  body: Record<string, unknown>,
-  endpoint: string
-): Promise<TaskEnvelope> {
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE}${path}`, {
-      method: "POST",
-      headers: {
-        Authorization: authHeader(),
-        "Content-Type": "application/json",
-      },
-      // DataForSEO exige un ARRAY de tasks en el cuerpo, incluso para una
-      // sola (código 40503 "An ARRAY of tasks is expected"). Mandamos siempre
-      // una tarea por llamada.
-      body: JSON.stringify([body]),
-    });
-  } catch {
-    throw new DataForSeoError(`DataForSEO ${endpoint}: no se pudo conectar con la API`);
-  }
-
-  if (!res.ok) {
-    throw new DataForSeoError(`DataForSEO ${endpoint}: error HTTP ${res.status}`);
-  }
-
-  const json = await res.json();
-  return extractTask(json, endpoint);
-}
 
 function isCompetition(v: unknown): v is Competition {
   return v === "HIGH" || v === "MEDIUM" || v === "LOW";

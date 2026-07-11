@@ -43,14 +43,19 @@ infraestructura (colas, caché, tablas de coste) para módulos que todavía no e
   volumen/competición/CPC y DataForSEO Labs Search Intent para intención de búsqueda.
   Resultados cacheados en `KeywordDataCache` 30 días (compartidos entre proyectos: el
   volumen es un dato objetivo de SERP); cada llamada real se registra en `ApiUsageLog`.
+- **DataForSEO SERP** (`src/lib/rank/serp.ts`) — Módulo 5: SERP orgánico de Google
+  (`serp/google/organic/live/advanced`, depth=100) para localizar la posición del
+  dominio del proyecto. El cliente HTTP Basic compartido vive en `src/lib/dataforseo/`.
 - **googleapis** (`src/lib/google/`) — OAuth2 + Search Console + GA4 (Admin y Data API)
   para el Módulo 6, un único paquete cubre las tres. Business Profile queda fuera hasta
   que Google apruebe el acceso a su API.
 - **Cron interno sin Redis** (`src/instrumentation.ts` + `instrumentation-node.ts`,
-  Módulo 8) — sondea `AuditRun` cada 60s, mismo patrón que Cirochat pero corregido (ver
-  `docs/02-arquitectura.md` para el gotcha de por qué el patrón de Cirochat
-  probablemente nunca se ejecuta). **Solo corre con `NODE_ENV=production`** — en
-  `npm run dev` el crawler nunca se dispara, hace falta `npm run build && npm run start`.
+  Módulos 8 y 5) — cada 60s procesa una `AuditRun` pending y las keywords de rank
+  tracking cuya frecuencia programada se ha vencido. Mismo patrón que Cirochat pero
+  corregido (ver `docs/02-arquitectura.md` para el gotcha de por qué el patrón de
+  Cirochat probablemente nunca se ejecuta). **Solo corre con `NODE_ENV=production`** —
+  en `npm run dev` nunca se dispara, hace falta `npm run build && npm run start`.
+  El Módulo 9 (Geogrid) debe reutilizar este mismo poller, no montar Redis.
 - **robots-parser** + fetch/cheerio propios (`src/lib/audit/`) — crawler del Módulo 8,
   identificado como `SEOCiroBot/1.0`, no como un navegador (a diferencia del scraper de
   Módulo 3/4). `PAGESPEED_API_KEY` (Google Cloud, sin OAuth) solo se consulta sobre la
@@ -91,12 +96,11 @@ Proyectos: conexión OAuth2 de la agencia con Google (Módulo 6). Conectar/desco
 ver email y scopes concedidos. La *selección de propiedad* por proyecto vive en la
 ficha de cada proyecto, no aquí — la conexión es una, las propiedades son por proyecto.
 
-### Ficha de proyecto (`/admin/proyectos/[id]/...`) — pestañas Perfil / Keywords / Título y Meta / Schema / Google / Contenido / Auditoría
+### Ficha de proyecto (`/admin/proyectos/[id]/...`) — pestañas Perfil / Keywords / Título y Meta / Schema / Rank Tracking / Google / Contenido / Auditoría
 Todos los módulos salvo el 2 son inherentemente "de un proyecto", así que en vez de
 añadir ítems al sidebar global se anidan como pestañas dentro de la ficha del proyecto
 (`src/components/admin/ProjectSubNav.tsx`). El orden de pestañas sigue el número de
-módulo ascendente — por eso Keywords (Módulo 1) va primero. Establece el patrón para
-cuando lleguen Rank Tracking, etc.
+módulo ascendente. Establece el patrón para cuando llegue Geogrid, etc.
 
 - **Keywords** (Módulo 1): textarea con lista de keywords → resolución de
   volumen/competición/CPC (DataForSEO Keywords Data) + intención (DataForSEO Labs Search
@@ -111,6 +115,11 @@ cuando lleguen Rank Tracking, etc.
   (LocalBusiness / Article / FAQPage) → generar JSON-LD. `LocalBusiness` es determinista
   (mapeo directo del NAP del proyecto, sin coste de LLM); `Article`/`FAQPage` usan
   OpenRouter y quedan registrados en `ApiUsageLog`.
+- **Rank Tracking** (Módulo 5): keywords seguidas por proyecto (desacopladas de los
+  estudios) → "comprobar ahora" síncrono vía DataForSEO SERP (top-100) o frecuencias
+  programadas (diaria/semanal/mensual) que procesa el cron. Posición actual con flecha
+  de tendencia, mejor histórica y sparkline de evolución. Importa keywords desde un
+  estudio del Módulo 1. Solo orgánico (Geogrid → Módulo 9).
 - **Google** (Módulo 6): si no hay conexión de agencia, enlaza a Configuración. Si la
   hay, selectores de propiedad de Search Console y GA4 (Business Profile deshabilitado,
   pendiente de aprobación de Google) + dashboard de últimos 28 días (clics/impresiones

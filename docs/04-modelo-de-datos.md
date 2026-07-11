@@ -1,6 +1,6 @@
 # 04 — Modelo de datos
 
-Esquema actual en [`prisma/schema.prisma`](../prisma/schema.prisma), 12 modelos.
+Esquema actual en [`prisma/schema.prisma`](../prisma/schema.prisma), 14 modelos.
 
 ## `User`
 
@@ -115,11 +115,27 @@ antes de volver a pagar por ella. Consecuencia correcta pero a tener en cuenta: 
 proyectos que apunten a la misma keyword comparten caché (es el comportamiento deseado
 para datos objetivos); no hay `forceRefresh` por proyecto todavía.
 
+## `RankKeyword` / `RankPosition` (Módulo 5)
+
+Una keyword que se sigue posicionalmente para un proyecto (dominio). Desacoplada de los
+estudios del Módulo 1: la posición es un atributo del proyecto, no de la investigación,
+así que la misma keyword en varios estudios se rastrea una sola vez. El `device`
+(desktop/mobile) define un SERP distinto → es parte de la clave única (puedes seguir la
+misma keyword en los dos devices por separado).
+
+- `lastPosition`/`bestPosition` `null` = nunca comprobada, o fuera del top-100. `bestPosition`
+  solo mejora (baja) con posiciones reales; un "fuera del top-100" no empeora el histórico.
+- `frequency` (`manual`/`daily`/`weekly`/`monthly`): las programadas las procesa el cron
+  interno; `manual` solo se dispara desde la UI (chequeo síncrono).
+- `RankPosition`: una fila por chequeo, con `position` (null = fuera del top-100 del `depth`
+  pedido) y `url` (la URL del proyecto que posicionó). Indexada por (rankKeywordId, checkedAt)
+  para la consulta de histórico de la gráfica de evolución.
+
 ## Evolución prevista (no construida todavía)
 
 | Modelo futuro | Módulo | Motivo por el que no está aún |
 |---|---|---|
-| `GeogridRun` | 9 (Geogrid Local SEO) | Requiere Módulo 5 y el poller ya construido |
+| `GeogridRun` | 9 (Geogrid Local SEO) | Reutiliza el poller ya construido para audit + rank |
 
 Se añaden en la sesión de planificación de cada módulo, no por adelantado, para no
 migrar tablas que luego cambian de forma al conocer el caso de uso real.
