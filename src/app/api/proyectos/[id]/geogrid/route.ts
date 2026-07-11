@@ -75,7 +75,10 @@ export async function POST(
     },
   });
 
-  // Se devuelve pending; el cron la procesa en segundo plano y la UI hace
-  // polling (como las auditorías del Módulo 8).
+  // Fire-and-forget con import dinámico: procesa el geogrid en background.
+  import("@/lib/geogrid/job")
+    .then(({ runGeogridJob }) => runGeogridJob())
+    .catch((e) => console.error("[geogrid] fire-and-forget:", e));
+
   return NextResponse.json(run, { status: 201 });
 }

@@ -58,5 +58,12 @@ export async function POST(
     },
   });
 
+  // Dispara el procesamiento EN BACKGROUND (import dinámico + fire-and-forget).
+  // Así funciona en dev (el cron NO corre en dev) y en producción sin esperar
+  // al siguiente tick del cron. La UI hace polling para ver el resultado.
+  import("@/lib/audit/job")
+    .then(({ runAuditJob }) => runAuditJob())
+    .catch((e) => console.error("[audit] fire-and-forget:", e));
+
   return NextResponse.json(run, { status: 202 });
 }
