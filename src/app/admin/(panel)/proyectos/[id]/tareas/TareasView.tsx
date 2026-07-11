@@ -175,7 +175,7 @@ export default function TareasView({ projectId }: { projectId: string }) {
                   <div className="flex-1 min-w-0">
                     <p
                       className={cn(
-                        "text-sm",
+                        "text-sm whitespace-pre-line",
                         todo.done ? "line-through text-gray-400" : "text-gray-900"
                       )}
                     >
