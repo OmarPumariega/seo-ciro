@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { DataForSeoError } from "@/lib/keywords/dataforseo";
+import { DataForSeoSpendLimitError } from "@/lib/dataforseo/spend";
 import { fetchKeywordData } from "@/lib/keywords/orchestrate";
 import { computePriorities } from "@/lib/keywords/priority";
 import { normalizeKeyword } from "@/lib/keywords/normalize";
@@ -107,6 +108,9 @@ export async function POST(
   try {
     data = await fetchKeywordData({ keywords, languageCode, locationCode });
   } catch (error) {
+    if (error instanceof DataForSeoSpendLimitError) {
+      return NextResponse.json({ error: error.message }, { status: 422 });
+    }
     if (error instanceof DataForSeoError) {
       return NextResponse.json({ error: error.message }, { status: 502 });
     }

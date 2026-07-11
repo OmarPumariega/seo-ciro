@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { NextRequest, NextResponse } from "next/server";
+import { ALLOWED_DEPTHS } from "@/lib/rank/serp";
 
 const DEVICES = ["desktop", "mobile"] as const;
 const FREQUENCIES = ["manual", "daily", "weekly", "monthly"] as const;
@@ -49,6 +50,8 @@ export async function POST(
     typeof body.frequency === "string" && (FREQUENCIES as readonly string[]).includes(body.frequency)
       ? body.frequency
       : "weekly";
+  const rawDepth = Number(body.depth);
+  const depth = (ALLOWED_DEPTHS as readonly number[]).includes(rawDepth) ? rawDepth : 10;
 
   // Construye el set de (keyword) ya seguidas con esta misma config para
   // saltar duplicados sin hacer N queries.
@@ -73,6 +76,7 @@ export async function POST(
         languageCode: study.languageCode,
         device,
         frequency,
+        depth,
       },
     });
     tracked.add(k.keyword);

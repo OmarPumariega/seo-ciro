@@ -123,10 +123,13 @@ así que la misma keyword en varios estudios se rastrea una sola vez. El `device
 (desktop/mobile) define un SERP distinto → es parte de la clave única (puedes seguir la
 misma keyword en los dos devices por separado).
 
-- `lastPosition`/`bestPosition` `null` = nunca comprobada, o fuera del top-100. `bestPosition`
-  solo mejora (baja) con posiciones reales; un "fuera del top-100" no empeora el histórico.
+- `lastPosition`/`bestPosition` `null` = nunca comprobada, o fuera del `depth` pedido. `bestPosition`
+  solo mejora (baja) con posiciones reales; un "fuera del depth" no empeora el histórico.
 - `frequency` (`manual`/`daily`/`weekly`/`monthly`): las programadas las procesa el cron
   interno; `manual` solo se dispara desde la UI (chequeo síncrono).
+- `depth` (10/30/50/100, default 10): resultados a parsear. DataForSEO factura por bloque de
+  10, así que depth=10 es ~10x más barato que depth=100 — el equilibrio entre coste y visión
+  profunda lo decide la agencia por keyword (la mayoría del valor accionable está en página 1).
 - `RankPosition`: una fila por chequeo, con `position` (null = fuera del top-100 del `depth`
   pedido) y `url` (la URL del proyecto que posicionó). Indexada por (rankKeywordId, checkedAt)
   para la consulta de histórico de la gráfica de evolución.

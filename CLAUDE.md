@@ -44,8 +44,9 @@ infraestructura (colas, caché, tablas de coste) para módulos que todavía no e
   Resultados cacheados en `KeywordDataCache` 30 días (compartidos entre proyectos: el
   volumen es un dato objetivo de SERP); cada llamada real se registra en `ApiUsageLog`.
 - **DataForSEO SERP** (`src/lib/rank/serp.ts`) — Módulo 5: SERP orgánico de Google
-  (`serp/google/organic/live/advanced`, depth=100) para localizar la posición del
-  dominio del proyecto. El cliente HTTP Basic compartido vive en `src/lib/dataforseo/`.
+  (`serp/google/organic/live/advanced`, depth configurable 10/30/50/100, default 10) para
+  localizar la posición del dominio del proyecto. El cliente HTTP Basic compartido vive en
+  `src/lib/dataforseo/`.
 - **googleapis** (`src/lib/google/`) — OAuth2 + Search Console + GA4 (Admin y Data API)
   para el Módulo 6, un único paquete cubre las tres. Business Profile queda fuera hasta
   que Google apruebe el acceso a su API.

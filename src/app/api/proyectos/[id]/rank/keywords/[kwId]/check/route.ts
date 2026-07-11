@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { DataForSeoError } from "@/lib/dataforseo/client";
+import { DataForSeoSpendLimitError } from "@/lib/dataforseo/spend";
 import { checkRankKeyword } from "@/lib/rank/check";
 
 // "Comprobar ahora": chequeo SÍCRONO (a diferencia del patrón async del
@@ -26,6 +27,9 @@ export async function POST(
     const updated = await prisma.rankKeyword.findUnique({ where: { id: kwId } });
     return NextResponse.json({ position: result.position, keyword: updated });
   } catch (error) {
+    if (error instanceof DataForSeoSpendLimitError) {
+      return NextResponse.json({ error: error.message }, { status: 422 });
+    }
     if (error instanceof DataForSeoError) {
       return NextResponse.json({ error: error.message }, { status: 502 });
     }

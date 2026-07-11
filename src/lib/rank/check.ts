@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { assertWithinSpendLimit } from "@/lib/dataforseo/spend";
 import { checkSerpRank, normalizeDomain } from "@/lib/rank/serp";
 
 // Comprueba la posición orgánica de una RankKeyword contra DataForSEO SERP y
@@ -17,6 +18,10 @@ export async function checkRankKeyword(rankKeywordId: string): Promise<{ positio
     throw new Error("El proyecto no tiene dominio configurado");
   }
 
+  // Tope de gasto: bloquea ANTES de la llamada (no gastar si ya estamos en el
+  // límite mensual). Las posiciones cacheadas no aplican aquí (SERP no cachea).
+  await assertWithinSpendLimit();
+
   const projectDomain = normalizeDomain(rk.project.domain);
 
   const { rank, costUsd } = await checkSerpRank({
@@ -25,6 +30,7 @@ export async function checkRankKeyword(rankKeywordId: string): Promise<{ positio
     languageCode: rk.languageCode,
     device: rk.device,
     projectDomain,
+    depth: rk.depth,
   });
 
   const now = new Date();

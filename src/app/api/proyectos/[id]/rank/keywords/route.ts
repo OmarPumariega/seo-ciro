@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { normalizeKeyword } from "@/lib/keywords/normalize";
+import { ALLOWED_DEPTHS } from "@/lib/rank/serp";
 
 const DEVICES = ["desktop", "mobile"] as const;
 const FREQUENCIES = ["manual", "daily", "weekly", "monthly"] as const;
@@ -67,10 +68,12 @@ export async function POST(
       : "es";
   const rawLocation = Number(body.locationCode);
   const locationCode = Number.isInteger(rawLocation) && rawLocation > 0 ? rawLocation : 2724;
+  const rawDepth = Number(body.depth);
+  const depth = (ALLOWED_DEPTHS as readonly number[]).includes(rawDepth) ? rawDepth : 10;
 
   try {
     const created = await prisma.rankKeyword.create({
-      data: { projectId: id, keyword, device, frequency, languageCode, locationCode },
+      data: { projectId: id, keyword, device, frequency, languageCode, locationCode, depth },
     });
     return NextResponse.json(created, { status: 201 });
   } catch (error) {

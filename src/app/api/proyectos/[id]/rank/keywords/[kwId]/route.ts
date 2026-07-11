@@ -3,6 +3,8 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { NextRequest, NextResponse } from "next/server";
 
+import { ALLOWED_DEPTHS } from "@/lib/rank/serp";
+
 const DEVICES = ["desktop", "mobile"] as const;
 const FREQUENCIES = ["manual", "daily", "weekly", "monthly"] as const;
 
@@ -27,12 +29,16 @@ export async function PATCH(
     return NextResponse.json({ error: "Keyword no encontrada" }, { status: 404 });
   }
 
-  const data: { frequency?: string; device?: string } = {};
+  const data: { frequency?: string; device?: string; depth?: number } = {};
   if (typeof body.frequency === "string" && (FREQUENCIES as readonly string[]).includes(body.frequency)) {
     data.frequency = body.frequency;
   }
   if (typeof body.device === "string" && (DEVICES as readonly string[]).includes(body.device)) {
     data.device = body.device;
+  }
+  const rawDepth = Number(body.depth);
+  if ((ALLOWED_DEPTHS as readonly number[]).includes(rawDepth)) {
+    data.depth = rawDepth;
   }
 
   if (Object.keys(data).length === 0) {

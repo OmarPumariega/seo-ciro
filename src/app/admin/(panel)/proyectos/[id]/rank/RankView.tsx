@@ -24,6 +24,7 @@ type RankKeyword = {
   languageCode: string;
   device: string;
   frequency: string;
+  depth: number;
   lastPosition: number | null;
   bestPosition: number | null;
   lastCheckedAt: string | null;
@@ -40,6 +41,25 @@ const FREQUENCY_LABELS: Record<string, string> = {
   weekly: "Semanal",
   monthly: "Mensual",
 };
+
+const DEPTHS = [10, 30, 50, 100];
+
+function SpendBanner({ spend }: { spend: { spentUsd: number; limitUsd: number | null; blocked: boolean } | null }) {
+  if (!spend) return null;
+  if (spend.limitUsd === null) return null; // sin tope configurado, no mostramos nada
+  const pct = Math.min(100, Math.round((spend.spentUsd / spend.limitUsd) * 100));
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 text-sm px-3 py-2 rounded-lg",
+        spend.blocked ? "bg-red-50 text-red-700" : pct >= 80 ? "bg-amber-50 text-amber-700" : "bg-gray-50 text-gray-600"
+      )}
+    >
+      Gasto DataForSEO este mes: {spend.spentUsd.toFixed(2)}$ / {spend.limitUsd.toFixed(2)}$
+      {spend.blocked && " — tope alcanzado, nuevas llamadas bloqueadas"}
+    </div>
+  );
+}
 
 // Sparkline SVG inline (sin librería de gráficos, mismo principio "sin
 // dependencia" que el árbol de URLs del Módulo). position null (fuera del
@@ -100,7 +120,10 @@ export default function RankView({ projectId }: { projectId: string }) {
   const [newKeyword, setNewKeyword] = useState("");
   const [newDevice, setNewDevice] = useState("desktop");
   const [newFrequency, setNewFrequency] = useState("weekly");
+  const [newDepth, setNewDepth] = useState("10");
   const [adding, setAdding] = useState(false);
+
+  const [spend, setSpend] = useState<{ spentUsd: number; limitUsd: number | null; blocked: boolean } | null>(null);
 
   const [studies, setStudies] = useState<StudyListItem[]>([]);
   const [importStudyId, setImportStudyId] = useState("");
@@ -119,10 +142,19 @@ export default function RankView({ projectId }: { projectId: string }) {
       });
   }
 
+  function loadSpend() {
+    return fetch(`/api/dataforseo/gasto`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && typeof d.spentUsd === "number") setSpend(d);
+      });
+  }
+
   useEffect(() => {
     Promise.all([
       loadKeywords(),
       fetch(`/api/proyectos/${projectId}/keywords/estudios`).then((r) => r.json()),
+      loadSpend(),
     ]).then(([, s]) => {
       if (Array.isArray(s)) setStudies(s as StudyListItem[]);
       setLoading(false);
@@ -160,7 +192,7 @@ export default function RankView({ projectId }: { projectId: string }) {
     const res = await fetch(`/api/proyectos/${projectId}/rank/keywords`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ keyword: newKeyword, device: newDevice, frequency: newFrequency }),
+      body: JSON.stringify({ keyword: newKeyword, device: newDevice, frequency: newFrequency, depth: Number(newDepth) }),
     });
     const data = await res.json();
     setAdding(false);
@@ -182,7 +214,7 @@ export default function RankView({ projectId }: { projectId: string }) {
     const res = await fetch(`/api/proyectos/${projectId}/rank/importar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ studyId: importStudyId, device: newDevice, frequency: newFrequency }),
+      body: JSON.stringify({ studyId: importStudyId, device: newDevice, frequency: newFrequency, depth: Number(newDepth) }),
     });
     const data = await res.json();
     setImporting(false);
@@ -215,6 +247,7 @@ export default function RankView({ projectId }: { projectId: string }) {
       return;
     }
     await loadKeywords();
+    loadSpend();
     if (selectedId === kwId) {
       await loadHistory(kwId);
     }
@@ -225,6 +258,15 @@ export default function RankView({ projectId }: { projectId: string }) {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ frequency }),
+    });
+    loadKeywords();
+  }
+
+  async function handleDepth(kwId: string, depth: number) {
+    await fetch(`/api/proyectos/${projectId}/rank/keywords/${kwId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ depth }),
     });
     loadKeywords();
   }
@@ -243,10 +285,12 @@ export default function RankView({ projectId }: { projectId: string }) {
       <div>
         <h2 className="text-lg font-semibold text-gray-900">Rank Tracking</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Seguimiento de posiciones orgánicas (top-100) vía DataForSEO SERP. &laquo;Comprobar ahora&raquo; es
+          Seguimiento de posiciones orgánicas vía DataForSEO SERP. &laquo;Comprobar ahora&raquo; es
           instantáneo; las frecuencias programadas las revisa el cron en segundo plano.
         </p>
       </div>
+
+      <SpendBanner spend={spend} />
 
       {/* Añadir keyword */}
       <form onSubmit={handleAdd} className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
@@ -262,7 +306,7 @@ export default function RankView({ projectId }: { projectId: string }) {
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">Dispositivo</label>
               <Select.Root value={newDevice} onValueChange={setNewDevice}>
@@ -292,6 +336,24 @@ export default function RankView({ projectId }: { projectId: string }) {
                     <Select.Viewport>
                       {Object.entries(FREQUENCY_LABELS).map(([v, l]) => (
                         <Select.Item key={v} value={v} className="px-3 py-2 text-sm text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>{l}</Select.ItemText></Select.Item>
+                      ))}
+                    </Select.Viewport>
+                  </Select.Content>
+                </Select.Portal>
+              </Select.Root>
+            </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700" title="Resultados a rastrear. A mayor depth, más caro.">Profundidad</label>
+              <Select.Root value={newDepth} onValueChange={setNewDepth}>
+                <Select.Trigger className="w-full flex items-center justify-between px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 bg-white">
+                  <Select.Value />
+                  <Select.Icon><ChevronDown className="h-4 w-4 text-gray-400" /></Select.Icon>
+                </Select.Trigger>
+                <Select.Portal>
+                  <Select.Content className="bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50">
+                    <Select.Viewport>
+                      {DEPTHS.map((d) => (
+                        <Select.Item key={d} value={String(d)} className="px-3 py-2 text-sm text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>Top-{d}</Select.ItemText></Select.Item>
                       ))}
                     </Select.Viewport>
                   </Select.Content>
@@ -373,7 +435,7 @@ export default function RankView({ projectId }: { projectId: string }) {
                       <TrendIcon kw={kw} />
                     </div>
                     <p className="text-xs text-gray-400">
-                      {kw.device === "mobile" ? "Móvil" : "Desktop"} · {kw.languageCode.toUpperCase()}/{kw.locationCode}
+                      {kw.device === "mobile" ? "Móvil" : "Desktop"} · Top-{kw.depth} · {kw.languageCode.toUpperCase()}/{kw.locationCode}
                       {kw.lastCheckedAt && <> · {new Date(kw.lastCheckedAt).toLocaleDateString("es-ES")}</>}
                     </p>
                   </button>
@@ -406,23 +468,43 @@ export default function RankView({ projectId }: { projectId: string }) {
 
                 {selectedId === kw.id && (
                   <div className="mt-3 pt-3 border-t border-gray-100 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <label className="text-xs text-gray-500">Frecuencia:</label>
-                      <Select.Root value={kw.frequency} onValueChange={(v) => handleFrequency(kw.id, v)}>
-                        <Select.Trigger className="flex items-center justify-between px-2 py-1 border border-gray-200 rounded text-xs outline-none focus:border-gray-400 bg-white gap-1">
-                          <Select.Value />
-                          <ChevronDown className="h-3 w-3 text-gray-400" />
-                        </Select.Trigger>
-                        <Select.Portal>
-                          <Select.Content className="bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50">
-                            <Select.Viewport>
-                              {Object.entries(FREQUENCY_LABELS).map(([v, l]) => (
-                                <Select.Item key={v} value={v} className="px-3 py-1.5 text-xs text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>{l}</Select.ItemText></Select.Item>
-                              ))}
-                            </Select.Viewport>
-                          </Select.Content>
-                        </Select.Portal>
-                      </Select.Root>
+                    <div className="flex flex-wrap items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-gray-500">Frecuencia:</label>
+                        <Select.Root value={kw.frequency} onValueChange={(v) => handleFrequency(kw.id, v)}>
+                          <Select.Trigger className="flex items-center justify-between px-2 py-1 border border-gray-200 rounded text-xs outline-none focus:border-gray-400 bg-white gap-1">
+                            <Select.Value />
+                            <ChevronDown className="h-3 w-3 text-gray-400" />
+                          </Select.Trigger>
+                          <Select.Portal>
+                            <Select.Content className="bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50">
+                              <Select.Viewport>
+                                {Object.entries(FREQUENCY_LABELS).map(([v, l]) => (
+                                  <Select.Item key={v} value={v} className="px-3 py-1.5 text-xs text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>{l}</Select.ItemText></Select.Item>
+                                ))}
+                              </Select.Viewport>
+                            </Select.Content>
+                          </Select.Portal>
+                        </Select.Root>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-gray-500">Profundidad:</label>
+                        <Select.Root value={String(kw.depth)} onValueChange={(v) => handleDepth(kw.id, Number(v))}>
+                          <Select.Trigger className="flex items-center justify-between px-2 py-1 border border-gray-200 rounded text-xs outline-none focus:border-gray-400 bg-white gap-1">
+                            <Select.Value />
+                            <ChevronDown className="h-3 w-3 text-gray-400" />
+                          </Select.Trigger>
+                          <Select.Portal>
+                            <Select.Content className="bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50">
+                              <Select.Viewport>
+                                {DEPTHS.map((d) => (
+                                  <Select.Item key={d} value={String(d)} className="px-3 py-1.5 text-xs text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>Top-{d}</Select.ItemText></Select.Item>
+                                ))}
+                              </Select.Viewport>
+                            </Select.Content>
+                          </Select.Portal>
+                        </Select.Root>
+                      </div>
                     </div>
 
                     {loadingHistory ? (

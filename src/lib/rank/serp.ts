@@ -5,14 +5,15 @@ import { postTask } from "@/lib/dataforseo/client";
 // aparece el dominio del proyecto. Principio del proyecto: nada se inventa,
 // la posición proviene del rank_absolute real del item orgánico coincidente.
 
-// Profundidad del SERP = top-100. Estándar del sector para rank tracking:
-// detecta keywords que escalan (p.ej. de página 8 a la 3), no solo las que ya
-// están en página 1. Fijo en v1; el coste (~0,03 USD/llamada a depth=100) se
-// registra en ApiUsageLog.
-const DEPTH = 100;
+// Profundidad por defecto del SERP = top-10. La mayoría del valor accionable
+// del rank tracking está en página 1; depth mayor (30/50/100) solo para
+// keywords donde interesa ver posiciones profundas. DataForSEO factura por
+// bloque de 10 resultados, así que depth=10 es ~10x más barato que depth=100.
+export const DEFAULT_DEPTH = 10;
+export const ALLOWED_DEPTHS = [10, 30, 50, 100] as const;
 
 export type SerpRank = {
-  position: number | null; // null = el dominio no apareció en el top-100
+  position: number | null; // null = el dominio no apareció en el depth pedido
   url: string | null; // URL del proyecto que posiciona
 };
 
@@ -55,8 +56,10 @@ export async function checkSerpRank(params: {
   languageCode: string;
   device: string;
   projectDomain: string; // ya normalizado (sin esquema/www)
+  depth?: number; // 10/30/50/100, default DEFAULT_DEPTH
 }): Promise<SerpResult> {
   const { keyword, locationCode, languageCode, device, projectDomain } = params;
+  const depth = params.depth ?? DEFAULT_DEPTH;
 
   const task = await postTask(
     "/v3/serp/google/organic/live/advanced",
@@ -65,7 +68,7 @@ export async function checkSerpRank(params: {
       location_code: locationCode,
       language_code: languageCode,
       device,
-      depth: DEPTH,
+      depth,
     },
     "rank"
   );

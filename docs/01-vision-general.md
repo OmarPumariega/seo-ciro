@@ -32,8 +32,9 @@ Esta primera fase construye únicamente la base sobre la que colgará el resto:
 - ✅ Cola de tareas — **no** BullMQ/Redis: cron interno vía `src/instrumentation.ts` +
   `instrumentation-node.ts` (mismo patrón que Cirochat), sondea `AuditRun` cada 60s.
   El Módulo 9 debe reutilizar este mismo poller, no montar Redis
-- 🟡 Control de costes de API — log básico por llamada (`ApiUsageLog`) ya en marcha desde
-  el Módulo 3/4; faltan topes de gasto y avisos por email
+- 🟡 Control de costes de API — log por llamada (`ApiUsageLog`) + **tope de gasto mensual
+  global de DataForSEO** (`DATAFORSEO_MONTHLY_LIMIT_USD`, bloquea nuevas llamadas al
+  superarlo, la UI avisa); faltan topes por proyecto y avisos por email
 - ✅ Caché de resultados — `KeywordDataCache` (Módulo 1), 30 días de frescura por
   (keyword, idioma, ubicación), compartida entre proyectos
 
