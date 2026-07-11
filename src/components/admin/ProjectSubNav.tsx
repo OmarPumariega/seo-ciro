@@ -19,6 +19,7 @@ export default function ProjectSubNav({
 
   const tabs = [
     { href: base, label: "Perfil" },
+    { href: `${base}/tareas`, label: "Tareas" },
     { href: `${base}/keywords`, label: "Keywords" },
     { href: `${base}/titulos-meta`, label: "Título y Meta" },
     { href: `${base}/schema`, label: "Schema" },
@@ -28,6 +29,7 @@ export default function ProjectSubNav({
     { href: `${base}/auditoria`, label: "Auditoría" },
     // La pestaña Geogrid solo aplica a negocios locales (Módulo 9).
     ...(isLocalBusiness ? [{ href: `${base}/geogrid`, label: "Geogrid" }] : []),
+    { href: `${base}/informe`, label: "Informe" },
   ];
 
   return (

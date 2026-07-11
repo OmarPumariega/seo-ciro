@@ -48,6 +48,13 @@ model Project {
   gscSiteUrl    String?
   ga4PropertyId String?
 
+  // Módulo 8 — programación automática de auditorías. "manual" = solo al
+  // disparar desde la UI; "monthly" = el cron crea una AuditRun pending cuando
+  // toca (cada ~30 días). auditLastRunAt marca el último disparo (manual o auto)
+  // para calcular cuándo toca la siguiente.
+  auditFrequency String   @default("manual") // "manual" | "monthly"
+  auditLastRunAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -59,6 +66,7 @@ model Project {
   keywordStudies       KeywordStudy[]
   rankKeywords         RankKeyword[]
   geogridRuns          GeogridRun[]
+  todos                TodoItem[]
 }
 
 // Módulo 3 — un registro por generación exitosa (URL por URL, sin modo
@@ -318,4 +326,20 @@ model GeogridRun {
   completedAt   DateTime?
 
   @@index([projectId, triggeredAt])
+}
+
+// Módulo 2 — to-do list por proyecto. Tareas manuales que la agencia anota en
+// la ficha del cliente (pendientes genéricos de SEO, no generados auto). Con
+// fecha opcional (dueDate) para avisos futuros en el dashboard.
+model TodoItem {
+  id          String    @id @default(cuid())
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  text        String
+  done        Boolean   @default(false)
+  dueDate     DateTime?
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([projectId])
 }

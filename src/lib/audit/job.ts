@@ -6,6 +6,7 @@ import { crossReferenceGsc } from "@/lib/audit/gsc-crossref";
 import { computeScore } from "@/lib/audit/scoring";
 
 const STALE_RUN_TIMEOUT_MIN = 30;
+const MONTHLY_AUDIT_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
 
 function buildIssues(page: CrawledPage, inSearchConsole: boolean | null): string[] {
   const issues: string[] = [];
@@ -33,8 +34,48 @@ async function recoverStaleRuns() {
   });
 }
 
+// Scheduling mensual: si un proyecto con auditFrequency="monthly" lleva 30+
+// días sin auditarse (o nunca se ha auditado), el cron le crea una AuditRun
+// pending que procesará la lógica de runAuditJob abajo. Como mucho 1 proyecto
+// por tick del cron, para no disparar varios crawls a la vez. El filtro
+// `auditRuns: { none }` excluye los que ya tienen una run pendiente o en curso
+// (disparada a mano o por un tick anterior) y así no se duplica. Mismo patrón
+// "findMany candidatos + orderBy lastRun asc" que runRankJob (Módulo 5).
+async function scheduleMonthlyAudit() {
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - MONTHLY_AUDIT_INTERVAL_MS);
+
+  const candidate = await prisma.project.findFirst({
+    where: {
+      auditFrequency: "monthly",
+      domain: { not: null },
+      OR: [{ auditLastRunAt: null }, { auditLastRunAt: { lt: cutoff } }],
+      auditRuns: { none: { status: { in: ["pending", "running"] } } },
+    },
+    orderBy: { auditLastRunAt: "asc" },
+  });
+
+  if (!candidate || !candidate.domain) return;
+
+  // Marcar auditLastRunAt ya (no al procesar) para que el siguiente tick no
+  // vuelva a seleccionar este proyecto si la run tarda en arrancar.
+  await prisma.$transaction([
+    prisma.auditRun.create({
+      data: {
+        projectId: candidate.id,
+        startUrl: `https://${candidate.domain}`,
+      },
+    }),
+    prisma.project.update({
+      where: { id: candidate.id },
+      data: { auditLastRunAt: now },
+    }),
+  ]);
+}
+
 export async function runAuditJob(): Promise<{ processed: number }> {
   await recoverStaleRuns();
+  await scheduleMonthlyAudit();
 
   const run = await prisma.auditRun.findFirst({
     where: { status: "pending" },

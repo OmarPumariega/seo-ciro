@@ -10,7 +10,8 @@ para la especificación funcional completa de los 9 módulos.
 Esta primera fase construye únicamente la base sobre la que colgará el resto:
 
 - ✅ Auth de agencia (login único, preparado para multi-usuario)
-- ✅ Módulo 2 (Gestión de Proyecto) — CRUD básico: perfil, NAP, tono de marca
+- ✅ Módulo 2 (Gestión de Proyecto) — CRUD: perfil, NAP, tono de marca,
+  coordenadas + **lista de To-do por proyecto** (tareas manuales con fecha)
 - 🟡 Módulo 1 — Keyword Research: volumen/intención/prioridad reales vía DataForSEO
   (Keywords Data + Labs Search Intent) + generación de estructura de URLs. Solo
   DataForSEO como fuente por ahora; Google Ads queda pendiente (requiere developer
@@ -25,9 +26,9 @@ Esta primera fase construye únicamente la base sobre la que colgará el resto:
   agencia; Business Profile pendiente de aprobación de acceso de Google
 - ✅ Módulo 7 — Generador de Contenido (Blog/Página/Producto/Novedad GBP vía OpenRouter,
   reutiliza el tono de marca del proyecto)
-- 🟡 Módulo 8 — Auditoría Técnica: crawler propio + PageSpeed Insights (solo home) +
-  cruce de impresiones con Search Console; falta la programación automática mensual
-  (solo disparo manual esta sesión)
+- ✅ Módulo 8 — Auditoría Técnica: crawler propio + PageSpeed Insights (solo home) +
+  cruce de impresiones con Search Console + **programación automática mensual**
+  (el cron crea una AuditRun pending cuando toca, sin disparo manual)
 - ✅ Módulo 9 — Geogrid Local SEO: mapa de calor del posicionamiento en Google
   Maps (rejilla 3×3/5×5/7×7 + radio) vía DataForSEO Maps SERP con coordenadas
   exactas por punto. Asíncrono vía cron (rejilla 5×5 = 25 llamadas ~75s).
@@ -40,6 +41,8 @@ Esta primera fase construye únicamente la base sobre la que colgará el resto:
   superarlo, la UI avisa); faltan topes por proyecto y avisos por email
 - ✅ Caché de resultados — `KeywordDataCache` (Módulo 1), 30 días de frescura por
   (keyword, idioma, ubicación), compartida entre proyectos
+- ✅ Informe imprimible/compartible por proyecto (vista con CSS de impresión →
+  "Guardar como PDF") que agrega auditoría, rank tracking, keywords, geogrid y costes
 
 Cada uno de estos módulos se planifica y construye en una sesión dedicada, siguiendo
 el orden recomendado en la sección 8 de `spec-original.md`.
