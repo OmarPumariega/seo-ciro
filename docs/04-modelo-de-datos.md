@@ -1,6 +1,6 @@
 # 04 — Modelo de datos
 
-Esquema actual en [`prisma/schema.prisma`](../prisma/schema.prisma), 9 modelos.
+Esquema actual en [`prisma/schema.prisma`](../prisma/schema.prisma), 12 modelos.
 
 ## `User`
 
@@ -85,12 +85,41 @@ y aun así `AuditPage.inSearchConsole` es una señal indirecta (impresiones en S
 Console en 90 días), no el resultado de la API de Inspección de URLs (exigiría un scope
 OAuth nuevo → reconsentimiento de toda cuenta ya conectada).
 
+## `KeywordStudy` / `Keyword` (Módulo 1)
+
+Un "estudio" es una lista de keywords pegada por el usuario para un proyecto, con los
+datos de DataForSEO ya resueltos (volumen/competición/CPC/intención) y la estructura de
+URLs opcionalmente generada encima. Tope de 300 keywords por estudio (por encima del
+"50-200 típico" del spec, muy por debajo del límite técnico de DataForSEO).
+
+- `Keyword.searchVolume` `null` = DataForSEO no tiene dato. **Nunca** se fabrica un 0
+  cuando el valor real es desconocido — el null es la única señal honesta.
+- `competition`: `"HIGH" | "MEDIUM" | "LOW"`, tal cual lo devuelve DataForSEO.
+- `intent`: `"informacional" | "mixta" | "transaccional"` — el vocabulario de 3 buckets
+  del proyecto. Los 4 labels de DataForSEO (`informational`, `navigational`,
+  `commercial`, `transactional`) se mapean en `mapIntent()`; `navigational`/`commercial`
+  se agrupan como `mixta`.
+- `priority` (0-100): cuota de volumen dentro del estudio
+  (`round(volumen / volumenMáximo * 100)`). Competición y CPC **no** entran en la
+  fórmula — quedan como columnas para que la agencia los pondere a mano.
+- `structure` (`Json?`): propuesta de URLs/H1/encabezados generada vía OpenRouter sobre
+  las keywords ya persistidas. `null` hasta que se genera; regenerar sobrescribe (sin
+  versionado en v1, `updatedAt` es la pista de auditoría).
+
+## `KeywordDataCache` (infraestructura transversal, sección 5 del spec)
+
+Primera tabla de caché de la app ("evitar pagar dos veces por el mismo dato"). Clave por
+`(keyword, idioma, ubicación)`, **no** por proyecto/estudio — el volumen de una keyword es
+un dato objetivo de SERP que no depende de quién lo pidió. 30 días de frescura (`cache.ts`)
+antes de volver a pagar por ella. Consecuencia correcta pero a tener en cuenta: dos
+proyectos que apunten a la misma keyword comparten caché (es el comportamiento deseado
+para datos objetivos); no hay `forceRefresh` por proyecto todavía.
+
 ## Evolución prevista (no construida todavía)
 
 | Modelo futuro | Módulo | Motivo por el que no está aún |
 |---|---|---|
-| `KeywordStudy` / `Keyword` | 1 (Keyword Research) | No hay integración con DataForSEO/Google Ads |
-| `GeogridRun` | 9 (Geogrid Local SEO) | Requiere Módulo 5/8 y el poller ya construido |
+| `GeogridRun` | 9 (Geogrid Local SEO) | Requiere Módulo 5 y el poller ya construido |
 
 Se añaden en la sesión de planificación de cada módulo, no por adelantado, para no
 migrar tablas que luego cambian de forma al conocer el caso de uso real.

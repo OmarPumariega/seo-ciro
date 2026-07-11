@@ -59,14 +59,18 @@ src/
     ├── utils.ts
     ├── seo/                 # Módulos 3/4/7: scraping, cliente OpenRouter, log de coste
     ├── google/               # Módulo 6: OAuth2, Search Console, GA4
+    ├── keywords/             # Módulo 1: cliente DataForSEO, caché, orquestación, estructura
     └── audit/                # Módulo 8: robots.txt, crawler, PSI, scoring, cron
 ```
 
 ## Decisiones de esta fase
 
-- **Sin tablas de caché/coste de API para DataForSEO:** no hay llamadas todavía.
-  Se añaden junto con el Módulo 1. (El coste de OpenRouter sí se registra desde el
-  Módulo 3, ver `ApiUsageLog` en `docs/04-modelo-de-datos.md`.)
+- **Caché de DataForSEO (Módulo 1):** `KeywordDataCache`, clave por (keyword, idioma,
+  ubicación), 30 días de frescura, compartida entre proyectos (el volumen es un dato
+  objetivo de SERP). El coste de cada llamada real se registra en `ApiUsageLog`
+  (`api: "dataforseo"`, dos filas por estudio nuevo: volumen + intención). Un estudio
+  100% servido desde caché no genera ninguna fila nueva de coste — la prueba de que el
+  caché funciona.
 - **Trabajo en segundo plano sin BullMQ/Redis (decisión del Módulo 8):** el spec
   original asume BullMQ+Redis para el crawler, pero se optó por el mismo patrón que
   usa Cirochat para su resumen periódico de conversaciones — un cron interno vía el

@@ -51,6 +51,7 @@ model Project {
   apiUsageLogs         ApiUsageLog[]
   contentGenerations   ContentGeneration[]
   auditRuns            AuditRun[]
+  keywordStudies       KeywordStudy[]
 }
 
 // Módulo 3 — un registro por generación exitosa (URL por URL, sin modo
@@ -184,4 +185,58 @@ model AuditPage {
 
   @@unique([auditRunId, url])
   @@index([auditRunId])
+}
+
+// Módulo 1 — un "estudio" es una lista de keywords pegada por el usuario
+// para un proyecto, con los datos de DataForSEO ya resueltos y la
+// estructura de URLs/encabezados opcionalmente generada encima.
+model KeywordStudy {
+  id             String   @id @default(cuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name           String
+  languageCode   String   @default("es")
+  locationCode   Int      @default(2724) // España
+  structure      Json? // { pages: [{ slug, h1, headings, navLabel, keywords }] }
+  structureModel String? // modelo de OpenRouter usado; null hasta que se genera
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  keywords       Keyword[]
+
+  @@index([projectId, createdAt])
+}
+
+// Una fila por keyword dentro de un estudio.
+model Keyword {
+  id           String       @id @default(cuid())
+  studyId      String
+  study        KeywordStudy @relation(fields: [studyId], references: [id], onDelete: Cascade)
+  keyword      String // normalizada (minúsculas, espacios colapsados)
+  searchVolume Int? // null = DataForSEO no tiene dato, nunca 0 fabricado
+  competition  String? // "HIGH" | "MEDIUM" | "LOW", tal cual DataForSEO
+  cpc          Decimal? @db.Decimal(10, 2)
+  intent       String? // "informacional" | "mixta" | "transaccional"
+  priority     Int // 0-100, cuota de volumen dentro del estudio
+
+  @@unique([studyId, keyword])
+  @@index([studyId, priority])
+}
+
+// Primera tabla de caché de la app (sección 5 del spec: "evitar pagar dos
+// veces por el mismo dato"). Clave por (keyword, idioma, ubicación), no por
+// proyecto/estudio — el volumen de una keyword no depende de quién la pidió.
+// 30 días de frescura (ver src/lib/keywords/cache.ts) antes de volver a
+// pagar por ella.
+model KeywordDataCache {
+  id           String   @id @default(cuid())
+  keyword      String
+  languageCode String
+  locationCode Int
+  searchVolume Int?
+  competition  String?
+  cpc          Decimal? @db.Decimal(10, 2)
+  intent       String?
+  fetchedAt    DateTime @default(now())
+
+  @@unique([keyword, languageCode, locationCode])
 }

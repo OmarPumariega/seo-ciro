@@ -1,6 +1,7 @@
 import type { Project } from "@prisma/client";
 import type OpenAI from "openai";
 import { getOpenRouterClient, DEFAULT_OPENROUTER_MODEL } from "@/lib/seo/llm";
+import { stripCodeFences } from "@/lib/seo/json";
 import type { ScrapedPage } from "@/lib/seo/scrape";
 
 export const SCHEMA_TYPES = ["LocalBusiness", "Article", "FAQPage"] as const;
@@ -82,14 +83,6 @@ ${headingsText || "(ninguno)"}
 
 Contenido:
 ${scraped.bodyText}`;
-}
-
-function stripCodeFences(text: string): string {
-  return text
-    .trim()
-    .replace(/^```(json)?\n?/i, "")
-    .replace(/```$/, "")
-    .trim();
 }
 
 export type ArticleOrFaqResult = {

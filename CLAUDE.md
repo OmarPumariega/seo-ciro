@@ -32,11 +32,17 @@ infraestructura (colas, caché, tablas de coste) para módulos que todavía no e
 - **NextAuth (JWT)** — credentials + bcrypt, un único usuario por ahora, con `role`
   preparado para multi-usuario futuro
 - **Cifrado AES-256-CBC** (`src/lib/crypto.ts`) — usado por el Módulo 6 para el refresh
-  token de Google; listo también para futuros secretos (API keys de DataForSEO)
+  token de Google
 - **OpenRouter** (`src/lib/seo/llm.ts`) — SDK `openai` apuntando a `https://openrouter.ai/api/v1`,
-  usado por el Módulo 3 y el Módulo 4. Modelo configurable por `OPENROUTER_MODEL`, no
-  hardcodeado — permite cambiar de proveedor (Claude, GPT, Gemini...) sin tocar código
+  usado por los Módulos 3, 4 y 1 (estructura de URLs), además del 7. Modelo configurable
+  por `OPENROUTER_MODEL`, no hardcodeado — permite cambiar de proveedor (Claude, GPT,
+  Gemini...) sin tocar código
 - **cheerio** (`src/lib/seo/scrape.ts`) — scraping de URLs reales para Módulo 3 y 4
+- **DataForSEO** (`src/lib/keywords/dataforseo.ts`) — Módulo 1: auth HTTP Basic
+  (`DATAFORSEO_LOGIN`/`DATAFORSEO_PASSWORD`), dos endpoints — Keywords Data API para
+  volumen/competición/CPC y DataForSEO Labs Search Intent para intención de búsqueda.
+  Resultados cacheados en `KeywordDataCache` 30 días (compartidos entre proyectos: el
+  volumen es un dato objetivo de SERP); cada llamada real se registra en `ApiUsageLog`.
 - **googleapis** (`src/lib/google/`) — OAuth2 + Search Console + GA4 (Admin y Data API)
   para el Módulo 6, un único paquete cubre las tres. Business Profile queda fuera hasta
   que Google apruebe el acceso a su API.
@@ -52,7 +58,7 @@ infraestructura (colas, caché, tablas de coste) para módulos que todavía no e
 - **Infraestructura:** VPS Contabo existente, Docker, Coolify, Traefik
 
 Fuera del esqueleto actual, previstos para cuando el módulo correspondiente lo necesite:
-DataForSEO, Google Ads API, Business Profile API.
+Google Ads API (fuente alternativa de volumen para el Módulo 1), Business Profile API.
 
 ## Esquema de base de datos (Prisma)
 
@@ -85,15 +91,22 @@ Proyectos: conexión OAuth2 de la agencia con Google (Módulo 6). Conectar/desco
 ver email y scopes concedidos. La *selección de propiedad* por proyecto vive en la
 ficha de cada proyecto, no aquí — la conexión es una, las propiedades son por proyecto.
 
-### Ficha de proyecto (`/admin/proyectos/[id]/...`) — pestañas Perfil / Título y Meta / Schema / Google / Contenido / Auditoría
+### Ficha de proyecto (`/admin/proyectos/[id]/...`) — pestañas Perfil / Keywords / Título y Meta / Schema / Google / Contenido / Auditoría
 Todos los módulos salvo el 2 son inherentemente "de un proyecto", así que en vez de
 añadir ítems al sidebar global se anidan como pestañas dentro de la ficha del proyecto
-(`src/components/admin/ProjectSubNav.tsx`). Establece el patrón para cuando lleguen
-Keyword Research, Rank Tracking, etc.
+(`src/components/admin/ProjectSubNav.tsx`). El orden de pestañas sigue el número de
+módulo ascendente — por eso Keywords (Módulo 1) va primero. Establece el patrón para
+cuando lleguen Rank Tracking, etc.
 
+- **Keywords** (Módulo 1): textarea con lista de keywords → resolución de
+  volumen/competición/CPC (DataForSEO Keywords Data) + intención (DataForSEO Labs Search
+  Intent), cacheada en `KeywordDataCache` 30 días y compartida entre proyectos →
+  priorización por volumen → tabla de resultados → "Generar estructura de URLs" (vía
+  OpenRouter sobre las keywords ya persistidas, agrupando por intención). Solo
+  DataForSEO como fuente por ahora (Google Ads, fuente alternativa, queda pendiente).
 - **Título y Meta** (Módulo 3): URL → scraping real → 3 variantes de título/meta
   descripción vía OpenRouter, siguiendo [`docs/seo-rules.md`](./docs/seo-rules.md).
-  Keyword objetivo manual opcional (hasta que exista el Módulo 1).
+  Keyword objetivo manual opcional (puede venir del Módulo 1 cuando exista estudio).
 - **Schema** (Módulo 4): URL → analizar (heurística, sin LLM) → confirmar/cambiar tipo
   (LocalBusiness / Article / FAQPage) → generar JSON-LD. `LocalBusiness` es determinista
   (mapeo directo del NAP del proyecto, sin coste de LLM); `Article`/`FAQPage` usan
