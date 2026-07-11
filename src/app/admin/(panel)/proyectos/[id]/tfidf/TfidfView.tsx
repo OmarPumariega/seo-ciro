@@ -9,8 +9,10 @@ import {
   FileSearch,
   CheckCircle2,
   XCircle,
+  Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { downloadCsv } from "@/lib/csv";
 
 type TfidfTerm = {
   term: string;
@@ -171,11 +173,27 @@ export default function TfidfView({ projectId }: { projectId: string }) {
       {result && (
         <div className="space-y-4">
           <div className="bg-white rounded-xl border border-gray-100 p-5">
-            <div className="flex items-center gap-2 mb-1">
-              <FileSearch className="h-4 w-4 text-gray-400" />
-              <h3 className="text-sm font-semibold text-gray-900">
-                Términos recomendados ({result.terms.length})
-              </h3>
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <FileSearch className="h-4 w-4 text-gray-400" />
+                <h3 className="text-sm font-semibold text-gray-900">
+                  Términos recomendados ({result.terms.length})
+                </h3>
+              </div>
+              <button
+                onClick={() =>
+                  downloadCsv(
+                    `tfidf-${keyword}-${new Date().toISOString().slice(0, 10)}.csv`,
+                    ["Término", "TF-IDF", "Nº docs"],
+                    result.terms.map((t) => [t.term, t.tfidf.toFixed(4), t.docs])
+                  )
+                }
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50"
+                title="Exportar a CSV"
+              >
+                <Download className="h-3.5 w-3.5" />
+                CSV
+              </button>
             </div>
             <p className="text-xs text-gray-400 mb-4">
               Top-20 por score TF-IDF sobre el corpus de {result.sources.length} páginas. Incluye

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, Sparkles, Plus, Trash2, Target, TrendingUp, AlertTriangle } from "lucide-react";
+import ConfirmDialog from "@/components/admin/ConfirmDialog";
 
 type TopKeyword = { keyword: string; position: number | null; volume: number | null };
 
@@ -78,6 +79,8 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
   const [addDomain, setAddDomain] = useState("");
   const [analyzingDomain, setAnalyzingDomain] = useState<string | null>(null);
   const [gapId, setGapId] = useState<string | null>(null);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
   const [trend, setTrend] = useState<number[]>([]);
 
   function load() {
@@ -156,7 +159,10 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
   }
 
   async function handleRemove(competitorId: string) {
+    setRemoving(true);
     await fetch(`/api/proyectos/${projectId}/competidores/${competitorId}`, { method: "DELETE" });
+    setRemoving(false);
+    setConfirmRemoveId(null);
     load();
   }
 
@@ -271,7 +277,7 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
                   {gapId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Target className="h-3.5 w-3.5" />}
                   Gap
                 </button>
-                <button onClick={() => handleRemove(c.id)} className="p-1.5 text-gray-300 hover:text-red-600" title="Eliminar">
+                <button onClick={() => setConfirmRemoveId(c.id)} className="p-1.5 text-gray-300 hover:text-red-600" title="Eliminar">
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
@@ -296,6 +302,15 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
           </div>
         ))}
       </div>
+
+      <ConfirmDialog
+        open={confirmRemoveId !== null}
+        title="¿Dejar de trackear este competidor?"
+        description="Se borra su histórico de visibilidad y content gap guardados. No se puede deshacer."
+        busy={removing}
+        onCancel={() => setConfirmRemoveId(null)}
+        onConfirm={() => confirmRemoveId && handleRemove(confirmRemoveId)}
+      />
     </div>
   );
 }

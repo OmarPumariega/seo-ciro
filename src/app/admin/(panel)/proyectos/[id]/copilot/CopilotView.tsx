@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, MessageSquare, Plus, Send, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import ConfirmDialog from "@/components/admin/ConfirmDialog";
 
 type ThreadSummary = {
   id: string;
@@ -33,6 +34,8 @@ export default function CopilotView({ projectId }: { projectId: string }) {
   const [sending, setSending] = useState(false);
   const [input, setInput] = useState("");
   const [error, setError] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -86,8 +89,8 @@ export default function CopilotView({ projectId }: { projectId: string }) {
     inputRef.current?.focus();
   }
 
-  async function deleteThread(threadId: string, e: React.MouseEvent) {
-    e.stopPropagation();
+  async function deleteThread(threadId: string) {
+    setDeleting(true);
     try {
       const res = await fetch(`${base}/${threadId}`, { method: "DELETE" });
       if (!res.ok) throw new Error("No se pudo borrar el hilo");
@@ -95,6 +98,9 @@ export default function CopilotView({ projectId }: { projectId: string }) {
       await loadThreads();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al borrar");
+    } finally {
+      setDeleting(false);
+      setConfirmDeleteId(null);
     }
   }
 
@@ -176,11 +182,19 @@ export default function CopilotView({ projectId }: { projectId: string }) {
                 <span
                   role="button"
                   tabIndex={0}
-                  onClick={(e) => void deleteThread(t.id, e)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void deleteThread(t.id, e as unknown as React.MouseEvent);
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirmDeleteId(t.id);
                   }}
-                  className="shrink-0 text-gray-300 hover:text-red-500 cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.stopPropagation();
+                      setConfirmDeleteId(t.id);
+                    }
+                  }}
+                  // opacity-100 en touch/mobile (sin hover posible) — solo se
+                  // atenúa en desktop hasta pasar el ratón por la fila.
+                  className="shrink-0 text-gray-300 hover:text-red-500 cursor-pointer opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
                   title="Borrar hilo"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -269,6 +283,15 @@ export default function CopilotView({ projectId }: { projectId: string }) {
           </button>
         </form>
       </section>
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        title="¿Borrar este hilo?"
+        description="Se pierde toda la conversación. No se puede deshacer."
+        busy={deleting}
+        onCancel={() => setConfirmDeleteId(null)}
+        onConfirm={() => confirmDeleteId && deleteThread(confirmDeleteId)}
+      />
     </div>
   );
 }

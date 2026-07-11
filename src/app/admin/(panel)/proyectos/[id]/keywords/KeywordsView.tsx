@@ -10,9 +10,11 @@ import {
   Trash2,
   ArrowLeft,
   ArrowDownToLine,
+  Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { suggestionsCostUsd } from "@/lib/dataforseo/pricing";
+import { downloadCsv } from "@/lib/csv";
 
 type Keyword = {
   id: string;
@@ -253,6 +255,15 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
     reloadCurrent();
   }
 
+  function exportCsv() {
+    if (!current) return;
+    downloadCsv(
+      `keywords-${current.name}-${new Date().toISOString().slice(0, 10)}.csv`,
+      ["Keyword", "Volumen", "Competición", "CPC", "Intención", "Prioridad"],
+      current.keywords.map((kw) => [kw.keyword, kw.searchVolume ?? "", kw.competition ?? "", kw.cpc ?? "", kw.intent ?? "", kw.priority])
+    );
+  }
+
   async function handleGenerateStructure() {
     setSuggError("");
     setGeneratingStructure(true);
@@ -427,14 +438,25 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
         <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-900">Keywords del estudio ({current.keywords.length})</h3>
-            <button
-              onClick={handleGenerateStructure}
-              disabled={generatingStructure || current.keywords.length === 0}
-              className="flex items-center gap-2 px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50"
-            >
-              {generatingStructure ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-              {current.structure ? "Regenerar estructura" : "Generar estructura de URLs"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={exportCsv}
+                disabled={current.keywords.length === 0}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                title="Exportar a CSV"
+              >
+                <Download className="h-3.5 w-3.5" />
+                CSV
+              </button>
+              <button
+                onClick={handleGenerateStructure}
+                disabled={generatingStructure || current.keywords.length === 0}
+                className="flex items-center gap-2 px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50"
+              >
+                {generatingStructure ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                {current.structure ? "Regenerar estructura" : "Generar estructura de URLs"}
+              </button>
+            </div>
           </div>
 
           {current.keywords.length === 0 ? (

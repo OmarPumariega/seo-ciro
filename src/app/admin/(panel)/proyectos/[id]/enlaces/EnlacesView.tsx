@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Loader2, Network, Link2, AlertTriangle } from "lucide-react";
+import { Loader2, Network, Link2, AlertTriangle, Download } from "lucide-react";
+import { downloadCsv } from "@/lib/csv";
 
 type PageRow = {
   url: string;
@@ -93,11 +94,27 @@ export default function EnlacesView({ projectId }: { projectId: string }) {
 
       {/* Tabla completa de PageRank por URL */}
       <div className="bg-white rounded-xl border border-gray-100 p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <Network className="h-4 w-4 text-gray-500" />
-          <h3 className="text-sm font-semibold text-gray-900">
-            PageRank por URL ({all.length})
-          </h3>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Network className="h-4 w-4 text-gray-500" />
+            <h3 className="text-sm font-semibold text-gray-900">
+              PageRank por URL ({all.length})
+            </h3>
+          </div>
+          <button
+            onClick={() =>
+              downloadCsv(
+                `pagerank-${projectId}-${new Date().toISOString().slice(0, 10)}.csv`,
+                ["URL", "PageRank (%)", "Entrantes", "Salientes"],
+                all.map((p) => [p.url, (p.pagerank * 100).toFixed(2), p.incoming, p.outgoing])
+              )
+            }
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50"
+            title="Exportar a CSV"
+          >
+            <Download className="h-3.5 w-3.5" />
+            CSV
+          </button>
         </div>
         <div className="overflow-x-auto max-h-[28rem] overflow-y-auto">
           <table className="w-full text-sm">

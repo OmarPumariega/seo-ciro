@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Plus, Trash2, ChevronDown, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
+import ConfirmDialog from "@/components/admin/ConfirmDialog";
 
 type Todo = {
   id: string;
@@ -29,6 +30,7 @@ export default function TareasView({ projectId }: { projectId: string }) {
   const [showDate, setShowDate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   function loadTodos() {
     return fetch(`/api/proyectos/${projectId}/todos`)
@@ -83,6 +85,7 @@ export default function TareasView({ projectId }: { projectId: string }) {
       method: "DELETE",
     });
     setBusyId(null);
+    setConfirmDeleteId(null);
     if (res.ok) loadTodos();
   }
 
@@ -193,7 +196,7 @@ export default function TareasView({ projectId }: { projectId: string }) {
                     )}
                   </div>
                   <button
-                    onClick={() => handleDelete(todo.id)}
+                    onClick={() => setConfirmDeleteId(todo.id)}
                     disabled={busyId === todo.id}
                     className="p-1 text-gray-300 hover:text-red-600 disabled:opacity-50"
                     title="Eliminar tarea"
@@ -210,6 +213,15 @@ export default function TareasView({ projectId }: { projectId: string }) {
           </ul>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        title="¿Eliminar esta tarea?"
+        description="No se puede deshacer."
+        busy={busyId === confirmDeleteId}
+        onCancel={() => setConfirmDeleteId(null)}
+        onConfirm={() => confirmDeleteId && handleDelete(confirmDeleteId)}
+      />
     </div>
   );
 }

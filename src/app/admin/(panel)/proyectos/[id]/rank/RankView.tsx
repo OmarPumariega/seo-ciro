@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { rankMonthlyCostUsd } from "@/lib/dataforseo/pricing";
+import { downloadCsv } from "@/lib/csv";
 import RankVisibilityChart from "@/components/admin/RankVisibilityChart";
 
 type RankPosition = { id: string; checkedAt: string; position: number | null; url: string | null };
@@ -521,27 +522,20 @@ export default function RankView({ projectId }: { projectId: string }) {
   // Exportar a CSV (R6) — respeta el filtro/orden actual, sin backend: todo
   // el dato ya está cargado en el cliente.
   function exportCsv() {
-    const header = ["Keyword", "Grupo", "Volumen", "Posición actual", "Mejor posición", "Dispositivo", "Frecuencia", "Última comprobación"];
-    const rows = filteredKeywords.map((kw) => [
-      kw.keyword,
-      kw.group ?? "",
-      kw.searchVolume ?? "",
-      kw.lastPosition ?? "",
-      kw.bestPosition ?? "",
-      kw.device === "mobile" ? "Móvil" : "Desktop",
-      FREQUENCY_LABELS[kw.frequency] ?? kw.frequency,
-      kw.lastCheckedAt ? new Date(kw.lastCheckedAt).toLocaleDateString("es-ES") : "",
-    ]);
-    const csv = [header, ...rows]
-      .map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `rank-tracking-${projectId}-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsv(
+      `rank-tracking-${projectId}-${new Date().toISOString().slice(0, 10)}.csv`,
+      ["Keyword", "Grupo", "Volumen", "Posición actual", "Mejor posición", "Dispositivo", "Frecuencia", "Última comprobación"],
+      filteredKeywords.map((kw) => [
+        kw.keyword,
+        kw.group ?? "",
+        kw.searchVolume ?? "",
+        kw.lastPosition ?? "",
+        kw.bestPosition ?? "",
+        kw.device === "mobile" ? "Móvil" : "Desktop",
+        FREQUENCY_LABELS[kw.frequency] ?? kw.frequency,
+        kw.lastCheckedAt ? new Date(kw.lastCheckedAt).toLocaleDateString("es-ES") : "",
+      ])
+    );
   }
 
   return (

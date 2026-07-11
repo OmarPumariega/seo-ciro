@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, AlertTriangle } from "lucide-react";
+import { Loader2, AlertTriangle, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { downloadCsv } from "@/lib/csv";
 
 type EndpointRow = { api: string; endpoint: string; cost: number; count: number };
 type ProjectRow = { projectId: string | null; name: string; cost: number; limit: number | null };
@@ -56,9 +57,24 @@ export default function CostesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900">Costes de API</h1>
-        <p className="text-sm text-gray-500 mt-1 capitalize">{data.monthLabel}</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Costes de API</h1>
+          <p className="text-sm text-gray-500 mt-1 capitalize">{data.monthLabel}</p>
+        </div>
+        <button
+          onClick={() =>
+            downloadCsv(`costes-${data.monthLabel.replace(/\s+/g, "-")}.csv`, ["Sección", "Concepto", "Coste (USD)", "Llamadas / tope"], [
+              ...data.byProject.map((r) => ["Por proyecto", r.name, r.cost.toFixed(3), r.limit !== null ? `tope ${r.limit.toFixed(2)}$` : ""]),
+              ...data.byEndpoint.map((r) => ["Por tipo de llamada", ENDPOINT_LABELS[r.endpoint] ?? r.endpoint, r.cost.toFixed(3), `${r.count} llamadas`]),
+            ])
+          }
+          className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50 shrink-0"
+          title="Exportar a CSV"
+        >
+          <Download className="h-3.5 w-3.5" />
+          Exportar CSV
+        </button>
       </div>
 
       {/* DataForSEO vs tope */}
