@@ -12,12 +12,33 @@ const THIN_CONTENT_WORDS = 300; // bajo este nº de palabras → thin content
 
 function buildIssues(page: CrawledPage, inSearchConsole: boolean | null): string[] {
   const issues: string[] = [];
+  // Indexabilidad
   if (!page.canonicalUrl) issues.push("missing_canonical");
   if (page.metaRobots?.toLowerCase().includes("noindex")) issues.push("noindex");
   if (!page.isHttps) issues.push("no_https");
+  if (page.isRedirect) issues.push("redirect");
+  // Enlaces
   if (page.brokenLinksCount > 0) issues.push("broken_links");
+  // Imágenes
   if (page.imagesMissingAlt > 0) issues.push("missing_alt");
+  // Thin content
   if (page.wordCount !== null && page.wordCount < THIN_CONTENT_WORDS) issues.push("thin_content");
+  // On-page: title
+  if (!page.title) issues.push("missing_title");
+  else {
+    if (page.titleLength !== null && page.titleLength > 65) issues.push("title_long");
+    if (page.titleLength !== null && page.titleLength < 30) issues.push("title_short");
+  }
+  // On-page: meta description
+  if (!page.metaDescription) issues.push("missing_meta");
+  else {
+    if (page.metaLength !== null && page.metaLength > 160) issues.push("meta_long");
+    if (page.metaLength !== null && page.metaLength < 120) issues.push("meta_short");
+  }
+  // On-page: H1
+  if (page.h1Count === 0) issues.push("missing_h1");
+  if (page.h1Count !== null && page.h1Count > 1) issues.push("multiple_h1");
+  // GSC
   if (inSearchConsole === false) issues.push("no_gsc_impressions");
   return issues;
 }
@@ -132,24 +153,47 @@ export async function runAuditJob(): Promise<{ processed: number }> {
       psi
     );
 
+    // Detección de duplicados (cross-page): títulos y metas repetidos.
+    const titleCounts = new Map<string, number>();
+    const metaCounts = new Map<string, number>();
+    for (const p of crawl.pages) {
+      const t = p.title?.toLowerCase().trim();
+      if (t) titleCounts.set(t, (titleCounts.get(t) ?? 0) + 1);
+      const m = p.metaDescription?.toLowerCase().trim();
+      if (m) metaCounts.set(m, (metaCounts.get(m) ?? 0) + 1);
+    }
+
     await prisma.$transaction([
       prisma.auditPage.createMany({
         data: crawl.pages.map((page) => {
           const inSearchConsole = gscChecked ? (impressedUrls as Set<string>).has(page.url) : null;
+          const issues = buildIssues(page, inSearchConsole);
+          // Marca duplicados (título/meta repetidos entre páginas).
+          const tl = page.title?.toLowerCase().trim();
+          if (tl && (titleCounts.get(tl) ?? 0) > 1) issues.push("duplicate_title");
+          const ml = page.metaDescription?.toLowerCase().trim();
+          if (ml && (metaCounts.get(ml) ?? 0) > 1) issues.push("duplicate_meta");
           return {
             auditRunId: run.id,
             url: page.url,
             statusCode: page.statusCode,
             isHttps: page.isHttps,
+            isRedirect: page.isRedirect,
             canonicalUrl: page.canonicalUrl,
             metaRobots: page.metaRobots,
+            title: page.title,
+            titleLength: page.titleLength,
+            metaDescription: page.metaDescription,
+            metaLength: page.metaLength,
+            h1Count: page.h1Count,
+            h1Text: page.h1Text,
             imagesTotal: page.imagesTotal,
             imagesMissingAlt: page.imagesMissingAlt,
             brokenLinksCount: page.brokenLinksCount,
             brokenLinksSample: page.brokenLinksSample as Prisma.InputJsonValue,
             wordCount: page.wordCount,
             inSearchConsole,
-            issues: buildIssues(page, inSearchConsole) as Prisma.InputJsonValue,
+            issues: issues as Prisma.InputJsonValue,
           };
         }),
       }),

@@ -203,15 +203,22 @@ model AuditPage {
   url               String
   statusCode        Int?
   isHttps           Boolean
+  isRedirect        Boolean  @default(false) // la página implicó una redirección 3xx
   canonicalUrl      String?
   metaRobots        String?
+  title             String? // <title> de la página
+  titleLength       Int? // caracteres del título
+  metaDescription   String? // <meta name="description">
+  metaLength        Int? // caracteres de la meta description
+  h1Count           Int? // nº de etiquetas H1
+  h1Text            String? // primer H1
   imagesTotal       Int      @default(0)
   imagesMissingAlt  Int      @default(0)
   brokenLinksCount  Int      @default(0)
   brokenLinksSample Json? // hasta 10 URLs rotas, para mostrar en UI sin tabla aparte
   wordCount         Int? // nº de palabras del cuerpo (detección de thin content)
   inSearchConsole   Boolean? // null si gscChecked=false en el AuditRun padre
-  issues            Json? // ["missing_canonical", "noindex", "no_https"...]
+  issues            Json? // ["missing_canonical", "noindex", "no_https", "title_long"...]
   createdAt         DateTime @default(now())
 
   @@unique([auditRunId, url])

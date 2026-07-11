@@ -21,14 +21,21 @@ export type CrawledPage = {
   url: string;
   statusCode: number | null;
   isHttps: boolean;
+  isRedirect: boolean;
   canonicalUrl: string | null;
   metaRobots: string | null;
+  title: string | null;
+  titleLength: number | null;
+  metaDescription: string | null;
+  metaLength: number | null;
+  h1Count: number | null;
+  h1Text: string | null;
   imagesTotal: number;
   imagesMissingAlt: number;
-  linksCheckedCount: number; // enlaces con estado resuelto (visitados o comprobados)
+  linksCheckedCount: number;
   brokenLinksCount: number;
   brokenLinksSample: string[];
-  wordCount: number | null; // nº de palabras del cuerpo (thin content); null si no era HTML
+  wordCount: number | null;
 };
 
 export type CrawlResult = {
@@ -79,8 +86,15 @@ async function fetchAndAnalyzePage(url: string, origin: string): Promise<PageAna
     url,
     statusCode: null,
     isHttps,
+    isRedirect: false,
     canonicalUrl: null,
     metaRobots: null,
+    title: null,
+    titleLength: null,
+    metaDescription: null,
+    metaLength: null,
+    h1Count: null,
+    h1Text: null,
     imagesTotal: 0,
     imagesMissingAlt: 0,
     linksCheckedCount: 0,
@@ -101,6 +115,7 @@ async function fetchAndAnalyzePage(url: string, origin: string): Promise<PageAna
   }
 
   base.statusCode = res.status;
+  base.isRedirect = res.redirected; // fetch sigue la redirección; esto marca que hubo 3xx
 
   const contentType = res.headers.get("content-type") ?? "";
   if (!res.ok || !contentType.includes("text/html")) {
@@ -109,6 +124,19 @@ async function fetchAndAnalyzePage(url: string, origin: string): Promise<PageAna
 
   const html = await res.text();
   const $ = cheerio.load(html);
+
+  // On-page: title, meta description, H1 (lo que Screaming Frog reporta).
+  const titleText = $("title").first().text().trim();
+  base.title = titleText || null;
+  base.titleLength = titleText ? titleText.length : 0;
+
+  const metaDesc = $('meta[name="description"]').attr("content")?.trim();
+  base.metaDescription = metaDesc || null;
+  base.metaLength = metaDesc ? metaDesc.length : 0;
+
+  const h1s = $("h1");
+  base.h1Count = h1s.length;
+  base.h1Text = h1s.first().text().trim() || null;
 
   base.canonicalUrl = $('link[rel="canonical"]').attr("href")?.trim() || null;
   base.metaRobots = $('meta[name="robots"]').attr("content")?.trim() || null;

@@ -8,6 +8,7 @@ type CategoryScore = { score: number; max: number; detail: Record<string, number
 type CategoryScores = {
   indexabilidad: CategoryScore;
   enlaces: CategoryScore;
+  onpage: CategoryScore;
   rendimiento: CategoryScore | null;
   accesibilidadImagenes: CategoryScore;
 };
@@ -17,8 +18,15 @@ type AuditPage = {
   url: string;
   statusCode: number | null;
   isHttps: boolean;
+  isRedirect: boolean;
   canonicalUrl: string | null;
   metaRobots: string | null;
+  title: string | null;
+  titleLength: number | null;
+  metaDescription: string | null;
+  metaLength: number | null;
+  h1Count: number | null;
+  h1Text: string | null;
   imagesTotal: number;
   imagesMissingAlt: number;
   brokenLinksCount: number;
@@ -42,21 +50,33 @@ type AuditRun = {
   pages?: AuditPage[];
 };
 
-const CATEGORY_LABELS: Record<keyof CategoryScores, string> = {
+const CATEGORY_LABELS: Record<string, string> = {
   indexabilidad: "Indexabilidad",
   enlaces: "Enlaces",
+  onpage: "On-page (títulos/metas/H1)",
   rendimiento: "Rendimiento",
-  accesibilidadImagenes: "Accesibilidad de imágenes",
+  accesibilidadImagenes: "Accesibilidad",
 };
 
 const ISSUE_LABELS: Record<string, string> = {
   missing_canonical: "Sin canonical",
   noindex: "Marcada noindex",
   no_https: "Sin HTTPS",
+  redirect: "Redirección (3xx)",
   broken_links: "Enlaces rotos",
   missing_alt: "Imágenes sin alt",
-  no_gsc_impressions: "Sin impresiones en Search Console (90 días)",
+  no_gsc_impressions: "Sin impresiones GSC (90 días)",
   thin_content: "Thin content (<300 palabras)",
+  missing_title: "Sin título",
+  title_long: "Título largo (>65)",
+  title_short: "Título corto (<30)",
+  missing_meta: "Sin meta description",
+  meta_long: "Meta larga (>160)",
+  meta_short: "Meta corta (<120)",
+  missing_h1: "Sin H1",
+  multiple_h1: "Múltiples H1",
+  duplicate_title: "Título duplicado",
+  duplicate_meta: "Meta description duplicada",
 };
 
 function ScoreTile({ label, score, max }: { label: string; score: number | null; max: number }) {

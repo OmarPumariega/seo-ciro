@@ -10,6 +10,7 @@ export type CategoryScore = {
 export type CategoryScores = {
   indexabilidad: CategoryScore;
   enlaces: CategoryScore;
+  onpage: CategoryScore;
   rendimiento: CategoryScore | null;
   accesibilidadImagenes: CategoryScore;
 };
@@ -20,10 +21,11 @@ export type ScoreResult = {
 };
 
 const WEIGHTS = {
-  indexabilidad: 35,
-  enlaces: 25,
+  indexabilidad: 25,
+  enlaces: 20,
+  onpage: 20,
   rendimiento: 25,
-  accesibilidadImagenes: 15,
+  accesibilidadImagenes: 10,
 };
 
 // Pura, sin I/O — cada categoría guarda el detalle numérico usado para la
@@ -68,12 +70,30 @@ export function computeScore(
   const enlacesScore =
     enlacesComprobados > 0
       ? Math.max(0, Math.round(WEIGHTS.enlaces * (1 - enlacesRotos / enlacesComprobados)))
-      : WEIGHTS.enlaces; // nada que comprobar → no se penaliza
+      : WEIGHTS.enlaces;
 
   const enlaces: CategoryScore = {
     score: enlacesScore,
     max: WEIGHTS.enlaces,
     detail: { enlacesRotos, enlacesComprobados },
+  };
+
+  // On-page (títulos, meta descriptions, H1) — tipo Screaming Frog.
+  const paginasConIssuesOnPage = pages.filter((p) => {
+    return !p.title ||
+      (p.titleLength !== null && (p.titleLength < 30 || p.titleLength > 65)) ||
+      !p.metaDescription ||
+      (p.metaLength !== null && (p.metaLength < 120 || p.metaLength > 160)) ||
+      p.h1Count === 0 ||
+      (p.h1Count !== null && p.h1Count > 1);
+  }).length;
+  const onpageScore = crawled > 0
+    ? Math.max(0, Math.round(WEIGHTS.onpage * (1 - paginasConIssuesOnPage / crawled)))
+    : WEIGHTS.onpage;
+  const onpage: CategoryScore = {
+    score: onpageScore,
+    max: WEIGHTS.onpage,
+    detail: { paginasConIssuesOnPage, paginasRastreadas: crawled },
   };
 
   // Rendimiento — solo si hay dato de PSI (home). Si no, la categoría queda
@@ -111,14 +131,15 @@ export function computeScore(
   const categoryScores: CategoryScores = {
     indexabilidad,
     enlaces,
+    onpage,
     rendimiento,
     accesibilidadImagenes,
   };
 
   const sumaConDatos =
-    indexabilidad.score + enlaces.score + accesibilidadImagenes.score + (rendimiento?.score ?? 0);
+    indexabilidad.score + enlaces.score + onpage.score + accesibilidadImagenes.score + (rendimiento?.score ?? 0);
   const maxConDatos =
-    indexabilidad.max + enlaces.max + accesibilidadImagenes.max + (rendimiento?.max ?? 0);
+    indexabilidad.max + enlaces.max + onpage.max + accesibilidadImagenes.max + (rendimiento?.max ?? 0);
 
   const overallScore = maxConDatos > 0 ? Math.round((sumaConDatos / maxConDatos) * 100) : 0;
 
