@@ -184,6 +184,9 @@ model AuditRun {
   pagesCrawled   Int       @default(0)
   sitemapFound   Boolean?
   robotsBlocked  Boolean   @default(false)
+  robotsContent  String? // texto plano del robots.txt (para mostrar las reglas)
+  sitemapUrlCount Int? // nº de URLs encontradas en sitemap.xml
+  sitemapUrls    Json? // muestra de URLs del sitemap (hasta 100)
   overallScore   Int? // 0-100, null si no completada o robotsBlocked
   categoryScores Json? // detalle numérico por categoría, auditable a mano
   psiData        Json? // PageSpeed Insights de la home únicamente
@@ -216,6 +219,8 @@ model AuditPage {
   imagesMissingAlt  Int      @default(0)
   brokenLinksCount  Int      @default(0)
   brokenLinksSample Json? // hasta 10 URLs rotas, para mostrar en UI sin tabla aparte
+  externalLinksCount Int     @default(0) // enlaces salientes a dominios externos
+  externalDomains   Json? // hasta 10 dominios externos enlazados
   wordCount         Int? // nº de palabras del cuerpo (detección de thin content)
   inSearchConsole   Boolean? // null si gscChecked=false en el AuditRun padre
   issues            Json? // ["missing_canonical", "noindex", "no_https", "title_long"...]

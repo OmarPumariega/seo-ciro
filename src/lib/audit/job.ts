@@ -192,6 +192,8 @@ export async function runAuditJob(): Promise<{ processed: number }> {
             brokenLinksCount: page.brokenLinksCount,
             brokenLinksSample: page.brokenLinksSample as Prisma.InputJsonValue,
             wordCount: page.wordCount,
+            externalLinksCount: page.externalLinksCount,
+            externalDomains: page.externalDomains as Prisma.InputJsonValue,
             inSearchConsole,
             issues: issues as Prisma.InputJsonValue,
           };
@@ -209,6 +211,9 @@ export async function runAuditJob(): Promise<{ processed: number }> {
           psiData: psi ? (psi as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
           gscChecked,
           linkGraph: crawl.linkGraph as unknown as Prisma.InputJsonValue,
+          robotsContent: crawl.robotsContent,
+          sitemapUrlCount: crawl.sitemapUrlCount,
+          sitemapUrls: crawl.sitemapUrls as unknown as Prisma.InputJsonValue,
         },
       }),
     ]);

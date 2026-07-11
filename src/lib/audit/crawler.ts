@@ -36,12 +36,17 @@ export type CrawledPage = {
   brokenLinksCount: number;
   brokenLinksSample: string[];
   wordCount: number | null;
+  externalLinksCount: number;
+  externalDomains: string[];
 };
 
 export type CrawlResult = {
   pages: CrawledPage[];
   robotsBlocked: boolean;
   sitemapFound: boolean;
+  robotsContent: string | null;
+  sitemapUrlCount: number | null;
+  sitemapUrls: string[];
   // Grafo de enlaces internos: { url, links: [urls internas] }. Lo usa el
   // módulo de PageRank/enlazado interno. Vacío si robots bloqueó.
   linkGraph: { url: string; links: string[] }[];
@@ -101,6 +106,8 @@ async function fetchAndAnalyzePage(url: string, origin: string): Promise<PageAna
     brokenLinksCount: 0,
     brokenLinksSample: [],
     wordCount: null,
+    externalLinksCount: 0,
+    externalDomains: [],
   };
 
   let res: Response;
@@ -161,7 +168,20 @@ async function fetchAndAnalyzePage(url: string, origin: string): Promise<PageAna
     } catch {
       resolved = null;
     }
-    if (resolved && new URL(resolved).origin === origin) internalLinks.push(resolved);
+    if (resolved && new URL(resolved).origin === origin) {
+      internalLinks.push(resolved);
+    } else if (resolved) {
+      // Enlace externo (distinto dominio) — contar y muestrear dominios.
+      base.externalLinksCount++;
+      try {
+        const domain = new URL(resolved).hostname;
+        if (!base.externalDomains.includes(domain) && base.externalDomains.length < 10) {
+          base.externalDomains.push(domain);
+        }
+      } catch {
+        // ignore
+      }
+    }
   });
 
   return { page: base, internalLinks: [...new Set(internalLinks)] };
@@ -193,16 +213,21 @@ async function checkLinkStatus(url: string): Promise<number | null> {
 
 export async function crawlSite(startUrl: string): Promise<CrawlResult> {
   const start = normalizeUrl(startUrl);
-  if (!start) return { pages: [], robotsBlocked: false, sitemapFound: false, linkGraph: [] };
+  if (!start) return { pages: [], robotsBlocked: false, sitemapFound: false, robotsContent: null, sitemapUrlCount: null, sitemapUrls: [], linkGraph: [] };
 
   const origin = new URL(start).origin;
   const robots = await loadRobotsRules(origin);
 
+  // robots.txt contenido (para mostrar las reglas en la UI).
+  const robotsContent = await fetchRobotsContent(origin).catch(() => null);
+
   if (!robots.isAllowed(start)) {
-    return { pages: [], robotsBlocked: true, sitemapFound: false, linkGraph: [] };
+    return { pages: [], robotsBlocked: true, sitemapFound: false, robotsContent, sitemapUrlCount: null, sitemapUrls: [], linkGraph: [] };
   }
 
   const sitemapFound = await checkSitemap(origin);
+  // Sitemap detallado: parsear URLs.
+  const sitemapData = sitemapFound ? await parseSitemap(origin).catch(() => ({ count: null, urls: [] as string[] })) : { count: null, urls: [] as string[] };
 
   const visited = new Set<string>();
   const queue: { url: string; depth: number }[] = [{ url: start, depth: 0 }];
@@ -283,5 +308,40 @@ export async function crawlSite(startUrl: string): Promise<CrawlResult> {
     page.brokenLinksSample = broken.slice(0, MAX_BROKEN_SAMPLE);
   }
 
-  return { pages, robotsBlocked: false, sitemapFound, linkGraph: pages.map((p) => ({ url: p.url, links: pageLinks.get(p.url) ?? [] })) };
+  return { pages, robotsBlocked: false, sitemapFound, robotsContent, sitemapUrlCount: sitemapData.count, sitemapUrls: sitemapData.urls, linkGraph: pages.map((p) => ({ url: p.url, links: pageLinks.get(p.url) ?? [] })) };
+}
+
+// Fetch del robots.txt en texto plano para mostrar las reglas en la UI.
+async function fetchRobotsContent(origin: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${origin}/robots.txt`, {
+      headers: { "User-Agent": CRAWLER_USER_AGENT },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return null;
+    return await res.text();
+  } catch {
+    return null;
+  }
+}
+
+// Parse del sitemap.xml: cuenta URLs y guarda una muestra (hasta 100).
+async function parseSitemap(origin: string): Promise<{ count: number; urls: string[] }> {
+  try {
+    const res = await fetch(`${origin}/sitemap.xml`, {
+      headers: { "User-Agent": CRAWLER_USER_AGENT },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return { count: 0, urls: [] };
+    const xml = await res.text();
+    const $ = cheerio.load(xml, { xml: true });
+    const allUrls: string[] = [];
+    $("loc").each((_, el) => {
+      const loc = $(el).text().trim();
+      if (loc) allUrls.push(loc);
+    });
+    return { count: allUrls.length, urls: allUrls.slice(0, 100) };
+  } catch {
+    return { count: 0, urls: [] };
+  }
 }

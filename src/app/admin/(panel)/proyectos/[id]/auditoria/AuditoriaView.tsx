@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Sparkles, AlertTriangle, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import AuditTrendChart from "@/components/admin/AuditTrendChart";
+import AuditTechnicalDetails from "@/components/admin/AuditTechnicalDetails";
 
 type CategoryScore = { score: number; max: number; detail: Record<string, number> };
 type CategoryScores = {
@@ -288,6 +290,7 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
 
       {current?.status === "completed" && !current.robotsBlocked && current.categoryScores && (
         <>
+          <AuditTrendChart projectId={projectId} />
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <ScoreTile label="Puntuación global" score={current.overallScore} max={100} />
             {(Object.keys(CATEGORY_LABELS) as (keyof CategoryScores)[]).map((key) => {
@@ -364,6 +367,9 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
             current.categoryScores && (
               <p className="text-sm text-gray-500">Sin thin content.</p>
             )
+          )}
+          {current?.status === "completed" && (
+            <AuditTechnicalDetails projectId={projectId} auditRunId={current.id} />
           )}
         </>
       )}
