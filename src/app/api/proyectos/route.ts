@@ -63,6 +63,8 @@ export async function POST(req: NextRequest) {
       notes: normalizeText(body.notes, MAX_LONG),
       lat,
       lng,
+      gbpName: normalizeText(body.gbpName),
+      gbpPlaceId: normalizeText(body.gbpPlaceId),
     },
   });
 

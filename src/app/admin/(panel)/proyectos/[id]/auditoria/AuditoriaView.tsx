@@ -221,9 +221,26 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
       {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
 
       {current && (current.status === "pending" || current.status === "running") && (
-        <div className="flex items-center gap-2 text-sm bg-gray-50 text-gray-600 px-3 py-2 rounded-lg">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          {current.status === "pending" ? "En cola, empezará en breve..." : "Rastreando el sitio..."}
+        <div className="bg-gray-50 text-gray-600 px-4 py-3 rounded-lg space-y-1">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+            {current.status === "pending"
+              ? "En cola — el procesador revisa cada ~60s, empezará en breve."
+              : "Rastreando el sitio y consultando PageSpeed..."}
+          </div>
+          {current.status === "pending" && (
+            <p className="text-xs text-gray-500 pl-6">
+              Las auditorías se procesan en segundo plano. Espera hasta un minuto
+              antes de que cambie a &quot;en curso&quot;.
+            </p>
+          )}
+          {current.status === "running" && (
+            <p className="text-xs text-gray-500 pl-6">
+              Un análisis completo (rastreo de hasta 50 páginas + PageSpeed de la
+              home) puede tardar varios minutos en sitios grandes. No cierres la
+              página — los resultados aparecerán aquí automáticamente.
+            </p>
+          )}
         </div>
       )}
 

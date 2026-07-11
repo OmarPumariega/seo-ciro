@@ -76,6 +76,8 @@ export async function PATCH(
         notes: normalizeText(body.notes, MAX_LONG),
         lat,
         lng,
+        gbpName: normalizeText(body.gbpName),
+        gbpPlaceId: normalizeText(body.gbpPlaceId),
         // La pestaña "Perfil" nunca manda estas claves en su body, así que
         // "undefined" (no tocar) es el valor correcto por defecto — solo la
         // pestaña "Google" las envía explícitamente, incluso como null al

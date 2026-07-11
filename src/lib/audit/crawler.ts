@@ -5,9 +5,16 @@ const MAX_PAGES = 50;
 const MAX_DEPTH = 4;
 const PAGE_TIMEOUT_MS = 10000;
 const PAGE_DELAY_MS = 400;
+// Concurrency control: rastrea varias páginas en paralelo para no sumar
+// secuencialmente la latencia de cada fetch. 4 peticiones simultáneas es
+// conservador — un navegador hace 6+ por origen. Aplicado por lotes: se
+// esperan todas las del lote antes de añadir sus enlaces a la cola (mantiene
+// el orden BFS y la deduplicación del visited/queue).
+const CRAWL_CONCURRENCY = 4;
 const EXTRA_LINK_CHECK_CAP = 100;
 const LINK_CHECK_TIMEOUT_MS = 5000;
 const LINK_CHECK_DELAY_MS = 200;
+const LINK_CHECK_CONCURRENCY = 5;
 const MAX_BROKEN_SAMPLE = 10;
 
 export type CrawledPage = {
@@ -166,21 +173,39 @@ export async function crawlSite(startUrl: string): Promise<CrawlResult> {
   const allDiscoveredLinks = new Set<string>();
 
   while (queue.length > 0 && pages.length < MAX_PAGES) {
-    const next = queue.shift();
-    if (!next) break;
-    const { url, depth } = next;
-    if (visited.has(url) || !robots.isAllowed(url)) continue;
-    visited.add(url);
+    // Construye un lote de hasta CRAWL_CONCURRENCY URLs válidas (no
+    // visitadas, permitidas por robots). Se marcan como visitadas aquí para
+    // que lotes posteriores no las dupliquen.
+    const batch: { url: string; depth: number }[] = [];
+    while (
+      batch.length < CRAWL_CONCURRENCY &&
+      queue.length > 0 &&
+      pages.length + batch.length < MAX_PAGES
+    ) {
+      const next = queue.shift();
+      if (!next) break;
+      if (visited.has(next.url) || !robots.isAllowed(next.url)) continue;
+      visited.add(next.url);
+      batch.push(next);
+    }
+    if (batch.length === 0) continue;
 
-    const { page, internalLinks } = await fetchAndAnalyzePage(url, origin);
-    pages.push(page);
-    pageLinks.set(url, internalLinks);
-    internalLinks.forEach((l) => allDiscoveredLinks.add(l));
+    const results = await Promise.all(
+      batch.map((item) => fetchAndAnalyzePage(item.url, origin))
+    );
 
-    if (depth < MAX_DEPTH) {
-      for (const link of internalLinks) {
-        if (!visited.has(link) && !queue.some((q) => q.url === link)) {
-          queue.push({ url: link, depth: depth + 1 });
+    for (let i = 0; i < results.length; i++) {
+      const { page, internalLinks } = results[i];
+      const { url, depth } = batch[i];
+      pages.push(page);
+      pageLinks.set(url, internalLinks);
+      internalLinks.forEach((l) => allDiscoveredLinks.add(l));
+
+      if (depth < MAX_DEPTH) {
+        for (const link of internalLinks) {
+          if (!visited.has(link) && !queue.some((q) => q.url === link)) {
+            queue.push({ url: link, depth: depth + 1 });
+          }
         }
       }
     }
@@ -198,8 +223,10 @@ export async function crawlSite(startUrl: string): Promise<CrawlResult> {
     .filter((l) => !linkStatus.has(l))
     .slice(0, EXTRA_LINK_CHECK_CAP);
 
-  for (const link of toCheck) {
-    linkStatus.set(link, await checkLinkStatus(link));
+  for (let i = 0; i < toCheck.length; i += LINK_CHECK_CONCURRENCY) {
+    const slice = toCheck.slice(i, i + LINK_CHECK_CONCURRENCY);
+    const statuses = await Promise.all(slice.map(checkLinkStatus));
+    slice.forEach((url, j) => linkStatus.set(url, statuses[j]));
     await sleep(LINK_CHECK_DELAY_MS);
   }
 

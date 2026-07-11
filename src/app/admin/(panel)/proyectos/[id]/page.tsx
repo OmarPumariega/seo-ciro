@@ -27,6 +27,8 @@ export default async function ProjectDetailPage({
         hours: hours?.text ?? "",
         lat: project.lat !== null ? String(project.lat) : "",
         lng: project.lng !== null ? String(project.lng) : "",
+        gbpName: project.gbpName ?? "",
+        gbpPlaceId: project.gbpPlaceId ?? "",
         toneOfVoice: project.toneOfVoice ?? "",
         notes: project.notes ?? "",
       }}

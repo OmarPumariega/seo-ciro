@@ -37,6 +37,12 @@ model Project {
   lat             Float?
   lng             Float?
 
+  // Ficha de Google Business Profile de referencia para el geogrid (Módulo 9):
+  // el matching en Maps SERP prioriza place_id (exacto) y luego el nombre tal
+  // cual aparece en GBP. Opcionales, pero mejoran la precisión del geogrid.
+  gbpName    String?
+  gbpPlaceId String?
+
   // Perfil de marca, usado por el generador de contenido (Módulo 7) y de
   // títulos/metas (Módulo 3).
   toneOfVoice String?

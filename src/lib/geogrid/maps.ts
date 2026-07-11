@@ -28,6 +28,7 @@ type MapsItem = {
   domain?: string | null;
   title?: string;
   url?: string | null;
+  place_id?: string;
 };
 
 function normalizeName(s: string): string {
@@ -41,6 +42,8 @@ export async function checkMapsRank(params: {
   languageCode: string;
   projectDomain: string | null; // normalizado, o null si no hay
   businessName: string | null;
+  gbpName?: string | null; // nombre exacto de la ficha GBP (más fiable que businessName)
+  gbpPlaceId?: string | null; // place_id de Google (matching 1:1, lo más fiable)
 }): Promise<MapsResult> {
   const { keyword, lat, lng, languageCode, projectDomain, businessName } = params;
 
@@ -59,6 +62,8 @@ export async function checkMapsRank(params: {
   const items = Array.isArray(resultObj.items) ? (resultObj.items as Array<Record<string, unknown>>) : [];
 
   const normBizName = businessName ? normalizeName(businessName) : null;
+  const normGbpName = params.gbpName ? normalizeName(params.gbpName) : null;
+  const wantPlaceId = params.gbpPlaceId?.trim() || null;
 
   let bestPosition: number | null = null;
   let bestTitle: string | null = null;
@@ -70,10 +75,15 @@ export async function checkMapsRank(params: {
 
     const itemDomain = typeof item.domain === "string" ? item.domain : "";
     const itemTitle = typeof item.title === "string" ? item.title : "";
+    const itemPlaceId = typeof item.place_id === "string" ? item.place_id : "";
 
+    // Prioridad de matching: place_id (1:1) > nombre exacto GBP > dominio >
+    // businessName (incluye). Cuanto más arriba en la cadena, más fiable.
+    const placeHit = wantPlaceId && itemPlaceId && itemPlaceId === wantPlaceId;
+    const gbpHit = normGbpName && itemTitle && normalizeName(itemTitle) === normGbpName;
     const domainHit = projectDomain && itemDomain && domainMatches(itemDomain, projectDomain);
     const nameHit = normBizName && itemTitle && normalizeName(itemTitle).includes(normBizName);
-    if (!domainHit && !nameHit) continue;
+    if (!placeHit && !gbpHit && !domainHit && !nameHit) continue;
 
     const pos = typeof item.rank_absolute === "number" ? item.rank_absolute : null;
     if (pos === null) continue;

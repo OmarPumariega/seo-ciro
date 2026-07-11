@@ -193,16 +193,27 @@ export default function RankView({ projectId }: { projectId: string }) {
     const res = await fetch(`/api/proyectos/${projectId}/rank/keywords`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ keyword: newKeyword, device: newDevice, frequency: newFrequency, depth: Number(newDepth) }),
+      // El backend acepta { keywords: "una por línea" } (bulk) y { keyword } (legacy).
+      // Mandamos siempre bulk: con una sola línea también funciona.
+      body: JSON.stringify({ keywords: newKeyword, device: newDevice, frequency: newFrequency, depth: Number(newDepth) }),
     });
     const data = await res.json();
     setAdding(false);
     if (!res.ok) {
-      setError(data.error ?? "Error al añadir la keyword");
+      setError(data.error ?? "Error al añadir las keywords");
       return;
     }
+    // data = { added, skipped, checked, errors }. Lo dejamos 4s visible.
+    const parts: string[] = [`${data.added} añadidas`];
+    if (data.skipped > 0) parts.push(`${data.skipped} ya seguidas`);
+    const errCount = Array.isArray(data.errors) ? data.errors.length : 0;
+    if (errCount > 0) {
+      const why = data.errors[0]?.error ?? "";
+      parts.push(`${errCount} sin posición${why ? ` (${why})` : ""}`);
+    }
+    setErrorFor("add", parts.join(" · "));
     setNewKeyword("");
-    loadKeywords();
+    await Promise.all([loadKeywords(), loadSpend()]);
   }
 
   async function handleImport() {
@@ -288,7 +299,10 @@ export default function RankView({ projectId }: { projectId: string }) {
     (sum, kw) => sum + rankMonthlyCostUsd(1, kw.depth, kw.frequency),
     0
   );
-  const newKeywordMonthlyCost = rankMonthlyCostUsd(1, Number(newDepth), newFrequency);
+  // Cuenta las líneas no vacías del textarea (bulk-aware). Una sola línea
+  // también funciona: el coste mostrado es el de esa keyword.
+  const newKeywordCount = newKeyword.split("\n").filter((l) => l.trim()).length;
+  const newKeywordMonthlyCost = rankMonthlyCostUsd(newKeywordCount, Number(newDepth), newFrequency);
   const importStudy = studies.find((s) => s.id === importStudyId);
   const importBatchMonthly = importStudy
     ? rankMonthlyCostUsd(importStudy._count.keywords, Number(newDepth), newFrequency)
@@ -310,14 +324,13 @@ export default function RankView({ projectId }: { projectId: string }) {
       <form onSubmit={handleAdd} className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Keyword a seguir</label>
-            <input
-              type="text"
+            <label className="block text-sm font-medium text-gray-700">Keywords a seguir (una por línea)</label>
+            <textarea
               value={newKeyword}
               onChange={(e) => setNewKeyword(e.target.value)}
-              placeholder="abogado de familia madrid"
-              required
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+              placeholder={"abogado de familia madrid\nabogado laboralista madrid\nabogado penalista madrid"}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 resize-y"
             />
           </div>
           <div className="grid grid-cols-3 gap-3">
@@ -386,8 +399,10 @@ export default function RankView({ projectId }: { projectId: string }) {
           Añadir a seguimiento
         </button>
         <p className="text-xs text-gray-400">
-          Esta keyword costará <strong className="text-gray-600">~${newKeywordMonthlyCost.toFixed(2)}/mes</strong> (Top-{newDepth}, {FREQUENCY_LABELS[newFrequency].toLowerCase()}).
-          {" "}Total del proyecto con ella: ~${(projectMonthlyCost + newKeywordMonthlyCost).toFixed(2)}/mes.
+          {newKeywordCount > 0
+            ? <>Estas {newKeywordCount} keyword(s) costarán <strong className="text-gray-600">~${newKeywordMonthlyCost.toFixed(2)}/mes</strong> (Top-{newDepth}, {FREQUENCY_LABELS[newFrequency].toLowerCase()}).</>
+            : <>Coste por keyword: <strong className="text-gray-600">~${rankMonthlyCostUsd(1, Number(newDepth), newFrequency).toFixed(2)}/mes</strong> (Top-{newDepth}, {FREQUENCY_LABELS[newFrequency].toLowerCase()}).</>}
+          {" "}Total del proyecto al añadirlas: ~${(projectMonthlyCost + newKeywordMonthlyCost).toFixed(2)}/mes.
         </p>
       </form>
 

@@ -15,6 +15,8 @@ export type ProjectFormValues = {
   hours: string;
   lat: string;
   lng: string;
+  gbpName: string;
+  gbpPlaceId: string;
   toneOfVoice: string;
   notes: string;
 };
@@ -30,6 +32,8 @@ const EMPTY_VALUES: ProjectFormValues = {
   hours: "",
   lat: "",
   lng: "",
+  gbpName: "",
+  gbpPlaceId: "",
   toneOfVoice: "",
   notes: "",
 };
@@ -48,6 +52,9 @@ export default function ProjectForm({
   const [form, setForm] = useState<ProjectFormValues>({ ...EMPTY_VALUES, ...initial });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  // Marca si el usuario ha editado el slug a mano. Mientras no, el slug se
+  // deriva automáticamente del nombre (autorelleno que sigue al nombre).
+  const [slugTouched, setSlugTouched] = useState(Boolean(initial?.slug));
 
   function set<K extends keyof ProjectFormValues>(key: K, value: ProjectFormValues[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -77,7 +84,9 @@ export default function ProjectForm({
                 setForm((prev) => ({
                   ...prev,
                   name,
-                  slug: prev.slug || slugify(name),
+                  // Mientras el usuario no haya tocado el slug, se deriva del
+                  // nombre en cada pulsación (autorelleno).
+                  slug: slugTouched ? prev.slug : slugify(name),
                 }));
               }}
               placeholder="Autocaravanas Ruta Norte"
@@ -91,7 +100,10 @@ export default function ProjectForm({
               <input
                 type="text"
                 value={form.slug}
-                onChange={(e) => set("slug", e.target.value)}
+                onChange={(e) => {
+                  setSlugTouched(true);
+                  set("slug", e.target.value);
+                }}
                 placeholder="autocaravanas-ruta-norte"
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 font-mono"
                 required
@@ -183,6 +195,38 @@ export default function ProjectForm({
               Obtén las coordenadas exactas en Google Maps: clic derecho en el pin → copiar. Necesarias
               para el geogrid del Módulo 9.
             </p>
+            <div className="space-y-1 sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Ficha Google Business Profile <span className="text-gray-400 font-normal">(nombre tal cual aparece en Google Maps)</span>
+              </label>
+              <input
+                type="text"
+                value={form.gbpName}
+                onChange={(e) => set("gbpName", e.target.value)}
+                placeholder="Pastelería La Mallorquina - Sol"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+              />
+              <p className="text-xs text-gray-400">
+                Pega el nombre EXACTO de tu ficha de Google. El geogrid lo usa para localizar tu negocio
+                en los resultados de Maps. (Opcional pero recomendado para precisión.)
+              </p>
+            </div>
+            <div className="space-y-1 sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Place ID de Google <span className="text-gray-400 font-normal">(opcional, matching exacto)</span>
+              </label>
+              <input
+                type="text"
+                value={form.gbpPlaceId}
+                onChange={(e) => set("gbpPlaceId", e.target.value)}
+                placeholder="ChIJ..."
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 font-mono"
+              />
+              <p className="text-xs text-gray-400">
+                Si lo conoces, pégalo para un matching 1:1 en el geogrid. Encuéntralo en
+                developers.google.com/maps/documentation/places/web-service/place-id.
+              </p>
+            </div>
             <div className="space-y-1 sm:col-span-2">
               <label className="block text-sm font-medium text-gray-700">Horario</label>
               <textarea

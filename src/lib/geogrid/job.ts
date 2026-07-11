@@ -53,6 +53,8 @@ export async function runGeogridJob(): Promise<{ processed: number }> {
         languageCode: "es",
         projectDomain,
         businessName: run.project.businessName ?? null,
+        gbpName: run.project.gbpName ?? null,
+        gbpPlaceId: run.project.gbpPlaceId ?? null,
       });
       results.push({ row: p.row, col: p.col, lat: p.lat, lng: p.lng, position: rank.position, title: rank.title });
       if (costUsd !== null) totalCost += costUsd;

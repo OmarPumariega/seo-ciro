@@ -92,6 +92,12 @@ export async function runAuditJob(): Promise<{ processed: number }> {
   });
 
   try {
+    // PSI y GSC son independientes del crawl — arrancan en paralelo para no
+    // sumar su latencia (PSI solo: 5-15s) al final del job. Si robots bloquea
+    // el rastreo, el resultado de PSI simplemente se descarta.
+    const psiPromise = getPsiMetrics(run.startUrl).catch(() => null);
+    const gscPromise = crossReferenceGsc(run.project.gscSiteUrl).catch(() => null);
+
     const crawl = await crawlSite(run.startUrl);
 
     if (crawl.robotsBlocked) {
@@ -114,10 +120,7 @@ export async function runAuditJob(): Promise<{ processed: number }> {
       return { processed: 1 };
     }
 
-    const [psi, impressedUrls] = await Promise.all([
-      getPsiMetrics(run.startUrl).catch(() => null),
-      crossReferenceGsc(run.project.gscSiteUrl).catch(() => null),
-    ]);
+    const [psi, impressedUrls] = await Promise.all([psiPromise, gscPromise]);
 
     const gscChecked = impressedUrls !== null;
 
