@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { FolderKanban, LayoutDashboard, Settings, Wallet, X, ArrowLeft } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { FolderKanban, LayoutDashboard, Settings, Wallet, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -53,31 +53,28 @@ export default function AdminSidebar({
   onClose: () => void;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const projectId = useProjectIdFromPath();
-  const [project, setProject] = useState<ProjectInfo | null>(null);
+  const [projects, setProjects] = useState<ProjectInfo[]>([]);
 
-  // Carga los datos mínimos del proyecto (nombre + isLocalBusiness) solo cuando
-  // la ruta está dentro de un proyecto. El sidebar vive en el shell (nivel
-  // panel), así que no recibe el projectId del layout del proyecto — lo deduce
-  // de la URL y lo pide a la API.
+  // Carga la lista de proyectos (para el selector) cuando se está dentro de un
+  // proyecto. El sidebar vive en el shell (nivel panel) y no recibe el proyecto
+  // del layout del proyecto — lo deduce de la URL y pide la lista a la API.
   useEffect(() => {
     let cancelled = false;
     if (!projectId) {
-      // Al salir de una página de proyecto, limpia el estado. Diferido a un
-      // microtask para no llamar setState de forma síncrona dentro del effect
-      // (regla react-hooks/set-state-in-effect).
       Promise.resolve().then(() => {
-        if (!cancelled) setProject(null);
+        if (!cancelled) setProjects([]);
       });
       return () => {
         cancelled = true;
       };
     }
-    fetch(`/api/proyectos/${projectId}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!cancelled && d && d.id) {
-          setProject({ id: d.id, name: d.name, isLocalBusiness: !!d.isLocalBusiness });
+    fetch("/api/proyectos")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list: ProjectInfo[]) => {
+        if (!cancelled && Array.isArray(list)) {
+          setProjects(list.map((p) => ({ id: p.id, name: p.name, isLocalBusiness: !!p.isLocalBusiness })));
         }
       })
       .catch(() => {});
@@ -86,8 +83,27 @@ export default function AdminSidebar({
     };
   }, [projectId]);
 
+  const project = projects.find((p) => p.id === projectId) ?? null;
   const base = project ? `/admin/proyectos/${project.id}` : "";
   const modules = project ? projectModules(base, project.isLocalBusiness) : [];
+
+  // Segmento de módulo actual (para mantenerlo al cambiar de proyecto).
+  // P.ej. estando en .../KEYWORDS, al cambiar de proyecto se va al Keywords del nuevo.
+  function switchProject(newId: string) {
+    if (!newId || newId === projectId) return;
+    const rest = projectId ? pathname.replace(`/admin/proyectos/${projectId}`, "") : "";
+    const seg = rest.replace(/^\//, "").split("/")[0] ?? "";
+    let target = `/admin/proyectos/${newId}`;
+    if (seg && seg !== "geogrid") {
+      target += `/${seg}`;
+    } else if (seg === "geogrid") {
+      // Geogrid solo existe en proyectos locales; si el destino no lo es, a Perfil.
+      const np = projects.find((p) => p.id === newId);
+      if (np?.isLocalBusiness) target += "/geogrid";
+    }
+    router.push(target);
+    onClose();
+  }
 
   return (
     <>
@@ -136,41 +152,59 @@ export default function AdminSidebar({
             );
           })}
 
-          {/* Módulos del proyecto (vertical, solo dentro de un proyecto).
-              Antes eran pestañas horizontales que se rompían por el nº de módulos. */}
-          {project && (
-            <div className="pt-4 mt-4 border-t border-gray-100">
+          {/* Selector de proyecto + módulos (solo dentro de un proyecto).
+              El selector permite cambiar de proyecto sin ir a la lista (1 clic),
+              y mantiene el módulo activo al cambiar. */}
+          {projectId && (
+            <div className="pt-4 mt-4 border-t border-gray-100 space-y-2">
+              <label className="block px-3 text-xs font-medium text-gray-500">Proyecto</label>
+              <div className="px-3">
+                <select
+                  value={projectId}
+                  onChange={(e) => switchProject(e.target.value)}
+                  disabled={projects.length === 0}
+                  className="w-full px-2.5 py-2 border border-gray-200 rounded-lg text-sm bg-white outline-none focus:border-gray-400 disabled:bg-gray-50"
+                >
+                  {projects.length === 0 ? (
+                    <option value={projectId}>Cargando…</option>
+                  ) : (
+                    projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+              {project && (
+                <div className="space-y-0.5">
+                  {modules.map((m) => {
+                    const active = m.href === base ? pathname === m.href : pathname.startsWith(m.href);
+                    return (
+                      <Link
+                        key={m.href}
+                        href={m.href}
+                        onClick={onClose}
+                        className={cn(
+                          "block pl-6 pr-3 py-1.5 rounded-lg text-sm transition-colors",
+                          active
+                            ? "bg-gray-100 text-gray-900 font-medium"
+                            : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                        )}
+                      >
+                        {m.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
               <Link
                 href="/admin/proyectos"
                 onClick={onClose}
-                className="flex items-center gap-1 px-3 pb-1 text-xs text-gray-400 hover:text-gray-900"
+                className="block px-3 pt-1 text-xs text-gray-400 hover:text-gray-900"
               >
-                <ArrowLeft className="h-3 w-3" />
-                Proyectos
+                Gestionar proyectos
               </Link>
-              <p className="px-3 pb-2 text-xs font-semibold text-gray-900 truncate" title={project.name}>
-                {project.name}
-              </p>
-              <div className="space-y-0.5">
-                {modules.map((m) => {
-                  const active = m.href === base ? pathname === m.href : pathname.startsWith(m.href);
-                  return (
-                    <Link
-                      key={m.href}
-                      href={m.href}
-                      onClick={onClose}
-                      className={cn(
-                        "block pl-6 pr-3 py-1.5 rounded-lg text-sm transition-colors",
-                        active
-                          ? "bg-gray-100 text-gray-900 font-medium"
-                          : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
-                      )}
-                    >
-                      {m.label}
-                    </Link>
-                  );
-                })}
-              </div>
             </div>
           )}
         </nav>
