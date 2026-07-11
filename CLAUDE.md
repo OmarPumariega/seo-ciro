@@ -118,12 +118,14 @@ añadir ítems al sidebar global se anidan como pestañas dentro de la ficha del
 módulo ascendente. La pestaña **Geogrid solo aparece si el proyecto es negocio local**
 con coordenadas definidas.
 
-- **Keywords** (Módulo 1): textarea con lista de keywords → resolución de
-  volumen/competición/CPC (DataForSEO Keywords Data) + intención (DataForSEO Labs Search
-  Intent), cacheada en `KeywordDataCache` 30 días y compartida entre proyectos →
-  priorización por volumen → tabla de resultados → "Generar estructura de URLs" (vía
-  OpenRouter sobre las keywords ya persistidas, agrupando por intención). Solo
-  DataForSEO como fuente por ahora (Google Ads, fuente alternativa, queda pendiente).
+- **Keywords** (Módulo 1): espacio de trabajo tipo Planificador por estudio.
+  Siembras una keyword → DataForSEO devuelve relacionadas con volumen/
+  competición/CPC/intención ya resueltos (las métricas se cachean al traerlas,
+  así añadir después es gratis) → añades/quitas las que interesan → ese
+  conjunto ES el estudio. Alternativa de "pegar lista" (resuelve vía caché +
+  volumen/intención). Priorización por volumen recalculada al añadir/quitar.
+  Sobre el estudio: "Generar estructura de URLs" (vía OpenRouter). Solo
+  DataForSEO como fuente por ahora (Google Ads, fuente alternativa, pendiente).
 - **Título y Meta** (Módulo 3): URL → scraping real → 3 variantes de título/meta
   descripción vía OpenRouter, siguiendo [`docs/seo-rules.md`](./docs/seo-rules.md).
   Keyword objetivo manual opcional (puede venir del Módulo 1 cuando exista estudio).

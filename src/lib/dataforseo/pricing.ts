@@ -12,6 +12,9 @@
 
 const RANK_COST_PER_DEPTH_UNIT = 0.0002;
 export const MAPS_COST_PER_POINT = 0.002;
+// Sugerencias de keywords: ~0,01$ por resultado devuelto (verificado contra la
+// doc: limit 1 → 0,0101$). Controla el coste con `limit`.
+export const SUGGESTION_COST_PER_RESULT = 0.01;
 
 // Estudio del Módulo 1: tarifa plana por llamada (hasta 1000 keywords) — una
 // de volumen (~0,09$) + una de intención (~0,013$). Solo aplica a keywords NO
@@ -41,4 +44,9 @@ export function rankMonthlyCostUsd(count: number, depth: number, frequency: stri
 // Coste estimado de una rejilla de geogrid (N×N puntos × Maps SERP por punto).
 export function geogridCostUsd(gridSize: number): number {
   return Math.round(gridSize * gridSize * MAPS_COST_PER_POINT * 1000) / 1000;
+}
+
+// Coste estimado de una búsqueda de sugerencias (nº de resultados pedidos).
+export function suggestionsCostUsd(limit: number): number {
+  return Math.round(limit * SUGGESTION_COST_PER_RESULT * 100) / 100;
 }

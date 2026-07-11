@@ -79,9 +79,6 @@ export async function POST(
     }
   }
 
-  if (keywords.length === 0) {
-    return NextResponse.json({ error: "Debes indicar al menos una keyword" }, { status: 400 });
-  }
   if (keywords.length > MAX_KEYWORDS) {
     return NextResponse.json(
       { error: `Máximo ${MAX_KEYWORDS} keywords por estudio (indicaste ${keywords.length})` },
@@ -102,6 +99,16 @@ export async function POST(
       : "es";
   const rawLocation = Number(body.locationCode);
   const locationCode = Number.isInteger(rawLocation) && rawLocation > 0 ? rawLocation : 2724;
+
+  // Modo workspace: crear estudio vacío (sin keywords iniciales). Se llena
+  // después con sugerencias o pegando una lista (ver rutas .../keywords).
+  if (keywords.length === 0) {
+    const study = await prisma.keywordStudy.create({
+      data: { projectId: id, name, languageCode, locationCode },
+      include: { keywords: true },
+    });
+    return NextResponse.json(study, { status: 201 });
+  }
 
   // --- Resolución de datos (caché → DataForSEO) ---
   let data;

@@ -5,11 +5,14 @@ import {
   Loader2,
   Sparkles,
   ChevronDown,
-  Network,
-  FileText,
+  Search,
+  Plus,
+  Trash2,
+  ArrowLeft,
+  ArrowDownToLine,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { KEYWORDS_STUDY_FLAT_COST_USD } from "@/lib/dataforseo/pricing";
+import { suggestionsCostUsd } from "@/lib/dataforseo/pricing";
 
 type Keyword = {
   id: string;
@@ -36,9 +39,9 @@ type Study = {
   locationCode: number;
   createdAt: string;
   updatedAt: string;
-  keywords: Keyword[];
   structure: { pages: StructurePage[] } | null;
   structureModel: string | null;
+  keywords: Keyword[];
 };
 
 type StudyListItem = {
@@ -47,25 +50,29 @@ type StudyListItem = {
   languageCode: string;
   locationCode: number;
   createdAt: string;
-  updatedAt: string;
   hasStructure: boolean;
   _count: { keywords: number };
 };
 
-// Intención → pastilla de color. Reutiliza el vocabulario de 3 colores del
-// resto de la app (gris/ámbar/esmeralda de SchemaView/AuditoriaView) en vez
-// de introducir colores nuevos.
+type Suggestion = {
+  keyword: string;
+  searchVolume: number | null;
+  competition: string | null;
+  cpc: number | null;
+  intent: string | null;
+};
+
 const INTENT_STYLES: Record<string, string> = {
   informacional: "bg-gray-100 text-gray-600",
   mixta: "bg-amber-50 text-amber-700",
   transaccional: "bg-emerald-50 text-emerald-700",
 };
-
 const COMPETITION_STYLES: Record<string, string> = {
   HIGH: "text-red-600",
   MEDIUM: "text-amber-600",
   LOW: "text-emerald-600",
 };
+const LIMITS = [10, 30, 50, 100];
 
 function fmtCpc(v: number | string | null): string {
   if (v === null || v === undefined) return "—";
@@ -73,16 +80,8 @@ function fmtCpc(v: number | string | null): string {
   return Number.isFinite(n) ? `${n.toFixed(2)}€` : "—";
 }
 
-// Construye un árbol a partir de slugs con subcarpetas (ej.
-// "servicios/abogado-de-familia") para renderizar la jerarquía sin librería
-// de diagramas: simplemente agrupando por segmentos de ruta.
-type TreeNode = {
-  segment: string;
-  path: string;
-  page?: StructurePage;
-  children: TreeNode[];
-};
-
+// --- Árbol de estructura de URLs (mismo render que antes) ---
+type TreeNode = { segment: string; path: string; page?: StructurePage; children: TreeNode[] };
 function buildTree(pages: StructurePage[]): TreeNode[] {
   const root: TreeNode = { segment: "", path: "", children: [] };
   for (const page of pages) {
@@ -102,22 +101,12 @@ function buildTree(pages: StructurePage[]): TreeNode[] {
   }
   return root.children;
 }
-
 function StructureTree({ nodes, depth }: { nodes: TreeNode[]; depth: number }) {
   return (
     <ul className={cn(depth > 0 && "pl-4 border-l border-gray-100 ml-1")}>
       {nodes.map((node) => (
         <li key={node.path} className="space-y-1.5">
-          <div className="flex items-center gap-1.5 text-sm">
-            {node.page ? (
-              <FileText className="h-3.5 w-3.5 text-gray-400 shrink-0" />
-            ) : (
-              <Network className="h-3.5 w-3.5 text-gray-300 shrink-0" />
-            )}
-            <span className={cn(node.page ? "text-gray-400 font-mono text-xs" : "text-gray-400 font-medium text-xs uppercase tracking-wide")}>
-              {node.segment}
-            </span>
-          </div>
+          <div className="text-xs text-gray-400 font-mono">{node.segment}</div>
           {node.page && (
             <div className="ml-5 bg-white border border-gray-100 rounded-lg p-3 space-y-2">
               <p className="text-sm font-medium text-gray-900">{node.page.h1}</p>
@@ -131,16 +120,12 @@ function StructureTree({ nodes, depth }: { nodes: TreeNode[]; depth: number }) {
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[11px] text-gray-400">{node.page.navLabel}</span>
                 {node.page.keywords.map((k, i) => (
-                  <span key={i} className="text-[11px] px-1.5 py-0.5 rounded bg-gray-50 text-gray-500">
-                    {k}
-                  </span>
+                  <span key={i} className="text-[11px] px-1.5 py-0.5 rounded bg-gray-50 text-gray-500">{k}</span>
                 ))}
               </div>
             </div>
           )}
-          {node.children.length > 0 && (
-            <StructureTree nodes={node.children} depth={depth + 1} />
-          )}
+          {node.children.length > 0 && <StructureTree nodes={node.children} depth={depth + 1} />}
         </li>
       ))}
     </ul>
@@ -148,300 +133,433 @@ function StructureTree({ nodes, depth }: { nodes: TreeNode[]; depth: number }) {
 }
 
 export default function KeywordsView({ projectId }: { projectId: string }) {
-  const [keywordText, setKeywordText] = useState("");
-  const [studyName, setStudyName] = useState("");
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [languageCode, setLanguageCode] = useState("es");
-  const [locationCode, setLocationCode] = useState(2724);
-
-  const [loading, setLoading] = useState(false);
-  const [generatingStructure, setGeneratingStructure] = useState(false);
-  const [error, setError] = useState("");
-
+  const [studies, setStudies] = useState<StudyListItem[]>([]);
   const [current, setCurrent] = useState<Study | null>(null);
-  const [history, setHistory] = useState<StudyListItem[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState(true);
+  const [loadingStudies, setLoadingStudies] = useState(true);
+
+  // Nuevo estudio
+  const [newName, setNewName] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  // Sugerencias
+  const [seed, setSeed] = useState("");
+  const [limit, setLimit] = useState(30);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [suggError, setSuggError] = useState("");
+
+  // Pegar lista
+  const [showPaste, setShowPaste] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [resolving, setResolving] = useState(false);
+
+  // Estructura
+  const [generatingStructure, setGeneratingStructure] = useState(false);
+
+  function loadStudies() {
+    return fetch(`/api/proyectos/${projectId}/keywords/estudios`)
+      .then((r) => r.json())
+      .then((d: StudyListItem[]) => Array.isArray(d) && setStudies(d));
+  }
+
+  function openStudy(studyId: string) {
+    fetch(`/api/proyectos/${projectId}/keywords/estudios/${studyId}`)
+      .then((r) => r.json())
+      .then((d: Study | { error: string }) => {
+        if (d && !("error" in d)) setCurrent(d);
+      });
+  }
+
+  function reloadCurrent() {
+    if (current) openStudy(current.id);
+    loadStudies();
+  }
 
   useEffect(() => {
-    fetch(`/api/proyectos/${projectId}/keywords/estudios`)
-      .then((r) => r.json())
-      .then((data: StudyListItem[]) => {
-        if (Array.isArray(data)) setHistory(data);
-        setLoadingHistory(false);
-      });
+    loadStudies().finally(() => setLoadingStudies(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
-  async function handleCreate(e: React.FormEvent) {
+  async function handleCreateStudy(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
-    setLoading(true);
-    setCurrent(null);
-
+    setCreating(true);
     const res = await fetch(`/api/proyectos/${projectId}/keywords/estudios`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: studyName || undefined,
-        keywords: keywordText,
-        languageCode,
-        locationCode,
-      }),
+      body: JSON.stringify({ name: newName || undefined }),
     });
     const data = await res.json();
-    setLoading(false);
-
-    if (!res.ok) {
-      setError(data.error ?? "Error al crear el estudio");
-      return;
-    }
-
+    setCreating(false);
+    if (!res.ok) return;
+    setNewName("");
     setCurrent(data);
-    // Recarga el historial para incluir el nuevo estudio con su _count.
-    fetch(`/api/proyectos/${projectId}/keywords/estudios`)
-      .then((r) => r.json())
-      .then((d: StudyListItem[]) => Array.isArray(d) && setHistory(d));
+    loadStudies();
   }
 
-  async function loadDetail(studyId: string) {
-    const res = await fetch(`/api/proyectos/${projectId}/keywords/estudios/${studyId}`);
-    if (res.ok) setCurrent(await res.json());
+  async function handleSearch() {
+    setSuggError("");
+    if (!seed.trim()) return;
+    setSearching(true);
+    setSuggestions([]);
+    const res = await fetch(
+      `/api/proyectos/${projectId}/keywords/estudios/${current!.id}/sugerencias?seed=${encodeURIComponent(seed.trim())}&limit=${limit}`
+    );
+    const data = await res.json();
+    setSearching(false);
+    if (!res.ok) {
+      setSuggError(data.error ?? "Error al buscar sugerencias");
+      return;
+    }
+    setSuggestions(data.items ?? []);
+  }
+
+  async function addItems(items: Suggestion[]) {
+    if (items.length === 0) return;
+    const res = await fetch(`/api/proyectos/${projectId}/keywords/estudios/${current!.id}/keywords`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items }),
+    });
+    if (res.ok) {
+      reloadCurrent();
+      // Quita de la lista de sugerencias las ya añadidas.
+      const added = new Set(items.map((i) => i.keyword));
+      setSuggestions((prev) => prev.filter((s) => !added.has(s.keyword)));
+    }
+  }
+
+  async function handleResolve() {
+    setSuggError("");
+    setResolving(true);
+    const res = await fetch(`/api/proyectos/${projectId}/keywords/estudios/${current!.id}/keywords/resolver`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keywords: pasteText }),
+    });
+    const data = await res.json();
+    setResolving(false);
+    if (!res.ok) {
+      setSuggError(data.error ?? "Error al resolver la lista");
+      return;
+    }
+    setPasteText("");
+    reloadCurrent();
+  }
+
+  async function handleRemove(keywordId: string) {
+    await fetch(`/api/proyectos/${projectId}/keywords/estudios/${current!.id}/keywords/${keywordId}`, {
+      method: "DELETE",
+    });
+    reloadCurrent();
   }
 
   async function handleGenerateStructure() {
-    if (!current) return;
-    setError("");
+    setSuggError("");
     setGeneratingStructure(true);
-
-    const res = await fetch(
-      `/api/proyectos/${projectId}/keywords/estudios/${current.id}/estructura`,
-      { method: "POST" }
-    );
+    const res = await fetch(`/api/proyectos/${projectId}/keywords/estudios/${current!.id}/estructura`, {
+      method: "POST",
+    });
     const data = await res.json();
     setGeneratingStructure(false);
-
     if (!res.ok) {
-      setError(data.error ?? "Error al generar la estructura");
+      setSuggError(data.error ?? "Error al generar la estructura");
       return;
     }
-
-    setCurrent((prev) =>
-      prev
-        ? {
-            ...prev,
-            structure: data.structure,
-            structureModel: data.structureModel,
-            updatedAt: data.updatedAt,
-          }
-        : prev
-    );
-    setHistory((prev) =>
-      prev.map((h) => (h.id === current.id ? { ...h, hasStructure: true, updatedAt: data.updatedAt } : h))
-    );
+    setCurrent((prev) => (prev ? { ...prev, structure: data.structure, structureModel: data.structureModel, updatedAt: data.updatedAt } : prev));
+    loadStudies();
   }
 
   const tree = current?.structure?.pages ? buildTree(current.structure.pages) : [];
+  const inStudy = new Set(current?.keywords.map((k) => k.keyword) ?? []);
 
+  // ===== Vista del workspace (estudio abierto) =====
+  if (current) {
+    return (
+      <div className="max-w-3xl space-y-6">
+        <button
+          onClick={() => setCurrent(null)}
+          className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900"
+        >
+          <ArrowLeft className="h-4 w-4" /> Volver a estudios
+        </button>
+
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">{current.name}</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            {current.keywords.length} keywords · {current.languageCode.toUpperCase()}/{current.locationCode} · {new Date(current.createdAt).toLocaleDateString("es-ES")}
+          </p>
+        </div>
+
+        {/* Buscar keywords relacionadas (Planificador) */}
+        <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
+          <h3 className="text-sm font-semibold text-gray-900">Buscar keywords relacionadas</h3>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex-1 min-w-[200px] space-y-1">
+              <label className="block text-xs text-gray-500">Keyword semilla</label>
+              <input
+                type="text"
+                value={seed}
+                onChange={(e) => setSeed(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                placeholder="abogado de familia"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-xs text-gray-500">Nº resultados</label>
+              <div className="flex gap-1">
+                {LIMITS.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setLimit(n)}
+                    className={cn(
+                      "px-2.5 py-2 rounded-lg text-xs font-medium border",
+                      limit === n ? "bg-gray-900 text-white border-gray-900" : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                    )}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button
+              onClick={handleSearch}
+              disabled={searching}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50"
+            >
+              {searching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              Buscar
+            </button>
+          </div>
+          <p className="text-xs text-gray-400">
+            Coste estimado de la búsqueda: ~${suggestionsCostUsd(limit).toFixed(2)} (las que añadas después son gratis, ya cacheadas).
+          </p>
+
+          {suggError && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{suggError}</p>}
+
+          {suggestions.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-gray-500">{suggestions.length} sugerencias</p>
+                <button
+                  onClick={() => addItems(suggestions)}
+                  className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900"
+                >
+                  <ArrowDownToLine className="h-3.5 w-3.5" /> Añadir todas
+                </button>
+              </div>
+              <div className="max-h-80 overflow-y-auto border border-gray-100 rounded-lg">
+                <table className="w-full text-sm">
+                  <tbody>
+                    {suggestions.map((s) => {
+                      const already = inStudy.has(s.keyword);
+                      return (
+                        <tr key={s.keyword} className="border-b border-gray-50 last:border-0">
+                          <td className="py-2 px-3 text-gray-900">{s.keyword}</td>
+                          <td className="py-2 px-2 text-gray-600 tabular-nums w-20">
+                            {s.searchVolume === null ? <span className="text-gray-300">—</span> : s.searchVolume.toLocaleString("es-ES")}
+                          </td>
+                          <td className="py-2 px-2 w-16">
+                            <span className={cn("text-xs font-medium", COMPETITION_STYLES[s.competition ?? ""] ?? "text-gray-400")}>
+                              {s.competition ?? "—"}
+                            </span>
+                          </td>
+                          <td className="py-2 px-2 w-20 text-gray-600 tabular-nums">{fmtCpc(s.cpc)}</td>
+                          <td className="py-2 px-2 w-28">
+                            {s.intent && (
+                              <span className={cn("text-[11px] px-2 py-0.5 rounded-full", INTENT_STYLES[s.intent] ?? "bg-gray-100 text-gray-500")}>
+                                {s.intent}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2 px-2 w-12 text-right">
+                            <button
+                              onClick={() => addItems([s])}
+                              disabled={already}
+                              className="p-1 text-gray-400 hover:text-gray-900 disabled:text-emerald-500 disabled:cursor-default"
+                              title={already ? "Ya en el estudio" : "Añadir al estudio"}
+                            >
+                              <Plus className="h-4 w-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Pegar lista (alternativa) */}
+        <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
+          <button
+            onClick={() => setShowPaste((v) => !v)}
+            className="flex items-center gap-1 text-sm font-medium text-gray-700"
+          >
+            <ChevronDown className={cn("h-4 w-4 transition-transform", showPaste && "rotate-180")} />
+            O pegar una lista de keywords
+          </button>
+          {showPaste && (
+            <div className="space-y-2">
+              <textarea
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+                rows={5}
+                placeholder={"una keyword por línea"}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 font-mono"
+              />
+              <button
+                onClick={handleResolve}
+                disabled={resolving || !pasteText.trim()}
+                className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                {resolving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Añadir al estudio
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Tabla de keywords del estudio */}
+        <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-900">Keywords del estudio ({current.keywords.length})</h3>
+            <button
+              onClick={handleGenerateStructure}
+              disabled={generatingStructure || current.keywords.length === 0}
+              className="flex items-center gap-2 px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50"
+            >
+              {generatingStructure ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {current.structure ? "Regenerar estructura" : "Generar estructura de URLs"}
+            </button>
+          </div>
+
+          {current.keywords.length === 0 ? (
+            <p className="text-sm text-gray-500">Aún no hay keywords. Busca relacionadas o pega una lista para empezar.</p>
+          ) : (
+            <div className="overflow-x-auto -mx-2">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
+                    <th className="font-medium py-2 px-2">Keyword</th>
+                    <th className="font-medium py-2 px-2">Volumen</th>
+                    <th className="font-medium py-2 px-2">Comp.</th>
+                    <th className="font-medium py-2 px-2">CPC</th>
+                    <th className="font-medium py-2 px-2">Intención</th>
+                    <th className="font-medium py-2 px-2 text-right">Prio.</th>
+                    <th className="py-2 px-2 w-10"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {current.keywords.map((kw) => (
+                    <tr key={kw.id} className="border-b border-gray-50">
+                      <td className="py-2 px-2 text-gray-900">{kw.keyword}</td>
+                      <td className="py-2 px-2 text-gray-700 tabular-nums">
+                        {kw.searchVolume === null ? <span className="text-gray-300">—</span> : kw.searchVolume.toLocaleString("es-ES")}
+                      </td>
+                      <td className="py-2 px-2">
+                        <span className={cn("text-xs font-medium", COMPETITION_STYLES[kw.competition ?? ""] ?? "text-gray-400")}>
+                          {kw.competition ?? "—"}
+                        </span>
+                      </td>
+                      <td className="py-2 px-2 text-gray-600 tabular-nums">{fmtCpc(kw.cpc)}</td>
+                      <td className="py-2 px-2">
+                        {kw.intent ? (
+                          <span className={cn("text-[11px] px-2 py-0.5 rounded-full", INTENT_STYLES[kw.intent] ?? "bg-gray-100 text-gray-500")}>
+                            {kw.intent}
+                          </span>
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-2 text-right text-gray-700 tabular-nums">{kw.priority}</td>
+                      <td className="py-2 px-2 text-right">
+                        <button
+                          onClick={() => handleRemove(kw.id)}
+                          className="p-1 text-gray-300 hover:text-red-600"
+                          title="Quitar del estudio"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {tree.length > 0 && (
+            <div className="border-t border-gray-100 pt-4">
+              <p className="text-xs text-gray-400 mb-2">
+                Estructura generada con {current.structureModel} · {new Date(current.updatedAt).toLocaleString("es-ES")}
+              </p>
+              <StructureTree nodes={tree} depth={0} />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ===== Vista de listado de estudios =====
   return (
     <div className="max-w-3xl space-y-6">
       <div>
         <h2 className="text-lg font-semibold text-gray-900">Keyword Research</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Pega una lista de keywords para resolver volumen, intención y prioridad reales contra
-          DataForSEO, y genera después la estructura de URLs del sitio.
+          Estudios de palabras clave por proyecto. Cada estudio es un espacio de trabajo: busca
+          relacionadas, añade las que interesan y construye el árbol de URLs.
         </p>
       </div>
 
-      <form onSubmit={handleCreate} className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-gray-700">
-            Nombre del estudio <span className="text-gray-400 font-normal">(opcional)</span>
-          </label>
+      <form onSubmit={handleCreateStudy} className="bg-white rounded-xl border border-gray-100 p-5 flex items-end gap-3">
+        <div className="flex-1 space-y-1">
+          <label className="block text-sm font-medium text-gray-700">Nuevo estudio</label>
           <input
             type="text"
-            value={studyName}
-            onChange={(e) => setStudyName(e.target.value)}
-            placeholder="Briefing Q3 — Negocio cliente"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Briefing Q3 — Cliente X"
             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
           />
         </div>
-
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-gray-700">
-            Keywords <span className="text-gray-400 font-normal">(una por línea)</span>
-          </label>
-          <textarea
-            value={keywordText}
-            onChange={(e) => setKeywordText(e.target.value)}
-            rows={8}
-            placeholder={"abogado de familia madrid\ndivorcio express\nseparación de bienes"}
-            required
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 font-mono"
-          />
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setShowAdvanced((v) => !v)}
-          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"
-        >
-          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showAdvanced && "rotate-180")} />
-          Opciones avanzadas
-        </button>
-
-        {showAdvanced && (
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">Idioma (código)</label>
-              <input
-                type="text"
-                value={languageCode}
-                onChange={(e) => setLanguageCode(e.target.value)}
-                maxLength={2}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">Ubicación (código)</label>
-              <input
-                type="number"
-                value={locationCode}
-                onChange={(e) => setLocationCode(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
-              />
-            </div>
-            <p className="col-span-2 text-xs text-gray-400">
-              Por defecto España (es / 2724). No se valida contra las tablas de DataForSEO: un valor
-              inválido saldrá como un error claro de la API.
-            </p>
-          </div>
-        )}
-
-        {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
-
         <button
           type="submit"
-          disabled={loading}
+          disabled={creating}
           className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50"
         >
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          Resolver datos
+          {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+          Crear
         </button>
-        <p className="text-xs text-gray-400">
-          Coste estimado: <strong className="text-gray-600">~${KEYWORDS_STUDY_FLAT_COST_USD.toFixed(2)}</strong> si hay
-          keywords nuevas (las ya cacheadas en los últimos 30 días son gratis).
-        </p>
       </form>
 
-      {current && (
-        <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-semibold text-gray-900">{current.name}</p>
-              <p className="text-xs text-gray-400">
-                {current.keywords.length} keywords · {current.languageCode.toUpperCase()} /{" "}
-                {current.locationCode} · {new Date(current.createdAt).toLocaleString("es-ES")}
-              </p>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto -mx-2">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
-                  <th className="font-medium py-2 px-2">Keyword</th>
-                  <th className="font-medium py-2 px-2">Volumen</th>
-                  <th className="font-medium py-2 px-2">Comp.</th>
-                  <th className="font-medium py-2 px-2">CPC</th>
-                  <th className="font-medium py-2 px-2">Intención</th>
-                  <th className="font-medium py-2 px-2 text-right">Prioridad</th>
-                </tr>
-              </thead>
-              <tbody>
-                {current.keywords.map((kw) => (
-                  <tr key={kw.id} className="border-b border-gray-50">
-                    <td className="py-2 px-2 text-gray-900">{kw.keyword}</td>
-                    <td className="py-2 px-2 text-gray-700">
-                      {kw.searchVolume === null ? (
-                        <span className="text-gray-300">—</span>
-                      ) : (
-                        kw.searchVolume.toLocaleString("es-ES")
-                      )}
-                    </td>
-                    <td className="py-2 px-2">
-                      {kw.competition ? (
-                        <span className={cn("text-xs font-medium", COMPETITION_STYLES[kw.competition] ?? "text-gray-500")}>
-                          {kw.competition}
-                        </span>
-                      ) : (
-                        <span className="text-gray-300">—</span>
-                      )}
-                    </td>
-                    <td className="py-2 px-2 text-gray-600">{fmtCpc(kw.cpc)}</td>
-                    <td className="py-2 px-2">
-                      {kw.intent ? (
-                        <span className={cn("text-[11px] px-2 py-0.5 rounded-full", INTENT_STYLES[kw.intent] ?? "bg-gray-100 text-gray-500")}>
-                          {kw.intent}
-                        </span>
-                      ) : (
-                        <span className="text-gray-300">—</span>
-                      )}
-                    </td>
-                    <td className="py-2 px-2 text-right text-gray-700 tabular-nums">{kw.priority}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="border-t border-gray-100 pt-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-gray-900">Estructura de URLs</h3>
-                <p className="text-xs text-gray-400">
-                  {current.structure
-                    ? `Generada con ${current.structureModel} · ${new Date(current.updatedAt).toLocaleString("es-ES")}`
-                    : "Aún no generada"}
-                </p>
-              </div>
-              <button
-                onClick={handleGenerateStructure}
-                disabled={generatingStructure}
-                className="flex items-center gap-2 px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50"
-              >
-                {generatingStructure ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                {current.structure ? "Regenerar" : "Generar estructura"}
-              </button>
-            </div>
-
-            {tree.length > 0 && <StructureTree nodes={tree} depth={0} />}
-          </div>
-        </div>
-      )}
-
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Historial de estudios</h3>
-        {loadingHistory ? (
+        <h3 className="text-sm font-semibold text-gray-900 mb-3">Estudios</h3>
+        {loadingStudies ? (
           <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-        ) : history.length === 0 ? (
+        ) : studies.length === 0 ? (
           <p className="text-sm text-gray-500">Todavía no hay estudios para este proyecto.</p>
         ) : (
           <div className="space-y-2">
-            {history.map((study) => (
+            {studies.map((s) => (
               <button
-                key={study.id}
-                onClick={() => loadDetail(study.id)}
-                className={cn(
-                  "w-full text-left bg-white rounded-lg border p-3 hover:bg-gray-50 transition-colors",
-                  current?.id === study.id ? "border-gray-900" : "border-gray-100"
-                )}
+                key={s.id}
+                onClick={() => openStudy(s.id)}
+                className="w-full text-left bg-white rounded-lg border border-gray-100 p-3 hover:bg-gray-50 transition-colors"
               >
                 <div className="flex items-center justify-between">
-                  <p className="text-sm text-gray-900 truncate">{study.name}</p>
-                  <span className="text-xs text-gray-400 shrink-0 ml-2">
-                    {study._count.keywords} keywords{study.hasStructure ? " · estructura" : ""}
+                  <span className="text-sm text-gray-900">{s.name}</span>
+                  <span className="text-xs text-gray-400">
+                    {s._count.keywords} keywords{s.hasStructure ? " · estructura" : ""}
                   </span>
                 </div>
-                <p className="text-xs text-gray-400">{new Date(study.createdAt).toLocaleString("es-ES")}</p>
+                <p className="text-xs text-gray-400">
+                  {s.languageCode.toUpperCase()}/{s.locationCode} · {new Date(s.createdAt).toLocaleDateString("es-ES")}
+                </p>
               </button>
             ))}
           </div>
