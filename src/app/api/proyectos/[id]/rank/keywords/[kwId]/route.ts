@@ -29,7 +29,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Keyword no encontrada" }, { status: 404 });
   }
 
-  const data: { frequency?: string; device?: string; depth?: number } = {};
+  const data: { frequency?: string; device?: string; depth?: number; group?: string | null } = {};
   if (typeof body.frequency === "string" && (FREQUENCIES as readonly string[]).includes(body.frequency)) {
     data.frequency = body.frequency;
   }
@@ -39,6 +39,10 @@ export async function PATCH(
   const rawDepth = Number(body.depth);
   if ((ALLOWED_DEPTHS as readonly number[]).includes(rawDepth)) {
     data.depth = rawDepth;
+  }
+  if ("group" in body) {
+    const g = typeof body.group === "string" ? body.group.trim().slice(0, 60) : "";
+    data.group = g || null;
   }
 
   if (Object.keys(data).length === 0) {

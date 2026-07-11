@@ -52,6 +52,11 @@ export async function POST(
       : "weekly";
   const rawDepth = Number(body.depth);
   const depth = (ALLOWED_DEPTHS as readonly number[]).includes(rawDepth) ? rawDepth : 10;
+  // Por defecto se agrupan bajo el nombre del estudio de origen — así se
+  // puede filtrar la tabla de rank tracking por de dónde vino cada keyword
+  // sin que el usuario tenga que teclear nada.
+  const group =
+    typeof body.group === "string" && body.group.trim() ? body.group.trim().slice(0, 60) : study.name.slice(0, 60);
 
   // Construye el set de (keyword) ya seguidas con esta misma config para
   // saltar duplicados sin hacer N queries.
@@ -77,6 +82,7 @@ export async function POST(
         device,
         frequency,
         depth,
+        group,
       },
     });
     tracked.add(k.keyword);

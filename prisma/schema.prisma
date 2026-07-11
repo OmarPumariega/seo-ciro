@@ -295,6 +295,7 @@ model RankKeyword {
   projectId     String
   project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   keyword       String // normalizada
+  group         String? // etiqueta libre tipo carpeta ("Servicios", "Blog"...) para filtrar/agrupar la tabla
   locationCode  Int      @default(2724)
   languageCode  String   @default("es")
   device        String   @default("desktop") // "desktop" | "mobile"
@@ -310,6 +311,7 @@ model RankKeyword {
   @@unique([projectId, keyword, locationCode, languageCode, device])
   @@index([projectId])
   @@index([lastCheckedAt])
+  @@index([projectId, group])
 }
 
 // Una fila por chequeo de posición (histórico para la gráfica de evolución).

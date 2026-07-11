@@ -5,6 +5,8 @@ import * as Select from "@radix-ui/react-select";
 import {
   Loader2,
   ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
   TrendingUp,
   TrendingDown,
   Minus,
@@ -12,6 +14,8 @@ import {
   RefreshCw,
   Plus,
   ArrowDownToLine,
+  Search,
+  Download,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { rankMonthlyCostUsd } from "@/lib/dataforseo/pricing";
@@ -33,7 +37,10 @@ type RankKeyword = {
   updatedAt: string;
   positions: RankPosition[];
   searchVolume: number | null;
+  group: string | null;
 };
+
+type SortKey = "keyword" | "volume" | "position" | "best";
 
 type StudyListItem = { id: string; name: string; _count: { keywords: number }; hasStructure: boolean };
 
@@ -114,6 +121,46 @@ function PositionSparkline({ positions }: { positions: RankPosition[] }) {
   );
 }
 
+function SortableTh({
+  label,
+  sortKey,
+  active,
+  dir,
+  onClick,
+  align = "left",
+  className,
+}: {
+  label: string;
+  sortKey: SortKey;
+  active: SortKey;
+  dir: "asc" | "desc";
+  onClick: (key: SortKey) => void;
+  align?: "left" | "right";
+  className?: string;
+}) {
+  const isActive = active === sortKey;
+  return (
+    <th className={cn("py-2.5 font-medium whitespace-nowrap", className)}>
+      <button
+        type="button"
+        onClick={() => onClick(sortKey)}
+        className={cn(
+          "flex items-center gap-1 hover:text-gray-900",
+          align === "right" && "ml-auto flex-row-reverse",
+          isActive ? "text-gray-900" : "text-gray-500"
+        )}
+      >
+        {label}
+        {isActive ? (
+          dir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />
+        ) : (
+          <ChevronsUpDown className="h-3 w-3 text-gray-300" />
+        )}
+      </button>
+    </th>
+  );
+}
+
 function TrendIcon({ kw }: { kw: RankKeyword }) {
   const last = kw.lastPosition;
   // positions viene ordenado desc ([0]=más reciente, [1]=anterior). Pero
@@ -141,7 +188,16 @@ export default function RankView({ projectId }: { projectId: string }) {
   const [newDevice, setNewDevice] = useState("desktop");
   const [newFrequency, setNewFrequency] = useState("weekly");
   const [newDepth, setNewDepth] = useState("10");
+  const [newGroup, setNewGroup] = useState("");
   const [adding, setAdding] = useState(false);
+
+  // Búsqueda, filtro por grupo y orden — la tabla no pagina (el volumen
+  // típico por proyecto no lo justifica todavía), pero sí necesita estas
+  // tres cosas para no volverse inmanejable a partir de 50+ keywords.
+  const [search, setSearch] = useState("");
+  const [groupFilter, setGroupFilter] = useState("__all__");
+  const [sortKey, setSortKey] = useState<SortKey>("volume");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const [spend, setSpend] = useState<{ spentUsd: number; limitUsd: number | null; blocked: boolean } | null>(null);
 
@@ -214,7 +270,13 @@ export default function RankView({ projectId }: { projectId: string }) {
       headers: { "Content-Type": "application/json" },
       // El backend acepta { keywords: "una por línea" } (bulk) y { keyword } (legacy).
       // Mandamos siempre bulk: con una sola línea también funciona.
-      body: JSON.stringify({ keywords: newKeyword, device: newDevice, frequency: newFrequency, depth: Number(newDepth) }),
+      body: JSON.stringify({
+        keywords: newKeyword,
+        device: newDevice,
+        frequency: newFrequency,
+        depth: Number(newDepth),
+        group: newGroup,
+      }),
     });
     const data = await res.json();
     setAdding(false);
@@ -233,6 +295,15 @@ export default function RankView({ projectId }: { projectId: string }) {
     setErrorFor("add", parts.join(" · "));
     setNewKeyword("");
     await Promise.all([loadKeywords(), loadSpend()]);
+  }
+
+  async function handleGroup(kwId: string, group: string) {
+    await fetch(`/api/proyectos/${projectId}/rank/keywords/${kwId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ group }),
+    });
+    loadKeywords();
   }
 
   async function handleImport() {
@@ -354,6 +425,89 @@ export default function RankView({ projectId }: { projectId: string }) {
     return positionCell(match?.position, Boolean(match));
   }
 
+  // Grupos existentes entre las keywords ya seguidas, para el desplegable de
+  // filtro — no hay tabla de grupos aparte, es texto libre por keyword.
+  const groups = useMemo(() => {
+    const set = new Set<string>();
+    for (const kw of keywords) if (kw.group) set.add(kw.group);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [keywords]);
+
+  const filteredKeywords = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    let list = keywords;
+    if (groupFilter === "__none__") list = list.filter((kw) => !kw.group);
+    else if (groupFilter !== "__all__") list = list.filter((kw) => kw.group === groupFilter);
+    if (q) list = list.filter((kw) => kw.keyword.toLowerCase().includes(q));
+
+    const dir = sortDir === "asc" ? 1 : -1;
+    const withRank = (v: number | null) => (v === null ? Infinity : v); // sin posición = siempre al final
+    return [...list].sort((a, b) => {
+      switch (sortKey) {
+        case "keyword":
+          return dir * a.keyword.localeCompare(b.keyword);
+        case "volume":
+          return dir * ((a.searchVolume ?? -1) - (b.searchVolume ?? -1));
+        case "best":
+          return dir * (withRank(a.bestPosition) - withRank(b.bestPosition));
+        case "position":
+        default:
+          return dir * (withRank(a.lastPosition) - withRank(b.lastPosition));
+      }
+    });
+  }, [keywords, search, groupFilter, sortKey, sortDir]);
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(key === "keyword" ? "asc" : "desc");
+    }
+  }
+
+  // Distribución de posiciones (R4) — resumen a golpe de vista, calculado en
+  // el cliente con datos ya cargados, sin ninguna llamada nueva.
+  const distribution = useMemo(() => {
+    const buckets = { top3: 0, top10: 0, top20: 0, top50: 0, worse: 0, none: 0 };
+    for (const kw of filteredKeywords) {
+      const p = kw.lastPosition;
+      if (p === null) buckets.none++;
+      else if (p <= 3) buckets.top3++;
+      else if (p <= 10) buckets.top10++;
+      else if (p <= 20) buckets.top20++;
+      else if (p <= 50) buckets.top50++;
+      else buckets.worse++;
+    }
+    return buckets;
+  }, [filteredKeywords]);
+
+  // Exportar a CSV (R6) — respeta el filtro/orden actual, sin backend: todo
+  // el dato ya está cargado en el cliente.
+  function exportCsv() {
+    const header = ["Keyword", "Grupo", "Volumen", "Posición actual", "Mejor posición", "Dispositivo", "Frecuencia", "Última comprobación"];
+    const rows = filteredKeywords.map((kw) => [
+      kw.keyword,
+      kw.group ?? "",
+      kw.searchVolume ?? "",
+      kw.lastPosition ?? "",
+      kw.bestPosition ?? "",
+      kw.device === "mobile" ? "Móvil" : "Desktop",
+      FREQUENCY_LABELS[kw.frequency] ?? kw.frequency,
+      kw.lastCheckedAt ? new Date(kw.lastCheckedAt).toLocaleDateString("es-ES") : "",
+    ]);
+    const csv = [header, ...rows]
+      .map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `rank-tracking-${projectId}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -379,7 +533,20 @@ export default function RankView({ projectId }: { projectId: string }) {
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 resize-y"
             />
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">
+                Grupo <span className="text-gray-400 font-normal">(opcional)</span>
+              </label>
+              <input
+                type="text"
+                value={newGroup}
+                onChange={(e) => setNewGroup(e.target.value)}
+                placeholder="Servicios, Blog..."
+                maxLength={60}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+              />
+            </div>
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">Dispositivo</label>
               <Select.Root value={newDevice} onValueChange={setNewDevice}>
@@ -497,10 +664,10 @@ export default function RankView({ projectId }: { projectId: string }) {
       )}
 
       {/* Tabla tipo calendario */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
+      <div className="space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <h3 className="text-sm font-semibold text-gray-900">
-            Keywords en seguimiento {keywords.length > 0 && `(${keywords.length})`}
+            Keywords en seguimiento {keywords.length > 0 && `(${filteredKeywords.length}/${keywords.length})`}
           </h3>
           {keywords.length > 0 && (
             <div className="flex items-center gap-3 text-[11px] text-gray-400">
@@ -514,28 +681,87 @@ export default function RankView({ projectId }: { projectId: string }) {
           )}
         </div>
 
+        {keywords.length > 0 && (
+          <>
+            {/* Distribución de posiciones (R4) */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-medium">{distribution.top3} en Top 3</span>
+              <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700">{distribution.top10} en Top 10</span>
+              <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700">{distribution.top20} en 11-20</span>
+              <span className="px-2.5 py-1 rounded-full bg-orange-50 text-orange-700">{distribution.top50} en 21-50</span>
+              <span className="px-2.5 py-1 rounded-full bg-red-50 text-red-600">{distribution.worse} peor de 50</span>
+              <span className="px-2.5 py-1 rounded-full bg-gray-100 text-gray-500">{distribution.none} sin posicionar</span>
+            </div>
+
+            {/* Buscar / filtrar por grupo / exportar */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 min-w-[180px]">
+                <Search className="h-3.5 w-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Buscar keyword..."
+                  className="w-full pl-8 pr-3 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-gray-400"
+                />
+              </div>
+              {groups.length > 0 && (
+                <Select.Root value={groupFilter} onValueChange={setGroupFilter}>
+                  <Select.Trigger className="flex items-center justify-between gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-gray-400 bg-white min-w-[140px]">
+                    <Select.Value />
+                    <Select.Icon><ChevronDown className="h-3.5 w-3.5 text-gray-400" /></Select.Icon>
+                  </Select.Trigger>
+                  <Select.Portal>
+                    <Select.Content className="bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50">
+                      <Select.Viewport>
+                        <Select.Item value="__all__" className="px-3 py-1.5 text-xs text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>Todos los grupos</Select.ItemText></Select.Item>
+                        <Select.Item value="__none__" className="px-3 py-1.5 text-xs text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>Sin grupo</Select.ItemText></Select.Item>
+                        {groups.map((g) => (
+                          <Select.Item key={g} value={g} className="px-3 py-1.5 text-xs text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>{g}</Select.ItemText></Select.Item>
+                        ))}
+                      </Select.Viewport>
+                    </Select.Content>
+                  </Select.Portal>
+                </Select.Root>
+              )}
+              <button
+                type="button"
+                onClick={exportCsv}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50 shrink-0"
+                title="Exportar la tabla visible a CSV"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Exportar CSV
+              </button>
+            </div>
+          </>
+        )}
+
         {loading ? (
           <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
         ) : keywords.length === 0 ? (
           <p className="text-sm text-gray-500">Aún no sigues ninguna keyword para este proyecto.</p>
+        ) : filteredKeywords.length === 0 ? (
+          <p className="text-sm text-gray-500">Ninguna keyword coincide con el filtro actual.</p>
         ) : (
           <div className="bg-white rounded-xl border border-gray-100 overflow-x-auto">
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
-                  <th className="py-2.5 pl-4 pr-3 font-medium sticky left-0 bg-white">Keyword</th>
-                  <th className="py-2.5 px-3 font-medium text-right whitespace-nowrap">Volumen</th>
+                  <SortableTh label="Keyword" sortKey="keyword" active={sortKey} dir={sortDir} onClick={toggleSort} className="pl-4 pr-3 sticky left-0 bg-white" />
+                  <SortableTh label="Volumen" sortKey="volume" active={sortKey} dir={sortDir} onClick={toggleSort} align="right" className="px-3" />
                   {dateColumns.map((d) => (
                     <th key={d.toISOString()} className="py-2.5 px-2 font-medium text-center whitespace-nowrap">
                       {d.toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
                     </th>
                   ))}
-                  <th className="py-2.5 px-3 font-medium text-right whitespace-nowrap">Mejor</th>
+                  <SortableTh label="Actual" sortKey="position" active={sortKey} dir={sortDir} onClick={toggleSort} align="right" className="px-3" />
+                  <SortableTh label="Mejor" sortKey="best" active={sortKey} dir={sortDir} onClick={toggleSort} align="right" className="px-3" />
                   <th className="py-2.5 pr-4 pl-3 font-medium text-right whitespace-nowrap">Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {keywords.map((kw) => (
+                {filteredKeywords.map((kw) => (
                   <Fragment key={kw.id}>
                     <tr className="border-b border-gray-50 last:border-0 hover:bg-gray-50/60">
                       <td className="py-2 pl-4 pr-3 sticky left-0 bg-white">
@@ -554,6 +780,11 @@ export default function RankView({ projectId }: { projectId: string }) {
                       </td>
                       <td className="py-2 px-3 text-right text-gray-600 tabular-nums whitespace-nowrap">
                         {kw.searchVolume === null ? <span className="text-gray-300">—</span> : kw.searchVolume.toLocaleString("es-ES")}
+                        {kw.group && (
+                          <div className="mt-0.5">
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 whitespace-nowrap">{kw.group}</span>
+                          </div>
+                        )}
                       </td>
                       {dateColumns.map((d) => {
                         const cell = cellFor(kw, d);
@@ -571,6 +802,9 @@ export default function RankView({ projectId }: { projectId: string }) {
                           </td>
                         );
                       })}
+                      <td className="py-2 px-3 text-right text-gray-900 font-medium tabular-nums whitespace-nowrap">
+                        {kw.lastPosition === null ? <span className="text-gray-300 font-normal">—</span> : `#${kw.lastPosition}`}
+                      </td>
                       <td className="py-2 px-3 text-right text-gray-500 tabular-nums whitespace-nowrap">
                         {kw.bestPosition === null ? "—" : `#${kw.bestPosition}`}
                       </td>
@@ -596,9 +830,22 @@ export default function RankView({ projectId }: { projectId: string }) {
                     </tr>
                     {selectedId === kw.id && (
                       <tr className="border-b border-gray-50 last:border-0 bg-gray-50/40">
-                        <td colSpan={dateColumns.length + 4} className="p-4">
+                        <td colSpan={dateColumns.length + 5} className="p-4">
                           <div className="space-y-3">
                             <div className="flex flex-wrap items-center gap-4">
+                              <div className="flex items-center gap-2">
+                                <label className="text-xs text-gray-500">Grupo:</label>
+                                <input
+                                  type="text"
+                                  defaultValue={kw.group ?? ""}
+                                  onBlur={(e) => {
+                                    if (e.target.value !== (kw.group ?? "")) handleGroup(kw.id, e.target.value);
+                                  }}
+                                  placeholder="Sin grupo"
+                                  maxLength={60}
+                                  className="px-2 py-1 border border-gray-200 rounded text-xs outline-none focus:border-gray-400 w-32"
+                                />
+                              </div>
                               <div className="flex items-center gap-2">
                                 <label className="text-xs text-gray-500">Frecuencia:</label>
                                 <Select.Root value={kw.frequency} onValueChange={(v) => handleFrequency(kw.id, v)}>

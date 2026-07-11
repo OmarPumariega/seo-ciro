@@ -94,6 +94,7 @@ export async function POST(
   const locationCode = Number.isInteger(rawLocation) && rawLocation > 0 ? rawLocation : 2724;
   const rawDepth = Number(body.depth);
   const depth = (ALLOWED_DEPTHS as readonly number[]).includes(rawDepth) ? rawDepth : 10;
+  const group = typeof body.group === "string" && body.group.trim() ? body.group.trim().slice(0, 60) : null;
 
   // Acepta dos formas de body:
   //   • { keyword: "...", device, frequency, depth }          → una sola (legacy)
@@ -141,7 +142,7 @@ export async function POST(
     let created: RankKeyword | null = null;
     try {
       created = await prisma.rankKeyword.create({
-        data: { projectId: id, keyword: kw, device, frequency, languageCode, locationCode, depth },
+        data: { projectId: id, keyword: kw, device, frequency, languageCode, locationCode, depth, group },
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
