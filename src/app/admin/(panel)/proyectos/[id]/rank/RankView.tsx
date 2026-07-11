@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import * as Select from "@radix-ui/react-select";
 import {
   Loader2,
@@ -32,6 +32,7 @@ type RankKeyword = {
   createdAt: string;
   updatedAt: string;
   positions: RankPosition[];
+  searchVolume: number | null;
 };
 
 type StudyListItem = { id: string; name: string; _count: { keywords: number }; hasStructure: boolean };
@@ -44,6 +45,24 @@ const FREQUENCY_LABELS: Record<string, string> = {
 };
 
 const DEPTHS = [10, 30, 50, 100];
+const MAX_DATE_COLUMNS = 8;
+
+function dayKey(iso: string): string {
+  return new Date(iso).toDateString();
+}
+
+// Escala de color por posición — misma idea que scoring.ts en Auditoría:
+// explicable y con umbrales fijos, nunca una caja negra. "Sin chequeo" (n/s)
+// se distingue de "chequeado pero fuera del depth" (—): son señales distintas.
+function positionCell(position: number | null | undefined, checked: boolean): { bg: string; text: string; label: string } {
+  if (!checked) return { bg: "bg-gray-50", text: "text-gray-300", label: "n/s" };
+  if (position === null || position === undefined) return { bg: "bg-red-50", text: "text-red-500", label: "—" };
+  if (position <= 3) return { bg: "bg-emerald-200", text: "text-emerald-900", label: String(position) };
+  if (position <= 10) return { bg: "bg-emerald-50", text: "text-emerald-700", label: String(position) };
+  if (position <= 20) return { bg: "bg-amber-50", text: "text-amber-700", label: String(position) };
+  if (position <= 50) return { bg: "bg-orange-50", text: "text-orange-700", label: String(position) };
+  return { bg: "bg-red-50", text: "text-red-600", label: String(position) };
+}
 
 function SpendBanner({ spend }: { spend: { spentUsd: number; limitUsd: number | null; blocked: boolean } | null }) {
   if (!spend) return null;
@@ -308,6 +327,33 @@ export default function RankView({ projectId }: { projectId: string }) {
     ? rankMonthlyCostUsd(importStudy._count.keywords, Number(newDepth), newFrequency)
     : 0;
 
+  // Columnas de fecha de la tabla tipo calendario: unión de los días con
+  // algún chequeo real entre todas las keywords visibles, más recientes
+  // primero, acotada para que la tabla no crezca sin límite. Nunca se
+  // interpola una fecha sin chequeo — esa columna simplemente muestra "n/s"
+  // para esa keyword.
+  const dateColumns = useMemo(() => {
+    const days = new Map<string, Date>();
+    for (const kw of keywords) {
+      for (const p of kw.positions) {
+        const key = dayKey(p.checkedAt);
+        if (!days.has(key)) days.set(key, new Date(p.checkedAt));
+      }
+    }
+    return [...days.values()]
+      .sort((a, b) => b.getTime() - a.getTime())
+      .slice(0, MAX_DATE_COLUMNS)
+      .reverse();
+  }, [keywords]);
+
+  function cellFor(kw: RankKeyword, date: Date) {
+    const key = date.toDateString();
+    // Si hay varios chequeos el mismo día, nos quedamos con el último
+    // (positions ya viene ordenado desc por checkedAt).
+    const match = kw.positions.find((p) => dayKey(p.checkedAt) === key);
+    return positionCell(match?.position, Boolean(match));
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -450,129 +496,178 @@ export default function RankView({ projectId }: { projectId: string }) {
         </div>
       )}
 
-      {/* Lista */}
+      {/* Tabla tipo calendario */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-gray-900">Keywords en seguimiento</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900">
+            Keywords en seguimiento {keywords.length > 0 && `(${keywords.length})`}
+          </h3>
+          {keywords.length > 0 && (
+            <div className="flex items-center gap-3 text-[11px] text-gray-400">
+              <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-200" />Top 3</span>
+              <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-50 border border-emerald-100" />Top 10</span>
+              <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-amber-50 border border-amber-100" />11-20</span>
+              <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-orange-50 border border-orange-100" />21-50</span>
+              <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-red-50 border border-red-100" />&gt;50 / fuera</span>
+              <span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-gray-50 border border-gray-200" />n/s = sin chequeo</span>
+            </div>
+          )}
+        </div>
+
         {loading ? (
           <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
         ) : keywords.length === 0 ? (
           <p className="text-sm text-gray-500">Aún no sigues ninguna keyword para este proyecto.</p>
         ) : (
-          <div className="space-y-2">
-            {keywords.map((kw) => (
-              <div
-                key={kw.id}
-                className={cn(
-                  "bg-white rounded-lg border p-3 transition-colors",
-                  selectedId === kw.id ? "border-gray-900" : "border-gray-100"
-                )}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <button onClick={() => selectKeyword(kw.id)} className="text-left min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-900 truncate">{kw.keyword}</span>
-                      <TrendIcon kw={kw} />
-                    </div>
-                    <p className="text-xs text-gray-400">
-                      {kw.device === "mobile" ? "Móvil" : "Desktop"} · Top-{kw.depth} · {kw.languageCode.toUpperCase()}/{kw.locationCode}
-                      {kw.lastCheckedAt && <> · {new Date(kw.lastCheckedAt).toLocaleDateString("es-ES")}</>}
-                    </p>
-                  </button>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <div className="text-right">
-                      <div className="text-sm font-semibold text-gray-900 tabular-nums">
-                        {kw.lastPosition === null ? <span className="text-gray-300">—</span> : `#${kw.lastPosition}`}
-                      </div>
-                      {kw.bestPosition !== null && (
-                        <div className="text-[11px] text-gray-400">mejor #{kw.bestPosition}</div>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => handleCheck(kw.id)}
-                      disabled={checkingId === kw.id}
-                      className="p-1.5 text-gray-400 hover:text-gray-900 disabled:opacity-50"
-                      title="Comprobar ahora"
-                    >
-                      {checkingId === kw.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(kw.id)}
-                      className="p-1.5 text-gray-300 hover:text-red-600"
-                      title="Eliminar"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {selectedId === kw.id && (
-                  <div className="mt-3 pt-3 border-t border-gray-100 space-y-3">
-                    <div className="flex flex-wrap items-center gap-4">
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs text-gray-500">Frecuencia:</label>
-                        <Select.Root value={kw.frequency} onValueChange={(v) => handleFrequency(kw.id, v)}>
-                          <Select.Trigger className="flex items-center justify-between px-2 py-1 border border-gray-200 rounded text-xs outline-none focus:border-gray-400 bg-white gap-1">
-                            <Select.Value />
-                            <ChevronDown className="h-3 w-3 text-gray-400" />
-                          </Select.Trigger>
-                          <Select.Portal>
-                            <Select.Content className="bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50">
-                              <Select.Viewport>
-                                {Object.entries(FREQUENCY_LABELS).map(([v, l]) => (
-                                  <Select.Item key={v} value={v} className="px-3 py-1.5 text-xs text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>{l}</Select.ItemText></Select.Item>
-                                ))}
-                              </Select.Viewport>
-                            </Select.Content>
-                          </Select.Portal>
-                        </Select.Root>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs text-gray-500">Profundidad:</label>
-                        <Select.Root value={String(kw.depth)} onValueChange={(v) => handleDepth(kw.id, Number(v))}>
-                          <Select.Trigger className="flex items-center justify-between px-2 py-1 border border-gray-200 rounded text-xs outline-none focus:border-gray-400 bg-white gap-1">
-                            <Select.Value />
-                            <ChevronDown className="h-3 w-3 text-gray-400" />
-                          </Select.Trigger>
-                          <Select.Portal>
-                            <Select.Content className="bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50">
-                              <Select.Viewport>
-                                {DEPTHS.map((d) => (
-                                  <Select.Item key={d} value={String(d)} className="px-3 py-1.5 text-xs text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>Top-{d}</Select.ItemText></Select.Item>
-                                ))}
-                              </Select.Viewport>
-                            </Select.Content>
-                          </Select.Portal>
-                        </Select.Root>
-                      </div>
-                    </div>
-
-                    {loadingHistory ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-                    ) : history.length === 0 ? (
-                      <p className="text-xs text-gray-400">Sin mediciones todavía. Pulsa &laquo;Comprobar ahora&raquo;.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        <PositionSparkline positions={history} />
-                        <div className="max-h-40 overflow-y-auto">
-                          <table className="w-full text-xs">
-                            <tbody>
-                              {history.slice().reverse().map((p) => (
-                                <tr key={p.id} className="border-b border-gray-50">
-                                  <td className="py-1 text-gray-500">{new Date(p.checkedAt).toLocaleString("es-ES")}</td>
-                                  <td className="py-1 text-right text-gray-900 tabular-nums">
-                                    {p.position === null ? <span className="text-gray-300">fuera top-100</span> : `#${p.position}`}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+          <div className="bg-white rounded-xl border border-gray-100 overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="text-left text-xs text-gray-500 border-b border-gray-100">
+                  <th className="py-2.5 pl-4 pr-3 font-medium sticky left-0 bg-white">Keyword</th>
+                  <th className="py-2.5 px-3 font-medium text-right whitespace-nowrap">Volumen</th>
+                  {dateColumns.map((d) => (
+                    <th key={d.toISOString()} className="py-2.5 px-2 font-medium text-center whitespace-nowrap">
+                      {d.toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
+                    </th>
+                  ))}
+                  <th className="py-2.5 px-3 font-medium text-right whitespace-nowrap">Mejor</th>
+                  <th className="py-2.5 pr-4 pl-3 font-medium text-right whitespace-nowrap">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {keywords.map((kw) => (
+                  <Fragment key={kw.id}>
+                    <tr className="border-b border-gray-50 last:border-0 hover:bg-gray-50/60">
+                      <td className="py-2 pl-4 pr-3 sticky left-0 bg-white">
+                        <button
+                          onClick={() => selectKeyword(kw.id)}
+                          className="flex items-center gap-1.5 text-left min-w-0"
+                        >
+                          <TrendIcon kw={kw} />
+                          <span className="text-gray-900 truncate max-w-[220px]" title={kw.keyword}>
+                            {kw.keyword}
+                          </span>
+                        </button>
+                        <p className="text-[11px] text-gray-400 pl-5">
+                          {kw.device === "mobile" ? "Móvil" : "Desktop"} · Top-{kw.depth}
+                        </p>
+                      </td>
+                      <td className="py-2 px-3 text-right text-gray-600 tabular-nums whitespace-nowrap">
+                        {kw.searchVolume === null ? <span className="text-gray-300">—</span> : kw.searchVolume.toLocaleString("es-ES")}
+                      </td>
+                      {dateColumns.map((d) => {
+                        const cell = cellFor(kw, d);
+                        return (
+                          <td key={d.toISOString()} className="p-1 text-center">
+                            <span
+                              className={cn(
+                                "inline-flex items-center justify-center h-7 min-w-7 px-1.5 rounded-md text-xs font-medium tabular-nums",
+                                cell.bg,
+                                cell.text
+                              )}
+                            >
+                              {cell.label}
+                            </span>
+                          </td>
+                        );
+                      })}
+                      <td className="py-2 px-3 text-right text-gray-500 tabular-nums whitespace-nowrap">
+                        {kw.bestPosition === null ? "—" : `#${kw.bestPosition}`}
+                      </td>
+                      <td className="py-2 pr-4 pl-3">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => handleCheck(kw.id)}
+                            disabled={checkingId === kw.id}
+                            className="p-1.5 text-gray-400 hover:text-gray-900 disabled:opacity-50"
+                            title="Comprobar ahora"
+                          >
+                            {checkingId === kw.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                          </button>
+                          <button
+                            onClick={() => handleDelete(kw.id)}
+                            className="p-1.5 text-gray-300 hover:text-red-600"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         </div>
-                      </div>
+                      </td>
+                    </tr>
+                    {selectedId === kw.id && (
+                      <tr className="border-b border-gray-50 last:border-0 bg-gray-50/40">
+                        <td colSpan={dateColumns.length + 4} className="p-4">
+                          <div className="space-y-3">
+                            <div className="flex flex-wrap items-center gap-4">
+                              <div className="flex items-center gap-2">
+                                <label className="text-xs text-gray-500">Frecuencia:</label>
+                                <Select.Root value={kw.frequency} onValueChange={(v) => handleFrequency(kw.id, v)}>
+                                  <Select.Trigger className="flex items-center justify-between px-2 py-1 border border-gray-200 rounded text-xs outline-none focus:border-gray-400 bg-white gap-1">
+                                    <Select.Value />
+                                    <ChevronDown className="h-3 w-3 text-gray-400" />
+                                  </Select.Trigger>
+                                  <Select.Portal>
+                                    <Select.Content className="bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50">
+                                      <Select.Viewport>
+                                        {Object.entries(FREQUENCY_LABELS).map(([v, l]) => (
+                                          <Select.Item key={v} value={v} className="px-3 py-1.5 text-xs text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>{l}</Select.ItemText></Select.Item>
+                                        ))}
+                                      </Select.Viewport>
+                                    </Select.Content>
+                                  </Select.Portal>
+                                </Select.Root>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <label className="text-xs text-gray-500">Profundidad:</label>
+                                <Select.Root value={String(kw.depth)} onValueChange={(v) => handleDepth(kw.id, Number(v))}>
+                                  <Select.Trigger className="flex items-center justify-between px-2 py-1 border border-gray-200 rounded text-xs outline-none focus:border-gray-400 bg-white gap-1">
+                                    <Select.Value />
+                                    <ChevronDown className="h-3 w-3 text-gray-400" />
+                                  </Select.Trigger>
+                                  <Select.Portal>
+                                    <Select.Content className="bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50">
+                                      <Select.Viewport>
+                                        {DEPTHS.map((d) => (
+                                          <Select.Item key={d} value={String(d)} className="px-3 py-1.5 text-xs text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>Top-{d}</Select.ItemText></Select.Item>
+                                        ))}
+                                      </Select.Viewport>
+                                    </Select.Content>
+                                  </Select.Portal>
+                                </Select.Root>
+                              </div>
+                            </div>
+
+                            {loadingHistory ? (
+                              <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                            ) : history.length === 0 ? (
+                              <p className="text-xs text-gray-400">Sin mediciones todavía. Pulsa &laquo;Comprobar ahora&raquo;.</p>
+                            ) : (
+                              <div className="space-y-2">
+                                <PositionSparkline positions={history} />
+                                <div className="max-h-40 overflow-y-auto">
+                                  <table className="w-full text-xs">
+                                    <tbody>
+                                      {history.slice().reverse().map((p) => (
+                                        <tr key={p.id} className="border-b border-gray-50">
+                                          <td className="py-1 text-gray-500">{new Date(p.checkedAt).toLocaleString("es-ES")}</td>
+                                          <td className="py-1 text-right text-gray-900 tabular-nums">
+                                            {p.position === null ? <span className="text-gray-300">fuera top-{kw.depth}</span> : `#${p.position}`}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
                     )}
-                  </div>
-                )}
-              </div>
-            ))}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

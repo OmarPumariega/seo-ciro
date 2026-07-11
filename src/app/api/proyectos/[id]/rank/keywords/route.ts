@@ -21,12 +21,40 @@ export async function GET(
   const keywords = await prisma.rankKeyword.findMany({
     where: { projectId: id },
     orderBy: [{ lastCheckedAt: "asc" }],
-    // últimas 2 posiciones → la UI calcula la flecha de tendencia
-    // (mejor/peor/igual) sin una llamada por keyword.
-    include: { positions: { orderBy: { checkedAt: "desc" }, take: 2 } },
+    // últimas 10 posiciones → la UI pinta la tabla tipo calendario
+    // (una columna por fecha de chequeo) sin una llamada extra por keyword.
+    include: { positions: { orderBy: { checkedAt: "desc" }, take: 10 } },
   });
 
-  return NextResponse.json(keywords);
+  // Volumen de búsqueda: se lee de KeywordDataCache (Módulo 1) si existe,
+  // sin volver a pagar por él aquí — es solo lectura de un dato ya conocido.
+  // Sin filtro de frescura: aunque esté caducado sigue siendo el volumen
+  // real más reciente que conocemos, mejor que no mostrar nada.
+  const pairs = new Map<string, { keyword: string; languageCode: string; locationCode: number }>();
+  for (const kw of keywords) {
+    pairs.set(`${kw.keyword}|${kw.languageCode}|${kw.locationCode}`, {
+      keyword: kw.keyword,
+      languageCode: kw.languageCode,
+      locationCode: kw.locationCode,
+    });
+  }
+  const cacheRows = pairs.size
+    ? await prisma.keywordDataCache.findMany({
+        where: { OR: [...pairs.values()] },
+        select: { keyword: true, languageCode: true, locationCode: true, searchVolume: true },
+      })
+    : [];
+  const volumeByKey = new Map<string, number | null>();
+  for (const row of cacheRows) {
+    volumeByKey.set(`${row.keyword}|${row.languageCode}|${row.locationCode}`, row.searchVolume);
+  }
+
+  const withVolume = keywords.map((kw) => ({
+    ...kw,
+    searchVolume: volumeByKey.get(`${kw.keyword}|${kw.languageCode}|${kw.locationCode}`) ?? null,
+  }));
+
+  return NextResponse.json(withVolume);
 }
 
 export async function POST(
