@@ -1,8 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FolderKanban, LayoutDashboard, Settings, Wallet, X } from "lucide-react";
+import { FolderKanban, LayoutDashboard, Settings, Wallet, X, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -12,9 +13,37 @@ const NAV_ITEMS = [
   { href: "/admin/configuracion", label: "Configuración", icon: Settings },
 ];
 
-// Sin lista de "próximamente": los 9 módulos del spec ya están construidos
-// (cuelgan de la ficha de cada proyecto). El growth del panel va ahora por
-// capas transversales (alertas, email, informes...).
+type ProjectInfo = { id: string; name: string; isLocalBusiness: boolean };
+
+// Construye la lista de módulos de un proyecto (los mismos que antes eran
+// pestañas). Geogrid solo si es negocio local. El orden sigue el nº de módulo.
+function projectModules(base: string, isLocalBusiness: boolean) {
+  const mods = [
+    { href: base, label: "Perfil" },
+    { href: `${base}/tareas`, label: "Tareas" },
+    { href: `${base}/keywords`, label: "Keywords" },
+    { href: `${base}/titulos-meta`, label: "Título y Meta" },
+    { href: `${base}/schema`, label: "Schema" },
+    { href: `${base}/rank`, label: "Rank Tracking" },
+    { href: `${base}/google`, label: "Google" },
+    { href: `${base}/contenido`, label: "Contenido" },
+    { href: `${base}/tfidf`, label: "TF-IDF" },
+    { href: `${base}/auditoria`, label: "Auditoría" },
+    { href: `${base}/enlaces`, label: "Enlaces" },
+    { href: `${base}/canibalizaciones`, label: "Canibalizaciones" },
+  ];
+  if (isLocalBusiness) mods.push({ href: `${base}/geogrid`, label: "Geogrid" });
+  mods.push({ href: `${base}/informe`, label: "Informe" });
+  mods.push({ href: `${base}/copilot`, label: "Copilot" });
+  return mods;
+}
+
+// Extrae el projectId de la ruta /admin/proyectos/[id]/... si aplica.
+function useProjectIdFromPath(): string | null {
+  const pathname = usePathname();
+  const m = pathname?.match(/^\/admin\/proyectos\/([^/]+)(?:\/|$)/);
+  return m ? m[1] : null;
+}
 
 export default function AdminSidebar({
   navOpen,
@@ -24,6 +53,41 @@ export default function AdminSidebar({
   onClose: () => void;
 }) {
   const pathname = usePathname();
+  const projectId = useProjectIdFromPath();
+  const [project, setProject] = useState<ProjectInfo | null>(null);
+
+  // Carga los datos mínimos del proyecto (nombre + isLocalBusiness) solo cuando
+  // la ruta está dentro de un proyecto. El sidebar vive en el shell (nivel
+  // panel), así que no recibe el projectId del layout del proyecto — lo deduce
+  // de la URL y lo pide a la API.
+  useEffect(() => {
+    let cancelled = false;
+    if (!projectId) {
+      // Al salir de una página de proyecto, limpia el estado. Diferido a un
+      // microtask para no llamar setState de forma síncrona dentro del effect
+      // (regla react-hooks/set-state-in-effect).
+      Promise.resolve().then(() => {
+        if (!cancelled) setProject(null);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    fetch(`/api/proyectos/${projectId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled && d && d.id) {
+          setProject({ id: d.id, name: d.name, isLocalBusiness: !!d.isLocalBusiness });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  const base = project ? `/admin/proyectos/${project.id}` : "";
+  const modules = project ? projectModules(base, project.isLocalBusiness) : [];
 
   return (
     <>
@@ -63,16 +127,52 @@ export default function AdminSidebar({
                 onClick={onClose}
                 className={cn(
                   "flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                  active
-                    ? "bg-gray-900 text-white"
-                    : "text-gray-600 hover:bg-gray-100"
+                  active ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-100"
                 )}
               >
-              <Icon className="h-4 w-4" />
-              {item.label}
-            </Link>
-          );
+                <Icon className="h-4 w-4" />
+                {item.label}
+              </Link>
+            );
           })}
+
+          {/* Módulos del proyecto (vertical, solo dentro de un proyecto).
+              Antes eran pestañas horizontales que se rompían por el nº de módulos. */}
+          {project && (
+            <div className="pt-4 mt-4 border-t border-gray-100">
+              <Link
+                href="/admin/proyectos"
+                onClick={onClose}
+                className="flex items-center gap-1 px-3 pb-1 text-xs text-gray-400 hover:text-gray-900"
+              >
+                <ArrowLeft className="h-3 w-3" />
+                Proyectos
+              </Link>
+              <p className="px-3 pb-2 text-xs font-semibold text-gray-900 truncate" title={project.name}>
+                {project.name}
+              </p>
+              <div className="space-y-0.5">
+                {modules.map((m) => {
+                  const active = m.href === base ? pathname === m.href : pathname.startsWith(m.href);
+                  return (
+                    <Link
+                      key={m.href}
+                      href={m.href}
+                      onClick={onClose}
+                      className={cn(
+                        "block pl-6 pr-3 py-1.5 rounded-lg text-sm transition-colors",
+                        active
+                          ? "bg-gray-100 text-gray-900 font-medium"
+                          : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                      )}
+                    >
+                      {m.label}
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </nav>
       </aside>
     </>
