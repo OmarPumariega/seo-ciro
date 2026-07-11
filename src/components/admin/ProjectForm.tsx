@@ -13,6 +13,8 @@ export type ProjectFormValues = {
   address: string;
   phone: string;
   hours: string;
+  lat: string;
+  lng: string;
   toneOfVoice: string;
   notes: string;
 };
@@ -26,6 +28,8 @@ const EMPTY_VALUES: ProjectFormValues = {
   address: "",
   phone: "",
   hours: "",
+  lat: "",
+  lng: "",
   toneOfVoice: "",
   notes: "",
 };
@@ -149,6 +153,36 @@ export default function ProjectForm({
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
               />
             </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">
+                Latitud <span className="text-gray-400 font-normal">(centro del geogrid)</span>
+              </label>
+              <input
+                type="number"
+                step="any"
+                value={form.lat}
+                onChange={(e) => set("lat", e.target.value)}
+                placeholder="40.4168"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">
+                Longitud <span className="text-gray-400 font-normal">(centro del geogrid)</span>
+              </label>
+              <input
+                type="number"
+                step="any"
+                value={form.lng}
+                onChange={(e) => set("lng", e.target.value)}
+                placeholder="-3.7038"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+              />
+            </div>
+            <p className="text-xs text-gray-400 sm:col-span-2">
+              Obtén las coordenadas exactas en Google Maps: clic derecho en el pin → copiar. Necesarias
+              para el geogrid del Módulo 9.
+            </p>
             <div className="space-y-1 sm:col-span-2">
               <label className="block text-sm font-medium text-gray-700">Horario</label>
               <textarea

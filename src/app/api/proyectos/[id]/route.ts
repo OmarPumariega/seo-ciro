@@ -46,6 +46,17 @@ export async function PATCH(
 
   const hoursText = normalizeText(body.hours, MAX_LONG);
 
+  // Coordenadas del negocio (Módulo 9 Geogrid). Solo se tocan si el body las
+  // traza explícitamente (la pestaña Perfil siempre las manda). Rango válido:
+  // lat [-90, 90], lng [-180, 180]; fuera de rango → null.
+  function parseCoord(key: "lat" | "lng", min: number, max: number): number | null | undefined {
+    if (!(key in body)) return undefined;
+    const n = Number(body[key]);
+    return Number.isFinite(n) && n >= min && n <= max ? n : null;
+  }
+  const lat = parseCoord("lat", -90, 90);
+  const lng = parseCoord("lng", -180, 180);
+
   try {
     const project = await prisma.project.update({
       where: { id },
@@ -63,6 +74,8 @@ export async function PATCH(
         hours: hoursText ? { text: hoursText } : Prisma.DbNull,
         toneOfVoice: normalizeText(body.toneOfVoice, MAX_LONG),
         notes: normalizeText(body.notes, MAX_LONG),
+        lat,
+        lng,
         // La pestaña "Perfil" nunca manda estas claves en su body, así que
         // "undefined" (no tocar) es el valor correcto por defecto — solo la
         // pestaña "Google" las envía explícitamente, incluso como null al

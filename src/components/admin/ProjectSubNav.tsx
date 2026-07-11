@@ -8,9 +8,11 @@ import { cn } from "@/lib/utils";
 export default function ProjectSubNav({
   projectId,
   projectName,
+  isLocalBusiness = false,
 }: {
   projectId: string;
   projectName: string;
+  isLocalBusiness?: boolean;
 }) {
   const pathname = usePathname();
   const base = `/admin/proyectos/${projectId}`;
@@ -24,6 +26,8 @@ export default function ProjectSubNav({
     { href: `${base}/google`, label: "Google" },
     { href: `${base}/contenido`, label: "Contenido" },
     { href: `${base}/auditoria`, label: "Auditoría" },
+    // La pestaña Geogrid solo aplica a negocios locales (Módulo 9).
+    ...(isLocalBusiness ? [{ href: `${base}/geogrid`, label: "Geogrid" }] : []),
   ];
 
   return (

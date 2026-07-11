@@ -1,6 +1,6 @@
 # 04 — Modelo de datos
 
-Esquema actual en [`prisma/schema.prisma`](../prisma/schema.prisma), 14 modelos.
+Esquema actual en [`prisma/schema.prisma`](../prisma/schema.prisma), 15 modelos.
 
 ## `User`
 
@@ -130,15 +130,28 @@ misma keyword en los dos devices por separado).
 - `depth` (10/30/50/100, default 10): resultados a parsear. DataForSEO factura por bloque de
   10, así que depth=10 es ~10x más barato que depth=100 — el equilibrio entre coste y visión
   profunda lo decide la agencia por keyword (la mayoría del valor accionable está en página 1).
-- `RankPosition`: una fila por chequeo, con `position` (null = fuera del top-100 del `depth`
-  pedido) y `url` (la URL del proyecto que posicionó). Indexada por (rankKeywordId, checkedAt)
-  para la consulta de histórico de la gráfica de evolución.
+- `RankPosition`: una fila por chequeo, con `position` (null = fuera del depth) y `url`.
+  Indexada por (rankKeywordId, checkedAt) para la consulta de histórico.
+
+## `GeogridRun` (Módulo 9)
+
+Una ejecución de geogrid: rejilla N×N (3/5/7) de puntos alrededor del negocio, cada uno
+consultando Maps SERP para ver en qué posición (`rank_absolute`) aparece el negocio para la
+keyword en ese punto. Procesada en background por el cron (pending → running → completed/failed),
+como las auditorías del Módulo 8 — una rejilla 5×5 son 25 llamadas (~75s), demasiado largo
+para síncrono.
+
+Los puntos van en un JSON (`points`), no en una tabla hija, porque siempre se pintan juntos
+como mapa de calor y nunca se filtran individualmente (a diferencia de las páginas de una
+auditoría). `foundCount`/`averagePosition` resumen cuántos puntos posicionan y la media (solo
+de los puntos donde el negocio apareció). El centro de la rejilla viene de `Project.lat`/`lng`
+— de ahí que el geogrid solo esté disponible para proyectos locales con coordenadas.
 
 ## Evolución prevista (no construida todavía)
 
-| Modelo futuro | Módulo | Motivo por el que no está aún |
-|---|---|---|
-| `GeogridRun` | 9 (Geogrid Local SEO) | Reutiliza el poller ya construido para audit + rank |
+Sin modelos pendientes de módulos del spec. Las mejoras transversales (topes por proyecto,
+avisos email, exportación de informes, versionado de contenido) no exigen nuevos modelos en
+esta fase.
 
 Se añaden en la sesión de planificación de cada módulo, no por adelantado, para no
 migrar tablas que luego cambian de forma al conocer el caso de uso real.

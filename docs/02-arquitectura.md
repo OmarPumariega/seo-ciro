@@ -61,7 +61,8 @@ src/
     ├── google/               # Módulo 6: OAuth2, Search Console, GA4
     ├── keywords/             # Módulo 1: cliente DataForSEO, caché, orquestación, estructura
     ├── rank/                 # Módulo 5: cliente SERP DataForSEO, chequeo, job programado
-    ├── dataforseo/           # cliente HTTP Basic compartido por Módulo 1 y 5
+    ├── geogrid/              # Módulo 9: rejilla de coordenadas, cliente Maps SERP, job
+    ├── dataforseo/           # cliente HTTP Basic compartido por Módulo 1, 5 y 9
     └── audit/                # Módulo 8: robots.txt, crawler, PSI, scoring, cron
 ```
 

@@ -25,6 +25,8 @@ export default async function ProjectDetailPage({
         address: project.address ?? "",
         phone: project.phone ?? "",
         hours: hours?.text ?? "",
+        lat: project.lat !== null ? String(project.lat) : "",
+        lng: project.lng !== null ? String(project.lng) : "",
         toneOfVoice: project.toneOfVoice ?? "",
         notes: project.notes ?? "",
       }}

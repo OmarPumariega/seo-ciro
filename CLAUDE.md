@@ -47,16 +47,20 @@ infraestructura (colas, caché, tablas de coste) para módulos que todavía no e
   (`serp/google/organic/live/advanced`, depth configurable 10/30/50/100, default 10) para
   localizar la posición del dominio del proyecto. El cliente HTTP Basic compartido vive en
   `src/lib/dataforseo/`.
+- **DataForSEO Maps SERP** (`src/lib/geogrid/maps.ts`) — Módulo 9: Maps SERP
+  (`serp/google/maps/live/advanced`) con coordenadas exactas por punto (`location_coordinate`
+  "lat,lng,zoom"), para el mapa de calor de posicionamiento local. Reutiliza el cliente y el
+  matching de dominio del Módulo 5.
 - **googleapis** (`src/lib/google/`) — OAuth2 + Search Console + GA4 (Admin y Data API)
   para el Módulo 6, un único paquete cubre las tres. Business Profile queda fuera hasta
   que Google apruebe el acceso a su API.
 - **Cron interno sin Redis** (`src/instrumentation.ts` + `instrumentation-node.ts`,
-  Módulos 8 y 5) — cada 60s procesa una `AuditRun` pending y las keywords de rank
-  tracking cuya frecuencia programada se ha vencido. Mismo patrón que Cirochat pero
-  corregido (ver `docs/02-arquitectura.md` para el gotcha de por qué el patrón de
-  Cirochat probablemente nunca se ejecuta). **Solo corre con `NODE_ENV=production`** —
-  en `npm run dev` nunca se dispara, hace falta `npm run build && npm run start`.
-  El Módulo 9 (Geogrid) debe reutilizar este mismo poller, no montar Redis.
+  Módulos 8, 5 y 9) — cada 60s procesa: una `AuditRun` pending (Módulo 8), las keywords
+  de rank tracking cuya frecuencia se ha vencido (Módulo 5) y un geogrid pending
+  (Módulo 9). Mismo patrón que Cirochat pero corregido (ver `docs/02-arquitectura.md`
+  para el gotcha de por qué el patrón de Cirochat probablemente nunca se ejecuta).
+  **Solo corre con `NODE_ENV=production`** — en `npm run dev` nunca se dispara, hace
+  falta `npm run build && npm run start`.
 - **robots-parser** + fetch/cheerio propios (`src/lib/audit/`) — crawler del Módulo 8,
   identificado como `SEOCiroBot/1.0`, no como un navegador (a diferencia del scraper de
   Módulo 3/4). `PAGESPEED_API_KEY` (Google Cloud, sin OAuth) solo se consulta sobre la
@@ -97,11 +101,12 @@ Proyectos: conexión OAuth2 de la agencia con Google (Módulo 6). Conectar/desco
 ver email y scopes concedidos. La *selección de propiedad* por proyecto vive en la
 ficha de cada proyecto, no aquí — la conexión es una, las propiedades son por proyecto.
 
-### Ficha de proyecto (`/admin/proyectos/[id]/...`) — pestañas Perfil / Keywords / Título y Meta / Schema / Rank Tracking / Google / Contenido / Auditoría
+### Ficha de proyecto (`/admin/proyectos/[id]/...`) — pestañas Perfil / Keywords / Título y Meta / Schema / Rank Tracking / Google / Contenido / Auditoría / Geogrid
 Todos los módulos salvo el 2 son inherentemente "de un proyecto", así que en vez de
 añadir ítems al sidebar global se anidan como pestañas dentro de la ficha del proyecto
 (`src/components/admin/ProjectSubNav.tsx`). El orden de pestañas sigue el número de
-módulo ascendente. Establece el patrón para cuando llegue Geogrid, etc.
+módulo ascendente. La pestaña **Geogrid solo aparece si el proyecto es negocio local**
+con coordenadas definidas.
 
 - **Keywords** (Módulo 1): textarea con lista de keywords → resolución de
   volumen/competición/CPC (DataForSEO Keywords Data) + intención (DataForSEO Labs Search
@@ -137,6 +142,11 @@ módulo ascendente. Establece el patrón para cuando llegue Geogrid, etc.
   proyecto tiene GSC conectado. Puntuación 0-100 explicable por categorías (nunca caja
   negra). Solo disparo manual esta sesión — la programación automática mensual queda
   pendiente.
+- **Geogrid** (Módulo 9, solo negocios locales): keyword + rejilla (3×3/5×5/7×7) + radio
+  → crea `GeogridRun` pending → el cron consulta Maps SERP en cada punto con coordenada
+  exacta y localiza la posición del negocio (match por dominio o nombre) → mapa de calor
+  verde/amarillo/rojo. Asíncrono (polling como la auditoría). Tope de gasto aplicado al
+  inicio de cada run.
 
 ## Seguridad
 

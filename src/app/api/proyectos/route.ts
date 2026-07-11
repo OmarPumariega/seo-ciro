@@ -42,6 +42,13 @@ export async function POST(req: NextRequest) {
 
   const hoursText = normalizeText(body.hours, MAX_LONG);
 
+  function parseCoord(key: "lat" | "lng", min: number, max: number): number | undefined {
+    const n = Number(body[key]);
+    return Number.isFinite(n) && n >= min && n <= max ? n : undefined;
+  }
+  const lat = parseCoord("lat", -90, 90);
+  const lng = parseCoord("lng", -180, 180);
+
   const project = await prisma.project.create({
     data: {
       name,
@@ -54,6 +61,8 @@ export async function POST(req: NextRequest) {
       hours: hoursText ? { text: hoursText } : undefined,
       toneOfVoice: normalizeText(body.toneOfVoice, MAX_LONG),
       notes: normalizeText(body.notes, MAX_LONG),
+      lat,
+      lng,
     },
   });
 

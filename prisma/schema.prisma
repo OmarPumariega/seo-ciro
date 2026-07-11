@@ -31,6 +31,11 @@ model Project {
   address         String?
   phone           String?
   hours           Json?
+  // Coordenadas exactas del negocio (centro del geogrid). El usuario las
+  // introduce manualmente (futuro: geocodificar desde address). Sin ellas no
+  // se puede ejecutar un geogrid del Módulo 9.
+  lat             Float?
+  lng             Float?
 
   // Perfil de marca, usado por el generador de contenido (Módulo 7) y de
   // títulos/metas (Módulo 3).
@@ -53,6 +58,7 @@ model Project {
   auditRuns            AuditRun[]
   keywordStudies       KeywordStudy[]
   rankKeywords         RankKeyword[]
+  geogridRuns          GeogridRun[]
 }
 
 // Módulo 3 — un registro por generación exitosa (URL por URL, sin modo
@@ -281,4 +287,35 @@ model RankPosition {
   url           String? // URL del proyecto que posiciona, si apareció
 
   @@index([rankKeywordId, checkedAt])
+}
+
+// Módulo 9 — una ejecución de geogrid: rejilla N×N de puntos alrededor del
+// negocio, cada uno consultando Maps SERP para ver en qué posición aparece el
+// negocio para la keyword dada en ese punto. Procesada en background por el
+// cron (pending → running → completed/failed), como las auditorías del Módulo 8
+// — una rejilla 5×5 son 25 llamadas (~75s), demasiado largo para síncrono.
+//
+// Los puntos van en un JSON (no tabla hija) porque siempre se pintan juntos
+// como mapa de calor, nunca se filtran individualmente (a diferencia de las
+// páginas de una auditoría, que sí se listan/filtran).
+model GeogridRun {
+  id            String   @id @default(cuid())
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword       String
+  gridSize      Int // 3 | 5 | 7
+  radiusKm      Float // distancia del centro al borde de la rejilla
+  centerLat     Float
+  centerLng     Float
+  zoom          Int      @default(15) // zoom fijo por punto (área ~vecinal)
+  status        String   @default("pending") // pending | running | completed | failed
+  points        Json? // [{ row, col, lat, lng, position, title }]
+  averagePosition Float? // media de posiciones (solo de los puntos donde apareció)
+  foundCount    Int? // nº de puntos donde el negocio apareció (sobre gridSize²)
+  errorMessage  String?
+  triggeredAt   DateTime @default(now())
+  startedAt     DateTime?
+  completedAt   DateTime?
+
+  @@index([projectId, triggeredAt])
 }

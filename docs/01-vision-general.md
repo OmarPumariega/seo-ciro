@@ -28,7 +28,10 @@ Esta primera fase construye únicamente la base sobre la que colgará el resto:
 - 🟡 Módulo 8 — Auditoría Técnica: crawler propio + PageSpeed Insights (solo home) +
   cruce de impresiones con Search Console; falta la programación automática mensual
   (solo disparo manual esta sesión)
-- ⬜ Módulo 9 — Geogrid Local SEO
+- ✅ Módulo 9 — Geogrid Local SEO: mapa de calor del posicionamiento en Google
+  Maps (rejilla 3×3/5×5/7×7 + radio) vía DataForSEO Maps SERP con coordenadas
+  exactas por punto. Asíncrono vía cron (rejilla 5×5 = 25 llamadas ~75s).
+  Solo para proyectos marcados como negocio local con coordenadas definidas.
 - ✅ Cola de tareas — **no** BullMQ/Redis: cron interno vía `src/instrumentation.ts` +
   `instrumentation-node.ts` (mismo patrón que Cirochat), sondea `AuditRun` cada 60s.
   El Módulo 9 debe reutilizar este mismo poller, no montar Redis

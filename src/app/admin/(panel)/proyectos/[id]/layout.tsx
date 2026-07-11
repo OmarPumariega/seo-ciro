@@ -12,13 +12,17 @@ export default async function ProjectLayout({
   const { id } = await params;
   const project = await prisma.project.findUnique({
     where: { id },
-    select: { id: true, name: true },
+    select: { id: true, name: true, isLocalBusiness: true },
   });
   if (!project) notFound();
 
   return (
     <div className="space-y-6">
-      <ProjectSubNav projectId={project.id} projectName={project.name} />
+      <ProjectSubNav
+        projectId={project.id}
+        projectName={project.name}
+        isLocalBusiness={project.isLocalBusiness}
+      />
       {children}
     </div>
   );
