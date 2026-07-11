@@ -343,3 +343,17 @@ model TodoItem {
 
   @@index([projectId])
 }
+
+// Registro de avisos por email ya enviados, para NO espamear (cada avise se
+// manda una sola vez por clave: p.ej. una auditoría por run, una caída de
+// posición por keyword y día, un aviso de tope por tipo y día). Clave
+// compuesta (type, key) → upsert idempotente.
+model NotificationLog {
+  id     String   @id @default(cuid())
+  type   String // "audit_completed" | "audit_failed" | "rank_drop" | "spend_warning" | "spend_exceeded"
+  key    String // dedupe: runId, keywordId+fecha, tipo+fecha
+  sentAt DateTime @default(now())
+
+  @@unique([type, key])
+  @@index([type])
+}

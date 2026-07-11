@@ -43,6 +43,9 @@ Esta primera fase construye únicamente la base sobre la que colgará el resto:
   (keyword, idioma, ubicación), compartida entre proyectos
 - ✅ Informe imprimible/compartible por proyecto (vista con CSS de impresión →
   "Guardar como PDF") que agrega auditoría, rank tracking, keywords, geogrid y costes
+- ✅ Avisos por email (SMTP vía nodemailer, opcionales) — auditoría completada/fallada,
+  caída de posición ≥10, tope de DataForSEO cercano/superado. Dedupe por evento (sin
+  spam) en `NotificationLog`; degradación elegante si no hay SMTP configurado
 
 Cada uno de estos módulos se planifica y construye en una sesión dedicada, siguiendo
 el orden recomendado en la sección 8 de `spec-original.md`.

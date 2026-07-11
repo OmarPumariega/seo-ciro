@@ -4,6 +4,7 @@ import { crawlSite, type CrawledPage } from "@/lib/audit/crawler";
 import { getPsiMetrics } from "@/lib/audit/psi";
 import { crossReferenceGsc } from "@/lib/audit/gsc-crossref";
 import { computeScore } from "@/lib/audit/scoring";
+import { notify } from "@/lib/notifications/notify";
 
 const STALE_RUN_TIMEOUT_MIN = 30;
 const MONTHLY_AUDIT_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -104,6 +105,12 @@ export async function runAuditJob(): Promise<{ processed: number }> {
           sitemapFound: crawl.sitemapFound,
         },
       });
+      await notify({
+        type: "audit_completed",
+        key: run.id,
+        subject: `Auditoría completada — ${run.project.name}`,
+        body: `La auditoría de ${run.project.name} (${run.project.domain ?? "sin dominio"}) no pudo completarse: el robots.txt bloquea el rastreo. Revísalo en el panel.`,
+      });
       return { processed: 1 };
     }
 
@@ -155,12 +162,25 @@ export async function runAuditJob(): Promise<{ processed: number }> {
       }),
     ]);
 
+    await notify({
+      type: "audit_completed",
+      key: run.id,
+      subject: `Auditoría completada — ${run.project.name} (${overallScore}/100)`,
+      body: `La auditoría de ${run.project.name} (${run.project.domain ?? "sin dominio"}) ha terminado con una puntuación de ${overallScore}/100 sobre ${crawl.pages.length} páginas rastreadas. Detalle en el panel: /admin/proyectos/${run.projectId}/auditoria`,
+    });
+
     return { processed: 1 };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error desconocido";
     await prisma.auditRun.update({
       where: { id: run.id },
       data: { status: "failed", completedAt: new Date(), errorMessage: message },
+    });
+    await notify({
+      type: "audit_failed",
+      key: run.id,
+      subject: `Auditoría fallida — ${run.project.name}`,
+      body: `La auditoría de ${run.project.name} ha fallado: ${message}. Revísalo en el panel: /admin/proyectos/${run.projectId}/auditoria`,
     });
     return { processed: 1 };
   }

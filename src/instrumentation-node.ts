@@ -33,10 +33,11 @@ export async function register() {
   const g = globalThis as GlobalWithTimer;
   if (g[TIMER_GLOBAL_KEY]) return; // ya arrancado (hot-reload / re-entrada)
 
-  const [{ runAuditJob }, { runRankJob }, { runGeogridJob }] = await Promise.all([
+  const [{ runAuditJob }, { runRankJob }, { runGeogridJob }, { checkSpendNotifications }] = await Promise.all([
     import("@/lib/audit/job"),
     import("@/lib/rank/job"),
     import("@/lib/geogrid/job"),
+    import("@/lib/notifications/notify"),
   ]);
 
   const run = async () => {
@@ -57,6 +58,12 @@ export async function register() {
       if (geo.processed > 0) console.log(`[geogrid] procesados=${geo.processed}`);
     } catch (e) {
       console.error("[geogrid] error en run:", e);
+    }
+    // Aviso de gasto (tope DataForSEO). Dedupe por día → un aviso/día como máx.
+    try {
+      await checkSpendNotifications();
+    } catch (e) {
+      console.error("[notify] error en check de gasto:", e);
     }
   };
 

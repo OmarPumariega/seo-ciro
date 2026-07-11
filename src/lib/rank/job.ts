@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { checkRankKeyword } from "@/lib/rank/check";
+import { notify } from "@/lib/notifications/notify";
 
 // Job de fondo del Módulo 5: procesa las keywords de seguimiento cuya
 // frecuencia programada (daily/weekly/monthly) se ha vencido. Las "manual"
@@ -18,8 +19,24 @@ export async function runRankJob(): Promise<{ processed: number }> {
   const due = await findDueKeywords();
 
   for (const rk of due) {
+    // lastPosition aquí es el ANTERIOR al chequeo (checkRankKeyword lo actualiza).
+    const prevPos = rk.lastPosition;
     try {
-      await checkRankKeyword(rk.id);
+      const result = await checkRankKeyword(rk.id);
+      // Aviso de caída de posición: solo en chequeos programados (no manuales),
+      // umbral ≥10 posiciones peor. Dedupe por keyword+fecha (un aviso por día).
+      if (
+        prevPos !== null &&
+        result.position !== null &&
+        result.position >= prevPos + 10
+      ) {
+        await notify({
+          type: "rank_drop",
+          key: `${rk.id}:${new Date().toISOString().slice(0, 10)}`,
+          subject: `Caída de posición — «${rk.keyword}»`,
+          body: `La keyword «${rk.keyword}» ha caído de #${prevPos} a #${result.position} (Δ ${result.position - prevPos}) en el proyecto ${rk.projectId}. Detalle en el panel: /admin/proyectos/${rk.projectId}/rank`,
+        });
+      }
     } catch (e) {
       console.error(`[rank] error chequeando "${rk.keyword}":`, e);
     }
