@@ -1,35 +1,42 @@
 import nodemailer from "nodemailer";
 import type SMTPTransport from "nodemailer/lib/smtp-transport";
+import { getSetting } from "@/lib/settings";
 
 // Envío de avisos por email (SMTP vía nodemailer). Degradación elegante: si no
 // hay SMTP configurado (SMTP_HOST/ALERT_TO), isEmailConfigured() es false y
 // notify() no hace nada — la herramienta sigue funcionando sin email. Los
 // avisos NUNCA deben romper el flujo principal: cualquier fallo de envío se
 // loguea y se traga.
+//
+// El transporte NO se cachea a nivel de módulo (a diferencia de la versión
+// anterior): los ajustes SMTP pueden cambiar en caliente desde Configuración,
+// y crear el transporte es barato (no abre conexión hasta sendMail) — cachear
+// habría servido credenciales viejas hasta reiniciar el proceso.
 
-let transport: nodemailer.Transporter | null = null;
-
-export function isEmailConfigured(): boolean {
-  return Boolean(process.env.SMTP_HOST && process.env.ALERT_TO);
+export async function isEmailConfigured(): Promise<boolean> {
+  const [host, to] = await Promise.all([getSetting("SMTP_HOST"), getSetting("ALERT_TO")]);
+  return Boolean(host && to);
 }
 
-function getTransport(): nodemailer.Transporter | null {
-  if (!isEmailConfigured()) return null;
-  if (transport) return transport;
+async function getTransport(): Promise<nodemailer.Transporter | null> {
+  const [host, port, user, pass] = await Promise.all([
+    getSetting("SMTP_HOST"),
+    getSetting("SMTP_PORT"),
+    getSetting("SMTP_USER"),
+    getSetting("SMTP_PASS"),
+  ]);
+  if (!host) return null;
 
+  const numericPort = Number(port) || 587;
   const opts: SMTPTransport.Options = {
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: (Number(process.env.SMTP_PORT) || 587) === 465,
+    host,
+    port: numericPort,
+    secure: numericPort === 465,
   };
-  if (process.env.SMTP_USER || process.env.SMTP_PASS) {
-    opts.auth = {
-      user: process.env.SMTP_USER ?? "",
-      pass: process.env.SMTP_PASS ?? "",
-    };
+  if (user || pass) {
+    opts.auth = { user: user ?? "", pass: pass ?? "" };
   }
-  transport = nodemailer.createTransport(opts);
-  return transport;
+  return nodemailer.createTransport(opts);
 }
 
 // Envía un email. Devuelve true si se envió, false si no estaba configurado o
@@ -38,12 +45,21 @@ export async function sendEmail(params: {
   subject: string;
   text: string;
 }): Promise<boolean> {
-  const t = getTransport();
+  const [to, from, host] = await Promise.all([
+    getSetting("ALERT_TO"),
+    getSetting("ALERT_FROM"),
+    getSetting("SMTP_HOST"),
+  ]);
+  if (!to) return false;
+  const t = await getTransport();
   if (!t) return false;
-  const to = process.env.ALERT_TO!;
-  const from = process.env.ALERT_FROM ?? `SEO Ciro <no-reply@${process.env.SMTP_HOST}>`;
   try {
-    await t.sendMail({ from, to, subject: params.subject, text: params.text });
+    await t.sendMail({
+      from: from ?? `SEO Ciro <no-reply@${host}>`,
+      to,
+      subject: params.subject,
+      text: params.text,
+    });
     return true;
   } catch (e) {
     console.error("[email] fallo de envío:", e);

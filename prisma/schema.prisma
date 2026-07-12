@@ -493,3 +493,15 @@ model VisibilitySnapshot {
 
   @@index([projectId, domain, fetchedAt])
 }
+
+// Ajustes editables desde Configuración (claves de API de terceros y
+// parámetros operativos): cifrados en reposo con el mismo AES-256-CBC del
+// token de Google (src/lib/crypto.ts), nunca en texto plano. Si una clave no
+// tiene fila aquí, src/lib/settings.ts recurre a la variable de entorno del
+// mismo nombre — un despliegue nuevo sigue funcionando solo con el .env hasta
+// que se configure desde la UI, sin duplicar lógica entre ambas rutas.
+model AppSetting {
+  key       String   @id // "OPENROUTER_API_KEY", "DATAFORSEO_LOGIN", etc.
+  value     String // cifrado, formato "iv:cipher" (ver src/lib/crypto.ts)
+  updatedAt DateTime @updatedAt
+}

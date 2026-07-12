@@ -1,3 +1,5 @@
+import { getSetting } from "@/lib/settings";
+
 export type PsiResult = {
   performanceScore: number; // 0-1
   lcpMs: number | null;
@@ -11,7 +13,7 @@ export type PsiResult = {
 // si falta la API key o falla la llamada, sin cortar el resto de la
 // auditoría (igual que el patrón de degradación de GoogleView.tsx).
 export async function getPsiMetrics(url: string): Promise<PsiResult | null> {
-  const apiKey = process.env.PAGESPEED_API_KEY;
+  const apiKey = await getSetting("PAGESPEED_API_KEY");
   if (!apiKey) return null;
 
   const endpoint = new URL("https://www.googleapis.com/pagespeedonline/v5/runPagespeed");

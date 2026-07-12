@@ -10,7 +10,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const spentUsd = await getMonthSpendUsd();
-  const limitUsd = getMonthlyLimitUsd();
+  const limitUsd = await getMonthlyLimitUsd();
 
   return NextResponse.json({
     spentUsd,

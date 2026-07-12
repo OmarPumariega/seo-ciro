@@ -142,9 +142,23 @@ devuelve la API y se registra en `ApiUsageLog`.
 
 ### Configuración (`/admin/configuracion`)
 Único ítem realmente global (no de proyecto) del sidebar aparte de Panel general y
-Proyectos: conexión OAuth2 de la agencia con Google (Módulo 6). Conectar/desconectar,
-ver email y scopes concedidos. La *selección de propiedad* por proyecto vive en la
-ficha de cada proyecto, no aquí — la conexión es una, las propiedades son por proyecto.
+Proyectos. Dos bloques:
+
+- **Claves de API** (`src/lib/settings.ts`, modelo `AppSetting`): las claves de
+  DataForSEO, OpenRouter, PageSpeed Insights y SMTP/avisos por email se pueden
+  guardar aquí en vez de (o además de) el `.env` — cifradas en reposo con el mismo
+  AES-256-CBC de `src/lib/crypto.ts`. `getSetting(key)` resuelve en cascada: fila en
+  `AppSetting` (si se guardó desde la UI) → variable de entorno del mismo nombre →
+  sin configurar. El valor real nunca vuelve al cliente una vez guardado — la UI solo
+  sabe si está "configurado" y desde dónde (BD o `.env`); cambiarlo no requiere tocar
+  el servidor ni reiniciar nada (caché en memoria de 30s, invalidada al guardar).
+  `GOOGLE_CLIENT_ID/SECRET`, `DATABASE_URL`, `NEXTAUTH_SECRET` y `ENCRYPTION_KEY`
+  quedan fuera a propósito — son necesarias para arrancar la app o abrir la propia
+  base de datos, no pueden vivir dentro de ella.
+- **Conexión con Google** (Módulo 6): OAuth2 de la agencia. Conectar/desconectar, ver
+  email y scopes concedidos. La *selección de propiedad* por proyecto vive en la
+  ficha de cada proyecto, no aquí — la conexión es una, las propiedades son por
+  proyecto.
 
 ### Ficha de proyecto (`/admin/proyectos/[id]/...`)
 Módulos anidados por ruta, con el nav en el sidebar global (no pestañas locales), en
@@ -249,7 +263,10 @@ Google, Contenido, TF-IDF, Auditoría, Enlaces, Canibalizaciones, Competidores, 
 - Contraseñas con `bcryptjs`, nunca en texto plano
 - Rate limiting de login por IP y por email (`src/lib/rate-limit.ts`)
 - Cabeceras de seguridad y CSP en `next.config.ts`
-- Secrets futuros cifrados con AES-256-CBC antes de tocar BD — nunca en texto plano
+- Secrets cifrados con AES-256-CBC antes de tocar BD — nunca en texto plano (token de
+  Google, `AppSetting` de Configuración). Las claves editables desde Configuración
+  nunca vuelven al cliente tras guardarse: la API solo expone si están configuradas y
+  desde dónde (BD o `.env`), nunca el valor
 - OAuth de Google (Módulo 6): protección CSRF con cookie `google_oauth_state`
   (httpOnly, sameSite=lax, 10 min) comparada contra el parámetro `state` que Google
   devuelve — suficiente para una herramienta interna de un solo admin, sin tabla de

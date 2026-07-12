@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { getSetting } from "@/lib/settings";
 
 // Tope de gasto mensual global de DataForSEO (sección 5 del spec: "topes de
 // gasto configurables, con opción de bloquear nuevas llamadas al superarlo").
@@ -23,8 +24,8 @@ export class DataForSeoSpendLimitError extends Error {
   }
 }
 
-export function getMonthlyLimitUsd(): number | null {
-  const raw = process.env.DATAFORSEO_MONTHLY_LIMIT_USD;
+export async function getMonthlyLimitUsd(): Promise<number | null> {
+  const raw = await getSetting("DATAFORSEO_MONTHLY_LIMIT_USD");
   if (!raw) return null;
   const n = Number(raw);
   return Number.isFinite(n) && n > 0 ? n : null;
@@ -58,7 +59,7 @@ export async function getProjectMonthSpendUsd(projectId: string): Promise<number
 // por aquí.
 export async function assertWithinSpendLimit(projectId?: string): Promise<void> {
   // Tope global.
-  const limit = getMonthlyLimitUsd();
+  const limit = await getMonthlyLimitUsd();
   if (limit !== null) {
     const spent = await getMonthSpendUsd();
     if (spent >= limit) throw new DataForSeoSpendLimitError(spent, limit, "global");

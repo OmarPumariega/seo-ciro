@@ -1,6 +1,6 @@
 import type { Project } from "@prisma/client";
 import type OpenAI from "openai";
-import { getOpenRouterClient, DEFAULT_OPENROUTER_MODEL } from "@/lib/seo/llm";
+import { getOpenRouterClient, getDefaultOpenRouterModel } from "@/lib/seo/llm";
 import { stripCodeFences } from "@/lib/seo/json";
 import type { ScrapedPage } from "@/lib/seo/scrape";
 
@@ -96,8 +96,8 @@ export async function buildArticleOrFaqJsonLd(
   scraped: ScrapedPage,
   url: string
 ): Promise<ArticleOrFaqResult> {
-  const client = getOpenRouterClient();
-  const model = DEFAULT_OPENROUTER_MODEL;
+  const client = await getOpenRouterClient();
+  const model = await getDefaultOpenRouterModel();
 
   const completion = await client.chat.completions.create({
     model,

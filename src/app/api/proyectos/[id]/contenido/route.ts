@@ -11,7 +11,7 @@ import {
   countWords,
   type ContentType,
 } from "@/lib/seo/content";
-import { getOpenRouterClient, DEFAULT_OPENROUTER_MODEL, friendlyLlmErrorMessage } from "@/lib/seo/llm";
+import { getOpenRouterClient, getDefaultOpenRouterModel, friendlyLlmErrorMessage } from "@/lib/seo/llm";
 import { logApiUsage } from "@/lib/seo/usage-log";
 
 export async function GET(
@@ -89,8 +89,8 @@ export async function POST(
       ? Math.round(targetWordsRaw)
       : DEFAULT_TARGET_WORDS[type];
 
-  const client = getOpenRouterClient();
-  const model = DEFAULT_OPENROUTER_MODEL;
+  const client = await getOpenRouterClient();
+  const model = await getDefaultOpenRouterModel();
 
   let completion;
   try {

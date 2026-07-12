@@ -12,7 +12,7 @@ export async function notify(params: {
   subject: string;
   body: string;
 }): Promise<void> {
-  if (!isEmailConfigured()) return; // sin SMTP → no-op silencioso
+  if (!(await isEmailConfigured())) return; // sin SMTP → no-op silencioso
 
   // Dedupe: si ya avisamos de esta (type, key), no repetimos.
   const already = await prisma.notificationLog.findUnique({
@@ -38,7 +38,7 @@ export async function notify(params: {
 // desde el cron cada tick; el dedupe (key por tipo+fecha) lo limita a un aviso
 // por día y por tipo. Si no hay tope configurado, no hace nada.
 export async function checkSpendNotifications(): Promise<void> {
-  const limit = getMonthlyLimitUsd();
+  const limit = await getMonthlyLimitUsd();
   if (limit === null) return;
 
   const spent = await getMonthSpendUsd();
@@ -49,7 +49,7 @@ export async function checkSpendNotifications(): Promise<void> {
       type: "spend_exceeded",
       key: today,
       subject: "⚠️ Tope de gasto de DataForSEO superado",
-      body: `El gasto mensual de DataForSEO ha superado el tope configurado: ${spent.toFixed(2)}$ de ${limit.toFixed(2)}$. Las nuevas llamadas están bloqueadas hasta el próximo mes o hasta que subas DATAFORSEO_MONTHLY_LIMIT_USD.`,
+      body: `El gasto mensual de DataForSEO ha superado el tope configurado: ${spent.toFixed(2)}$ de ${limit.toFixed(2)}$. Las nuevas llamadas están bloqueadas hasta el próximo mes o hasta que subas el tope en Configuración.`,
     });
   } else if (spent >= limit * 0.8) {
     await notify({

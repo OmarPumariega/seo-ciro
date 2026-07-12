@@ -1,5 +1,5 @@
 import type OpenAI from "openai";
-import { getOpenRouterClient, DEFAULT_OPENROUTER_MODEL } from "@/lib/seo/llm";
+import { getOpenRouterClient, getDefaultOpenRouterModel } from "@/lib/seo/llm";
 
 export type CopilotMessage = {
   role: "user" | "assistant";
@@ -14,8 +14,8 @@ export async function copilotReply(params: {
   systemContext: string;
   messages: CopilotMessage[];
 }): Promise<{ content: string; model: string; usage: OpenAI.CompletionUsage | undefined }> {
-  const client = getOpenRouterClient();
-  const model = DEFAULT_OPENROUTER_MODEL;
+  const client = await getOpenRouterClient();
+  const model = await getDefaultOpenRouterModel();
 
   const systemPrompt =
     "Eres un consultor SEO experto. Responde en español, claro y accionable. " +

@@ -1,5 +1,5 @@
 import type OpenAI from "openai";
-import { getOpenRouterClient, DEFAULT_OPENROUTER_MODEL } from "@/lib/seo/llm";
+import { getOpenRouterClient, getDefaultOpenRouterModel } from "@/lib/seo/llm";
 import { stripCodeFences } from "@/lib/seo/json";
 
 // Generación del árbol de URLs / jerarquía de encabezados a partir de las
@@ -135,8 +135,8 @@ export async function generateStructure(params: {
   studyName: string;
   keywords: StructureKeyword[];
 }): Promise<StructureGenerationResult> {
-  const client = getOpenRouterClient();
-  const model = DEFAULT_OPENROUTER_MODEL;
+  const client = await getOpenRouterClient();
+  const model = await getDefaultOpenRouterModel();
 
   const completion = await client.chat.completions.create({
     model,

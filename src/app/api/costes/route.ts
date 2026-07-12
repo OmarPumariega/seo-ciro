@@ -107,7 +107,7 @@ export async function GET(req: NextRequest) {
   );
 
   const dataforseoSpent = await getMonthSpendUsd();
-  const limit = getMonthlyLimitUsd();
+  const limit = await getMonthlyLimitUsd();
 
   return NextResponse.json({
     monthLabel,

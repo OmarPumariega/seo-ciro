@@ -6,7 +6,7 @@ import { normalizeText } from "@/lib/validation";
 import { scrapePage, ScrapeError } from "@/lib/seo/scrape";
 import { loadSeoRules } from "@/lib/seo/seo-rules";
 import { buildSystemPrompt, buildUserMessage, parseVariants } from "@/lib/seo/title-meta";
-import { getOpenRouterClient, DEFAULT_OPENROUTER_MODEL, friendlyLlmErrorMessage } from "@/lib/seo/llm";
+import { getOpenRouterClient, getDefaultOpenRouterModel, friendlyLlmErrorMessage } from "@/lib/seo/llm";
 import { logApiUsage } from "@/lib/seo/usage-log";
 
 export async function GET(
@@ -63,8 +63,8 @@ export async function POST(
   }
 
   const seoRules = await loadSeoRules();
-  const client = getOpenRouterClient();
-  const model = DEFAULT_OPENROUTER_MODEL;
+  const client = await getOpenRouterClient();
+  const model = await getDefaultOpenRouterModel();
 
   let completion;
   try {

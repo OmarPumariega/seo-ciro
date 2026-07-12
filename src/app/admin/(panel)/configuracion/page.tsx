@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import GoogleConnectionCard from "@/components/admin/GoogleConnectionCard";
-import { Mail } from "lucide-react";
+import ApiSettingsCard from "@/components/admin/ApiSettingsCard";
 
 const ERROR_MESSAGES: Record<string, string> = {
   cancelado: "Has cancelado la conexión con Google.",
@@ -29,38 +29,17 @@ export default async function ConfiguracionPage({
       <div>
         <h1 className="text-xl font-semibold text-gray-900">Configuración</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Conexión con Google para Search Console y Analytics (Módulo 6).
+          Claves de API de terceros y conexión con Google para Search Console y Analytics (Módulo 6).
         </p>
       </div>
+
+      <ApiSettingsCard />
 
       <GoogleConnectionCard
         connection={connection}
         justConnected={params.connected === "1"}
         errorMessage={errorMessage}
       />
-
-      {/* Avisos por email */}
-      <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
-        <div className="flex items-center gap-2">
-          <Mail className="h-5 w-5 text-gray-500" />
-          <h2 className="text-sm font-semibold text-gray-900">Avisos por email</h2>
-        </div>
-        <p className="text-sm text-gray-500">
-          Se envían a <strong>{process.env.ALERT_TO ?? "—"}</strong>{" "}
-          {process.env.SMTP_HOST ? (
-            <>vía {process.env.SMTP_HOST}</>
-          ) : (
-            <>(SMTP sin configurar — los avisos están desactivados)</>
-          )} cuando ocurren eventos relevantes: auditoría completada/fallada, caídas de posición de
-          10+ puestos, y al acercarse o superar el tope de gasto de DataForSEO.
-        </p>
-        <p className="text-xs text-gray-400">
-          Configúralo con las variables <code>SMTP_HOST</code>, <code>SMTP_PORT</code>,{" "}
-          <code>SMTP_USER</code>, <code>SMTP_PASS</code>, <code>ALERT_FROM</code> y{" "}
-          <code>ALERT_TO</code> en el <code>.env</code>. Sin ellas, la herramienta funciona sin
-          avisos.
-        </p>
-      </div>
 
       <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-2 text-sm text-gray-600">
         <p className="font-semibold text-gray-900">Antes de conectar</p>

@@ -9,6 +9,8 @@
 //
 // Lo usan el Módulo 1 (keywords/dataforseo.ts) y el Módulo 5 (rank/serp.ts).
 
+import { getSetting } from "@/lib/settings";
+
 export class DataForSeoError extends Error {
   constructor(message: string) {
     super(message);
@@ -18,12 +20,16 @@ export class DataForSeoError extends Error {
 
 const API_BASE = "https://api.dataforseo.com";
 
-export function authHeader(): string {
-  const login = process.env.DATAFORSEO_LOGIN;
-  const password = process.env.DATAFORSEO_PASSWORD;
+// Login/password: BD (Configuración) primero, variables de entorno como
+// fallback — ver src/lib/settings.ts.
+export async function authHeader(): Promise<string> {
+  const [login, password] = await Promise.all([
+    getSetting("DATAFORSEO_LOGIN"),
+    getSetting("DATAFORSEO_PASSWORD"),
+  ]);
   if (!login || !password) {
     throw new DataForSeoError(
-      "Faltan las credenciales de DataForSEO (DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD)"
+      "Faltan las credenciales de DataForSEO (configúralas en Configuración o en DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD)"
     );
   }
   const token = Buffer.from(`${login}:${password}`).toString("base64");
@@ -70,12 +76,16 @@ export async function postTask(
   body: Record<string, unknown>,
   endpoint: string
 ): Promise<TaskEnvelope> {
+  // Fuera del try/catch de red: si faltan credenciales, DataForSeoError debe
+  // salir con su mensaje real, no enmascarado como "no se pudo conectar".
+  const auth = await authHeader();
+
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
       method: "POST",
       headers: {
-        Authorization: authHeader(),
+        Authorization: auth,
         "Content-Type": "application/json",
       },
       // DataForSEO exige un ARRAY de tasks en el cuerpo, incluso para una
