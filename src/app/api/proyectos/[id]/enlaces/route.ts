@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { computePageRank, type LinkNode } from "@/lib/links/pagerank";
+import { buildLinkTree } from "@/lib/links/tree";
 
 // Valida que el `linkGraph` (Json?) tenga la forma esperada por el crawler:
 // array de { url: string, links: string[] }. Cualquier entrada malformada se
@@ -100,10 +101,14 @@ export async function GET(
     .slice(0, 5)
     .map((p) => p.url);
 
+  const { root: tree, unreached: unreachedFromRoot } = buildLinkTree(graph, run.startUrl);
+
   return NextResponse.json({
     pages,
     orphans,
     topHubs,
+    tree,
+    unreachedFromRoot,
     auditDate: run.completedAt ?? run.triggeredAt,
   });
 }
