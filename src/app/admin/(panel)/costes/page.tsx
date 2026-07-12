@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, AlertTriangle, Download, X } from "lucide-react";
+import { Loader2, AlertTriangle, Download, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { downloadCsv } from "@/lib/csv";
 import ProjectSwitcher, { type ProjectInfo } from "@/components/admin/ProjectSwitcher";
@@ -12,6 +12,9 @@ type CallRow = { id: string; api: string; endpoint: string; model: string | null
 
 type CostData = {
   monthLabel: string;
+  year: number;
+  month: number;
+  isCurrentMonth: boolean;
   scope: "global" | "project";
   project: { id: string; name: string } | null;
   dataforseo: { spentUsd: number; limitUsd: number | null; nearLimit: boolean; blocked: boolean };
@@ -33,6 +36,13 @@ const ENDPOINT_LABELS: Record<string, string> = {
   "modulo9.geogrid": "M9 · Geogrid",
 };
 
+// toLocaleDateString con month:"long" da "julio de 2026"; la clase Tailwind
+// "capitalize" pone mayúscula en CADA palabra ("Julio De 2026") — se
+// capitaliza solo la primera letra a mano.
+function capitalizeFirst(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function Bar({ pct, className }: { pct: number; className: string }) {
   return (
     <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
@@ -41,11 +51,15 @@ function Bar({ pct, className }: { pct: number; className: string }) {
   );
 }
 
+const now = new Date();
+
 export default function CostesPage() {
   const [data, setData] = useState<CostData | null>(null);
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1); // 1-12
 
   useEffect(() => {
     fetch("/api/proyectos")
@@ -58,14 +72,34 @@ export default function CostesPage() {
 
   useEffect(() => {
     setLoading(true);
-    const url = selectedProjectId ? `/api/costes?projectId=${selectedProjectId}` : "/api/costes";
-    fetch(url)
+    const params = new URLSearchParams({ year: String(year), month: String(month) });
+    if (selectedProjectId) params.set("projectId", selectedProjectId);
+    fetch(`/api/costes?${params}`)
       .then((r) => r.json())
       .then((d) => {
         if (d && typeof d.totalUsd === "number") setData(d);
         setLoading(false);
       });
-  }, [selectedProjectId]);
+  }, [selectedProjectId, year, month]);
+
+  // No se puede navegar a meses futuros — no hay datos que mostrar.
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
+
+  function shiftMonth(delta: number) {
+    let m = month + delta;
+    let y = year;
+    if (m < 1) {
+      m = 12;
+      y -= 1;
+    } else if (m > 12) {
+      m = 1;
+      y += 1;
+    }
+    // No adelantar más allá del mes en curso.
+    if (y > now.getFullYear() || (y === now.getFullYear() && m > now.getMonth() + 1)) return;
+    setYear(y);
+    setMonth(m);
+  }
 
   if (loading) return <Loader2 className="h-5 w-5 animate-spin text-gray-400" />;
   if (!data) return <p className="text-sm text-gray-500">No se pudieron cargar los costes.</p>;
@@ -78,9 +112,8 @@ export default function CostesPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Costes de API</h1>
-          <p className="text-sm text-gray-500 mt-1 capitalize">
-            {data.monthLabel}
-            {data.project && <> · {data.project.name}</>}
+          <p className="text-sm text-gray-500 mt-1">
+            {data.project ? data.project.name : "Todos los proyectos"}
           </p>
         </div>
         <button
@@ -102,6 +135,42 @@ export default function CostesPage() {
           <Download className="h-3.5 w-3.5" />
           Exportar CSV
         </button>
+      </div>
+
+      {/* Navegador de mes/año — sin esto solo se podía ver el mes en curso.
+          No deja avanzar más allá del mes actual (no hay datos futuros). */}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg px-1 py-1">
+          <button
+            onClick={() => shiftMonth(-1)}
+            className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-md"
+            title="Mes anterior"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span className="text-sm font-medium text-gray-900 px-2 min-w-[9rem] text-center">
+            {capitalizeFirst(data.monthLabel)}
+          </span>
+          <button
+            onClick={() => shiftMonth(1)}
+            disabled={isCurrentMonth}
+            className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-md disabled:opacity-30 disabled:hover:bg-transparent"
+            title="Mes siguiente"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+        {!isCurrentMonth && (
+          <button
+            onClick={() => {
+              setYear(now.getFullYear());
+              setMonth(now.getMonth() + 1);
+            }}
+            className="text-xs text-gray-500 hover:text-gray-900"
+          >
+            Volver al mes en curso
+          </button>
+        )}
       </div>
 
       {/* Filtro por proyecto: mismo desglose pero acotado a uno solo, con
