@@ -11,7 +11,7 @@ import {
   countWords,
   type ContentType,
 } from "@/lib/seo/content";
-import { getOpenRouterClient, DEFAULT_OPENROUTER_MODEL } from "@/lib/seo/llm";
+import { getOpenRouterClient, DEFAULT_OPENROUTER_MODEL, friendlyLlmErrorMessage } from "@/lib/seo/llm";
 import { logApiUsage } from "@/lib/seo/usage-log";
 
 export async function GET(
@@ -92,14 +92,19 @@ export async function POST(
   const client = getOpenRouterClient();
   const model = DEFAULT_OPENROUTER_MODEL;
 
-  const completion = await client.chat.completions.create({
-    model,
-    temperature: 0.7,
-    messages: [
-      { role: "system", content: buildSystemPrompt(type, targetWords, project.toneOfVoice) },
-      { role: "user", content: buildUserMessage({ topic, keyword, targetUrl, internalLinks }) },
-    ],
-  });
+  let completion;
+  try {
+    completion = await client.chat.completions.create({
+      model,
+      temperature: 0.7,
+      messages: [
+        { role: "system", content: buildSystemPrompt(type, targetWords, project.toneOfVoice) },
+        { role: "user", content: buildUserMessage({ topic, keyword, targetUrl, internalLinks }) },
+      ],
+    });
+  } catch (error) {
+    return NextResponse.json({ error: friendlyLlmErrorMessage(error) }, { status: 502 });
+  }
 
   const content = completion.choices[0]?.message?.content;
   if (!content) {

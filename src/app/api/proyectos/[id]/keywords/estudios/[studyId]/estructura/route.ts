@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { generateStructure } from "@/lib/keywords/structure";
 import { logApiUsage } from "@/lib/seo/usage-log";
+import { friendlyLlmErrorMessage } from "@/lib/seo/llm";
 
 // Genera la estructura de URLs/encabezados de un estudio a partir de sus
 // keywords ya persistidas (sin nueva llamada a DataForSEO). Sobrescribe la
@@ -40,8 +41,7 @@ export async function POST(
       })),
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Error al generar la estructura";
-    return NextResponse.json({ error: message }, { status: 502 });
+    return NextResponse.json({ error: friendlyLlmErrorMessage(error) }, { status: 502 });
   }
 
   const updated = await prisma.keywordStudy.update({

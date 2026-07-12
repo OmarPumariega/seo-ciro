@@ -6,7 +6,7 @@ import { normalizeText } from "@/lib/validation";
 import { scrapePage, ScrapeError } from "@/lib/seo/scrape";
 import { loadSeoRules } from "@/lib/seo/seo-rules";
 import { buildSystemPrompt, buildUserMessage, parseVariants } from "@/lib/seo/title-meta";
-import { getOpenRouterClient, DEFAULT_OPENROUTER_MODEL } from "@/lib/seo/llm";
+import { getOpenRouterClient, DEFAULT_OPENROUTER_MODEL, friendlyLlmErrorMessage } from "@/lib/seo/llm";
 import { logApiUsage } from "@/lib/seo/usage-log";
 
 export async function GET(
@@ -66,14 +66,19 @@ export async function POST(
   const client = getOpenRouterClient();
   const model = DEFAULT_OPENROUTER_MODEL;
 
-  const completion = await client.chat.completions.create({
-    model,
-    temperature: 0.7,
-    messages: [
-      { role: "system", content: buildSystemPrompt(seoRules) },
-      { role: "user", content: buildUserMessage(url, scraped, keyword) },
-    ],
-  });
+  let completion;
+  try {
+    completion = await client.chat.completions.create({
+      model,
+      temperature: 0.7,
+      messages: [
+        { role: "system", content: buildSystemPrompt(seoRules) },
+        { role: "user", content: buildUserMessage(url, scraped, keyword) },
+      ],
+    });
+  } catch (error) {
+    return NextResponse.json({ error: friendlyLlmErrorMessage(error) }, { status: 502 });
+  }
 
   const raw = completion.choices[0]?.message?.content;
   if (!raw) {

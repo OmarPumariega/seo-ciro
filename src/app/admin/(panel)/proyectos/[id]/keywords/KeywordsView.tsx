@@ -157,6 +157,7 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
 
   // Estructura
   const [generatingStructure, setGeneratingStructure] = useState(false);
+  const [structureError, setStructureError] = useState("");
 
   function loadStudies() {
     return fetch(`/api/proyectos/${projectId}/keywords/estudios`)
@@ -265,7 +266,7 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
   }
 
   async function handleGenerateStructure() {
-    setSuggError("");
+    setStructureError("");
     setGeneratingStructure(true);
     const res = await fetch(`/api/proyectos/${projectId}/keywords/estudios/${current!.id}/estructura`, {
       method: "POST",
@@ -273,7 +274,7 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
     const data = await res.json();
     setGeneratingStructure(false);
     if (!res.ok) {
-      setSuggError(data.error ?? "Error al generar la estructura");
+      setStructureError(data.error ?? "Error al generar la estructura");
       return;
     }
     setCurrent((prev) => (prev ? { ...prev, structure: data.structure, structureModel: data.structureModel, updatedAt: data.updatedAt } : prev));
@@ -438,25 +439,15 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
         <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-900">Keywords del estudio ({current.keywords.length})</h3>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={exportCsv}
-                disabled={current.keywords.length === 0}
-                className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                title="Exportar a CSV"
-              >
-                <Download className="h-3.5 w-3.5" />
-                CSV
-              </button>
-              <button
-                onClick={handleGenerateStructure}
-                disabled={generatingStructure || current.keywords.length === 0}
-                className="flex items-center gap-2 px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50"
-              >
-                {generatingStructure ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                {current.structure ? "Regenerar estructura" : "Generar estructura de URLs"}
-              </button>
-            </div>
+            <button
+              onClick={exportCsv}
+              disabled={current.keywords.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              title="Exportar a CSV"
+            >
+              <Download className="h-3.5 w-3.5" />
+              CSV
+            </button>
           </div>
 
           {current.keywords.length === 0 ? (
@@ -513,14 +504,51 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
               </table>
             </div>
           )}
+        </div>
 
-          {tree.length > 0 && (
-            <div className="border-t border-gray-100 pt-4">
-              <p className="text-xs text-gray-400 mb-2">
-                Estructura generada con {current.structureModel} · {new Date(current.updatedAt).toLocaleString("es-ES")}
+        {/* Estructura de URLs — sección propia, no un botón secundario perdido
+            en la tabla: es el resultado final del módulo, sobre el que luego
+            trabajan Título/Meta y Contenido. */}
+        <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Estructura de URLs</h3>
+              <p className="text-xs text-gray-500 mt-0.5 max-w-md">
+                Propone, vía IA, un árbol de páginas (slug, H1, encabezados) a partir de las
+                keywords de este estudio — listo como brief para Contenido y Título/Meta.
+              </p>
+            </div>
+            <button
+              onClick={handleGenerateStructure}
+              disabled={generatingStructure || current.keywords.length === 0}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50 shrink-0"
+            >
+              {generatingStructure ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {current.structure ? "Regenerar estructura" : "Generar estructura de URLs"}
+            </button>
+          </div>
+
+          {current.keywords.length === 0 && (
+            <p className="text-xs text-gray-400">Añade al menos una keyword al estudio para poder generarla.</p>
+          )}
+          {structureError && (
+            <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{structureError}</p>
+          )}
+
+          {tree.length > 0 ? (
+            <div className="pt-2">
+              <p className="text-xs text-gray-400 mb-3">
+                Generada con {current.structureModel} · {new Date(current.updatedAt).toLocaleString("es-ES")}
               </p>
               <StructureTree nodes={tree} depth={0} />
             </div>
+          ) : (
+            current.keywords.length > 0 &&
+            !generatingStructure && (
+              <p className="text-sm text-gray-500">
+                Aún no se ha generado. Pulsa &laquo;Generar estructura de URLs&raquo;.
+              </p>
+            )
           )}
         </div>
       </div>

@@ -13,6 +13,7 @@ import {
   type SchemaType,
 } from "@/lib/seo/schema";
 import { logApiUsage } from "@/lib/seo/usage-log";
+import { friendlyLlmErrorMessage } from "@/lib/seo/llm";
 
 export async function GET(
   _req: NextRequest,
@@ -92,8 +93,7 @@ export async function POST(
     try {
       result = await buildArticleOrFaqJsonLd(type, scraped, url);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Error al generar el schema";
-      return NextResponse.json({ error: message }, { status: 502 });
+      return NextResponse.json({ error: friendlyLlmErrorMessage(error) }, { status: 502 });
     }
     jsonLd = result.jsonLd;
     model = result.model;

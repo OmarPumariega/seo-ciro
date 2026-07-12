@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { buildProjectContext } from "@/lib/copilot/context";
 import { copilotReply, type CopilotMessage } from "@/lib/copilot/chat";
 import { logApiUsage } from "@/lib/seo/usage-log";
+import { friendlyLlmErrorMessage } from "@/lib/seo/llm";
 
 export async function GET(
   _req: NextRequest,
@@ -71,8 +72,7 @@ export async function POST(
       messages: [...history, userMessage],
     });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "Error del proveedor de IA";
-    return NextResponse.json({ error: msg }, { status: 502 });
+    return NextResponse.json({ error: friendlyLlmErrorMessage(error) }, { status: 502 });
   }
 
   if (!reply.content) {
