@@ -281,21 +281,52 @@ async function generateAuditTasks(
     }
   }
 
-  if (issueUrls.size === 0) return; // auditoría limpia → sin tareas
-
-  // Marca las tareas de auditorías anteriores como hechas (superadas) —
-  // issueType no-null identifica de forma fiable una tarea auto-generada,
-  // ya no hace falta el prefijo de texto para distinguirlas.
-  await prisma.todoItem.updateMany({
+  // Tareas automáticas pendientes de auditorías anteriores, una por tipo de
+  // incidencia (issueType es único entre las pendientes: cada tipo tiene como
+  // mucho una tarea abierta a la vez, ver más abajo).
+  const pendingAutoTodos = await prisma.todoItem.findMany({
     where: { projectId, done: false, issueType: { not: null } },
-    data: { done: true, completedAt: new Date() },
   });
 
-  // Crea una tarea por tipo de incidencia. El texto es solo un título corto
-  // (para notificaciones/exportaciones); la descripción, el "cómo arreglar" y
-  // la lista de páginas se resuelven en la UI a partir de issueType +
-  // affectedUrls (ver ISSUE_META y AuditIssuesList — mismo patrón).
+  const stillPresent = new Set(issueUrls.keys());
   const dateStr = new Date().toLocaleDateString("es-ES");
+
+  // 1) Ya NO aparecen en este rastreo → genuinamente resueltas: se marcan
+  //    done con completedAt real, así "Trabajos Realizados" (Informe) solo
+  //    cuenta arreglos de verdad, nunca una incidencia que sigue ahí solo
+  //    porque se regeneró la tarea con datos frescos.
+  const resolvedIds = pendingAutoTodos
+    .filter((t) => t.issueType && !stillPresent.has(t.issueType))
+    .map((t) => t.id);
+  if (resolvedIds.length > 0) {
+    await prisma.todoItem.updateMany({
+      where: { id: { in: resolvedIds } },
+      data: { done: true, completedAt: new Date() },
+    });
+  }
+
+  // 2) Siguen apareciendo → la MISMA tarea se refresca in situ (título y
+  //    affectedUrls al día) en vez de crear una duplicada y marcar la vieja
+  //    como "hecha" sin estarlo — antes CUALQUIER incidencia recurrente se
+  //    contaba como "completada" en cada auditoría, aunque el problema
+  //    siguiera exactamente igual.
+  for (const t of pendingAutoTodos) {
+    if (!t.issueType || !stillPresent.has(t.issueType)) continue;
+    const urls = issueUrls.get(t.issueType)!;
+    const meta = ISSUE_META[t.issueType];
+    if (!meta) continue;
+    await prisma.todoItem.update({
+      where: { id: t.id },
+      data: {
+        text: `🔍 [Auditoría ${dateStr}] ${urls.length} página(s) — ${meta.label}`,
+        affectedUrls: urls,
+      },
+    });
+    issueUrls.delete(t.issueType); // ya gestionada, no crear una nueva abajo
+  }
+
+  // 3) Lo que queda en issueUrls son tipos de incidencia genuinamente nuevos
+  //    (no había tarea pendiente de ese tipo) → se crean.
   for (const [issue, urls] of issueUrls) {
     const meta = ISSUE_META[issue];
     if (!meta?.fix) continue;
