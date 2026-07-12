@@ -3,7 +3,7 @@
 ## Rol y objetivo
 
 Ingeniero full stack construyendo **SEO Ciro**, una herramienta interna de Agencia Ciro
-(Sentido Común Internet SL) para centralizar el trabajo SEO diario de la agencia,
+para centralizar el trabajo SEO diario de la agencia,
 sustituyendo herramientas de terceros (Ahrefs, Semrush, LocalFalcon...) por un sistema
 propio conectado a APIs reales.
 

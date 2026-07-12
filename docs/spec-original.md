@@ -2,7 +2,7 @@
 
 ## 1. Resumen ejecutivo
 
-SaaS interno multi-tenant para centralizar las herramientas SEO usadas a diario en la agencia (Agencia Ciro / Sentido Común Internet SL), sustituyendo múltiples herramientas de terceros por un sistema propio conectado a APIs reales y fiables. Cada cliente/dominio es un "proyecto" con su propio perfil, datos, historial y configuración.
+SaaS interno multi-tenant para centralizar las herramientas SEO usadas a diario en la agencia (Agencia Ciro), sustituyendo múltiples herramientas de terceros por un sistema propio conectado a APIs reales y fiables. Cada cliente/dominio es un "proyecto" con su propio perfil, datos, historial y configuración.
 
 **Principio no negociable:** todos los datos mostrados deben proceder de fuentes reales y verificables (APIs oficiales). Ningún dato se inventa o estima sin fuente.
 

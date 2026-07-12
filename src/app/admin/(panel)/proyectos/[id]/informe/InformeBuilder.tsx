@@ -679,7 +679,7 @@ export default function InformeBuilder({ projectId, data, initialConfig }: Props
         )}
 
         <footer className="border-t border-gray-200 pt-4 text-xs text-gray-400 print:text-black">
-          Informe generado por SEO Ciro · Agencia Ciro · Sentido Común Internet SL
+          Informe generado por SEO Ciro · Agencia Ciro
           {!data.isCurrentMonth &&
             " · Informe de un mes anterior — los datos de estado (salud técnica, SEO local) reflejan la última medición hasta el fin de ese mes."}
         </footer>
