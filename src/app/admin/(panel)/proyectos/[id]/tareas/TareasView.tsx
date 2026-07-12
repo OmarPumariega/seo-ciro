@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import ConfirmDialog from "@/components/admin/ConfirmDialog";
 import UrlLink from "@/components/admin/UrlLink";
 import { ISSUE_META } from "@/lib/audit/issue-meta";
+import { splitManualTask } from "@/lib/tasks";
 
 type Todo = {
   id: string;
@@ -118,16 +119,6 @@ function AutoTaskCard({
   );
 }
 
-// Divide el texto libre de una tarea manual en "título" (primera línea) +
-// "detalle" (el resto) — mismo patrón visual que AutoTaskCard: colapsada solo
-// se ve el título, y al desplegar aparece el resto del texto. Las tareas
-// antiguas de una sola línea simplemente no tienen chevron (nada que ocultar).
-function splitManualTask(text: string): { title: string; detail: string } {
-  const idx = text.indexOf("\n");
-  if (idx === -1) return { title: text, detail: "" };
-  return { title: text.slice(0, idx).trim(), detail: text.slice(idx + 1).trim() };
-}
-
 function ManualTaskCard({
   todo,
   overdue,
@@ -220,6 +211,7 @@ export default function TareasView({ projectId }: { projectId: string }) {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [tab, setTab] = useState<"pendientes" | "completadas">("pendientes");
 
   function loadTodos() {
     return fetch(`/api/proyectos/${projectId}/todos`)
@@ -285,8 +277,11 @@ export default function TareasView({ projectId }: { projectId: string }) {
   }
 
   const today = startOfToday();
-  const autoTodos = todos.filter((t) => t.issueType !== null);
-  const manualTodos = todos.filter((t) => t.issueType === null);
+  const pendingCount = todos.filter((t) => !t.done).length;
+  const completedCount = todos.filter((t) => t.done).length;
+  const tabTodos = todos.filter((t) => (tab === "pendientes" ? !t.done : t.done));
+  const autoTodos = tabTodos.filter((t) => t.issueType !== null);
+  const manualTodos = tabTodos.filter((t) => t.issueType === null);
 
   return (
     <div className="space-y-6">
@@ -372,8 +367,41 @@ export default function TareasView({ projectId }: { projectId: string }) {
         {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
       </form>
 
+      <div className="flex items-center gap-1 border-b border-gray-200">
+        <button
+          onClick={() => setTab("pendientes")}
+          className={cn(
+            "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+            tab === "pendientes"
+              ? "border-gray-900 text-gray-900"
+              : "border-transparent text-gray-500 hover:text-gray-800"
+          )}
+        >
+          Pendientes ({pendingCount})
+        </button>
+        <button
+          onClick={() => setTab("completadas")}
+          className={cn(
+            "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+            tab === "completadas"
+              ? "border-gray-900 text-gray-900"
+              : "border-transparent text-gray-500 hover:text-gray-800"
+          )}
+        >
+          Completadas ({completedCount})
+        </button>
+      </div>
+
       {loading ? (
         <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+      ) : tabTodos.length === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-100 p-5">
+          <p className="text-sm text-gray-500">
+            {tab === "pendientes"
+              ? "Sin tareas pendientes — todo al día."
+              : "Todavía no se ha completado ninguna tarea."}
+          </p>
+        </div>
       ) : (
         <>
           {autoTodos.length > 0 && (
@@ -395,17 +423,9 @@ export default function TareasView({ projectId }: { projectId: string }) {
             </div>
           )}
 
-          <div className="space-y-2">
-            {autoTodos.length > 0 && <h3 className="text-sm font-semibold text-gray-900">Tareas manuales</h3>}
-            {manualTodos.length === 0 ? (
-              <div className="bg-white rounded-xl border border-gray-100 p-5">
-                <p className="text-sm text-gray-500">
-                  {autoTodos.length > 0
-                    ? "Sin tareas manuales todavía."
-                    : "Todavía no hay tareas para este proyecto."}
-                </p>
-              </div>
-            ) : (
+          {manualTodos.length > 0 && (
+            <div className="space-y-2">
+              {autoTodos.length > 0 && <h3 className="text-sm font-semibold text-gray-900">Tareas manuales</h3>}
               <div className="space-y-2">
                 {manualTodos.map((todo) => {
                   const overdue = !todo.done && todo.dueDate !== null && new Date(todo.dueDate) < today;
@@ -421,8 +441,8 @@ export default function TareasView({ projectId }: { projectId: string }) {
                   );
                 })}
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </>
       )}
 

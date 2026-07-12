@@ -1,13 +1,17 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
 import PrintButton from "./PrintButton";
-import { Gauge, Target, Search, MapPin, Wallet, FileText } from "lucide-react";
+import { splitManualTask } from "@/lib/tasks";
+import { ISSUE_META } from "@/lib/audit/issue-meta";
+import { Gauge, Target, Search, MapPin, Wallet, FileText, ClipboardCheck, ChevronLeft, ChevronRight } from "lucide-react";
 
 // Estructura del JSON categoryScores que genera src/lib/audit/scoring.ts.
 type CategoryScore = { score: number; max: number; detail: Record<string, number> };
 type CategoryScores = {
   indexabilidad: CategoryScore;
   enlaces: CategoryScore;
+  onpage: CategoryScore;
   rendimiento: CategoryScore | null;
   accesibilidadImagenes: CategoryScore;
 };
@@ -15,6 +19,7 @@ type CategoryScores = {
 const CATEGORY_LABELS: { key: keyof CategoryScores; label: string }[] = [
   { key: "indexabilidad", label: "Indexabilidad" },
   { key: "enlaces", label: "Enlaces" },
+  { key: "onpage", label: "On-page" },
   { key: "rendimiento", label: "Rendimiento" },
   { key: "accesibilidadImagenes", label: "Accesibilidad imágenes" },
 ];
@@ -53,12 +58,19 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   );
 }
 
+function capitalizeFirst(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 export default async function InformePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ year?: string; month?: string }>;
 }) {
   const { id } = await params;
+  const sp = await searchParams;
 
   const project = await prisma.project.findUnique({
     where: { id },
@@ -74,12 +86,28 @@ export default async function InformePage({
   if (!project) notFound();
 
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const rawYear = Number(sp.year);
+  const rawMonth = Number(sp.month); // 1-12
+  const year = Number.isInteger(rawYear) && rawYear >= 2000 && rawYear <= 3000 ? rawYear : now.getFullYear();
+  const month = Number.isInteger(rawMonth) && rawMonth >= 1 && rawMonth <= 12 ? rawMonth : now.getMonth() + 1;
+  const startOfMonth = new Date(year, month - 1, 1);
+  const startOfNextMonth = new Date(year, month, 1);
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
 
-  const [latestAudit, rankKeywords, studyCount, keywordTotal, monthCostAgg, latestGeogrid] =
+  function monthHref(y: number, m: number): string {
+    return `/admin/proyectos/${id}/informe?year=${y}&month=${m}`;
+  }
+  const prevMonth = month === 1 ? { y: year - 1, m: 12 } : { y: year, m: month - 1 };
+  const nextMonth = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 };
+  const nextDisabled = nextMonth.y > now.getFullYear() || (nextMonth.y === now.getFullYear() && nextMonth.m > now.getMonth() + 1);
+
+  const [latestAudit, rankKeywords, studyCount, keywordTotal, monthCostAgg, latestGeogrid, completedTodos] =
     await Promise.all([
+      // Estado "a fecha de fin de ese mes": la auditoría más reciente completada
+      // hasta ese momento, no siempre la más reciente de hoy — así un informe de
+      // un mes pasado no filtra datos de después de ese mes.
       prisma.auditRun.findFirst({
-        where: { projectId: id, status: "completed" },
+        where: { projectId: id, status: "completed", completedAt: { lt: startOfNextMonth } },
         orderBy: { completedAt: "desc" },
         select: {
           overallScore: true,
@@ -101,11 +129,11 @@ export default async function InformePage({
       prisma.keywordStudy.count({ where: { projectId: id } }),
       prisma.keyword.count({ where: { study: { projectId: id } } }),
       prisma.apiUsageLog.aggregate({
-        where: { projectId: id, createdAt: { gte: startOfMonth } },
+        where: { projectId: id, createdAt: { gte: startOfMonth, lt: startOfNextMonth } },
         _sum: { costUsd: true },
       }),
       prisma.geogridRun.findFirst({
-        where: { projectId: id, status: "completed" },
+        where: { projectId: id, status: "completed", completedAt: { lt: startOfNextMonth } },
         orderBy: { completedAt: "desc" },
         select: {
           keyword: true,
@@ -114,6 +142,13 @@ export default async function InformePage({
           averagePosition: true,
           completedAt: true,
         },
+      }),
+      // Trabajos Realizados: tareas (manuales o auto-generadas desde
+      // auditoría) completadas de verdad dentro de ese mes natural.
+      prisma.todoItem.findMany({
+        where: { projectId: id, done: true, completedAt: { gte: startOfMonth, lt: startOfNextMonth } },
+        orderBy: { completedAt: "desc" },
+        select: { id: true, text: true, issueType: true, affectedUrls: true, completedAt: true },
       }),
     ]);
 
@@ -136,10 +171,12 @@ export default async function InformePage({
     month: "long",
     year: "numeric",
   });
-  const monthLabel = startOfMonth.toLocaleDateString("es-ES", {
-    month: "long",
-    year: "numeric",
-  });
+  // toLocaleDateString da "julio de 2026"; se capitaliza solo la primera
+  // letra (la clase Tailwind "capitalize" pone mayúscula en CADA palabra,
+  // "Julio De 2026").
+  const monthLabel = capitalizeFirst(
+    startOfMonth.toLocaleDateString("es-ES", { month: "long", year: "numeric" })
+  );
 
   const fmtDate = (d: Date | null) =>
     d ? new Date(d).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" }) : "—";
@@ -170,7 +207,32 @@ export default async function InformePage({
       />
 
       {/* Barra de acciones (no imprime) */}
-      <div className="flex justify-end mb-4 print:hidden">
+      <div className="flex items-center justify-between mb-4 print:hidden">
+        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg px-1 py-1">
+          <Link
+            href={monthHref(prevMonth.y, prevMonth.m)}
+            className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-md"
+            title="Mes anterior"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Link>
+          <span className="text-sm font-medium text-gray-900 px-2 min-w-[9rem] text-center">
+            {monthLabel}
+          </span>
+          {nextDisabled ? (
+            <span className="p-1.5 text-gray-300">
+              <ChevronRight className="h-4 w-4" />
+            </span>
+          ) : (
+            <Link
+              href={monthHref(nextMonth.y, nextMonth.m)}
+              className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-md"
+              title="Mes siguiente"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Link>
+          )}
+        </div>
         <PrintButton />
       </div>
 
@@ -186,9 +248,46 @@ export default async function InformePage({
           <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
           <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
             {project.domain && <span>{project.domain}</span>}
+            <span>Periodo: {monthLabel}</span>
             <span>Generado el {generationDate}</span>
           </div>
         </div>
+
+        {/* Trabajos realizados este mes — lo primero que ve el cliente: qué se
+            hizo, no solo cómo está la web. Incluye tareas manuales y las
+            auto-generadas desde hallazgos de auditoría, solo cuando quedaron
+            genuinamente resueltas (ver generateAuditTasks). */}
+        <section className="space-y-4">
+          <SectionTitle icon={<ClipboardCheck className="h-4 w-4" />}>
+            Trabajos realizados{" "}
+            <span className="text-gray-400 font-normal text-sm">({monthLabel})</span>
+          </SectionTitle>
+          {completedTodos.length === 0 ? (
+            <p className="text-sm text-gray-500">Sin tareas completadas registradas este mes.</p>
+          ) : (
+            <ul className="space-y-2">
+              {completedTodos.map((t) => {
+                const label = t.issueType
+                  ? (ISSUE_META[t.issueType]?.label ?? t.issueType)
+                  : splitManualTask(t.text).title;
+                const sub = t.issueType
+                  ? `${t.affectedUrls.length} página${t.affectedUrls.length === 1 ? "" : "s"} corregida${t.affectedUrls.length === 1 ? "" : "s"}`
+                  : null;
+                return (
+                  <li key={t.id} className="flex items-start justify-between gap-3 text-sm border-b border-gray-100 pb-2 last:border-0">
+                    <div className="min-w-0">
+                      <p className="text-gray-900">{label}</p>
+                      {sub && <p className="text-xs text-gray-400">{sub}</p>}
+                    </div>
+                    <span className="text-xs text-gray-400 shrink-0 whitespace-nowrap">
+                      {fmtDate(t.completedAt)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
 
         {/* Salud técnica (Módulo 8) */}
         <section className="space-y-4">
@@ -196,10 +295,10 @@ export default async function InformePage({
             Salud técnica <span className="text-gray-400 font-normal text-sm">(Auditoría)</span>
           </SectionTitle>
           {!latestAudit || latestAudit.overallScore == null ? (
-            <p className="text-sm text-gray-500">Sin auditorías completadas.</p>
+            <p className="text-sm text-gray-500">Sin auditorías completadas hasta este mes.</p>
           ) : (
             <>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
                 <div className="break-inside-avoid">
                   <div
                     className={`text-3xl font-bold tabular-nums print:text-black ${scoreTone(
@@ -237,7 +336,7 @@ export default async function InformePage({
         {/* Posicionamiento (Módulo 5) */}
         <section className="space-y-4">
           <SectionTitle icon={<Target className="h-4 w-4" />}>
-            Posicionamiento <span className="text-gray-400 font-normal text-sm">(Rank tracking)</span>
+            Posicionamiento <span className="text-gray-400 font-normal text-sm">(Rank tracking, estado actual)</span>
           </SectionTitle>
           {rankKeywords.length === 0 ? (
             <p className="text-sm text-gray-500">Sin keywords en seguimiento.</p>
@@ -308,7 +407,7 @@ export default async function InformePage({
         <section className="space-y-4">
           <SectionTitle icon={<Search className="h-4 w-4" />}>
             Investigación de keywords{" "}
-            <span className="text-gray-400 font-normal text-sm">(Estudios)</span>
+            <span className="text-gray-400 font-normal text-sm">(Estudios, estado actual)</span>
           </SectionTitle>
           <div className="grid grid-cols-2 gap-4">
             <Stat label="Estudios guardados" value={String(studyCount)} />
@@ -326,7 +425,7 @@ export default async function InformePage({
               SEO Local <span className="text-gray-400 font-normal text-sm">(Geogrid)</span>
             </SectionTitle>
             {!latestGeogrid || latestGeogrid.foundCount == null ? (
-              <p className="text-sm text-gray-500">Sin geogrids completados.</p>
+              <p className="text-sm text-gray-500">Sin geogrids completados hasta este mes.</p>
             ) : (
               <>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -356,7 +455,7 @@ export default async function InformePage({
         {/* Coste del mes */}
         <section className="space-y-4">
           <SectionTitle icon={<Wallet className="h-4 w-4" />}>
-            Coste del mes <span className="text-gray-400 font-normal text-sm capitalize">({monthLabel})</span>
+            Coste del mes <span className="text-gray-400 font-normal text-sm">({monthLabel})</span>
           </SectionTitle>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             <Stat label="Gasto en APIs" value={`${monthCost.toFixed(2)}$`} sub="DataForSEO + OpenRouter" />
@@ -366,6 +465,7 @@ export default async function InformePage({
         {/* Pie */}
         <footer className="border-t border-gray-200 pt-4 text-xs text-gray-400 print:text-black">
           Informe generado por SEO Ciro · Agencia Ciro · Sentido Común Internet SL
+          {!isCurrentMonth && " · Informe de un mes anterior — los datos de estado (salud técnica, SEO local) reflejan la última medición hasta el fin de ese mes."}
         </footer>
       </div>
     </div>
