@@ -211,6 +211,8 @@ export default function RankView({ projectId }: { projectId: string }) {
   const [importing, setImporting] = useState(false);
 
   const [checkingId, setCheckingId] = useState<string | null>(null);
+  const [checkingAll, setCheckingAll] = useState(false);
+  const [checkAllProgress, setCheckAllProgress] = useState<{ done: number; total: number } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [history, setHistory] = useState<RankPosition[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -376,6 +378,57 @@ export default function RankView({ projectId }: { projectId: string }) {
     if (selectedId === kwId) {
       await Promise.all([loadHistory(kwId), loadCompetitors(kwId)]);
     }
+  }
+
+  // "Comprobar todas": recorre secuencialmente las keywords visibles (respeta
+  // el filtro/búsqueda actual, igual que Exportar CSV) reutilizando la misma
+  // ruta que "Comprobar ahora" por fila — sin lógica de servidor nueva, sin
+  // paralelizar (mismo principio que el cron: una llamada SERP detrás de
+  // otra). El spinner por fila (checkingId) se reutiliza para que se vea cuál
+  // se está comprobando en cada momento. Si una falla por tope de gasto
+  // (422), se corta el resto del lote en vez de seguir fallando keyword a
+  // keyword.
+  async function handleCheckAll() {
+    const targets = filteredKeywords;
+    if (targets.length === 0 || checkingAll) return;
+    setError("");
+    setCheckingAll(true);
+    setCheckAllProgress({ done: 0, total: targets.length });
+
+    let ok = 0;
+    let failed = 0;
+    let stoppedForSpend = false;
+
+    for (const kw of targets) {
+      setCheckingId(kw.id);
+      try {
+        const res = await fetch(`/api/proyectos/${projectId}/rank/keywords/${kw.id}/check`, {
+          method: "POST",
+        });
+        if (res.ok) {
+          ok++;
+        } else {
+          failed++;
+          if (res.status === 422) {
+            stoppedForSpend = true;
+            break; // tope de gasto alcanzado — seguir sería repetir el mismo fallo N veces
+          }
+        }
+      } catch {
+        failed++;
+      }
+      setCheckAllProgress((p) => (p ? { ...p, done: p.done + 1 } : p));
+    }
+
+    setCheckingId(null);
+    setCheckingAll(false);
+    setCheckAllProgress(null);
+    await Promise.all([loadKeywords(), loadSpend()]);
+
+    const parts = [`${ok} comprobadas`];
+    if (stoppedForSpend) parts.push("detenido por tope de gasto alcanzado");
+    else if (failed > 0) parts.push(`${failed} con error`);
+    setErrorFor("checkall", parts.join(" · "));
   }
 
   async function handleFrequency(kwId: string, frequency: string) {
@@ -780,6 +833,22 @@ export default function RankView({ projectId }: { projectId: string }) {
                   </Select.Portal>
                 </Select.Root>
               )}
+              <button
+                type="button"
+                onClick={handleCheckAll}
+                disabled={checkingAll}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50 shrink-0"
+                title="Comprobar ahora la posición de todas las keywords visibles (respeta el filtro/búsqueda actual)"
+              >
+                {checkingAll ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+                {checkingAll && checkAllProgress
+                  ? `Comprobando ${checkAllProgress.done}/${checkAllProgress.total}...`
+                  : "Comprobar todas"}
+              </button>
               <button
                 type="button"
                 onClick={exportCsv}
