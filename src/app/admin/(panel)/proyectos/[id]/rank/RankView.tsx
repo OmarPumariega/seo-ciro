@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { rankMonthlyCostUsd } from "@/lib/dataforseo/pricing";
 import { downloadCsv } from "@/lib/csv";
 import RankVisibilityChart from "@/components/admin/RankVisibilityChart";
+import LocationPicker, { type LocationValue } from "@/components/admin/LocationPicker";
 
 type RankPosition = { id: string; checkedAt: string; position: number | null; url: string | null };
 
@@ -28,6 +29,7 @@ type RankKeyword = {
   id: string;
   keyword: string;
   locationCode: number;
+  locationName: string | null;
   languageCode: string;
   device: string;
   frequency: string;
@@ -193,6 +195,7 @@ export default function RankView({ projectId }: { projectId: string }) {
   const [newFrequency, setNewFrequency] = useState("weekly");
   const [newDepth, setNewDepth] = useState("10");
   const [newGroup, setNewGroup] = useState("");
+  const [newLocation, setNewLocation] = useState<LocationValue>(null);
   const [adding, setAdding] = useState(false);
 
   // Búsqueda, filtro por grupo y orden — la tabla no pagina (el volumen
@@ -301,6 +304,8 @@ export default function RankView({ projectId }: { projectId: string }) {
         frequency: newFrequency,
         depth: Number(newDepth),
         group: newGroup,
+        locationCode: newLocation?.code,
+        locationName: newLocation?.name,
       }),
     });
     const data = await res.json();
@@ -446,6 +451,20 @@ export default function RankView({ projectId }: { projectId: string }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ depth }),
     });
+    loadKeywords();
+  }
+
+  async function handleLocation(kwId: string, loc: LocationValue) {
+    const res = await fetch(`/api/proyectos/${projectId}/rank/keywords/${kwId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ locationCode: loc?.code, locationName: loc?.name }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setErrorFor("location", data.error ?? "Error al cambiar la ubicación");
+      return;
+    }
     loadKeywords();
   }
 
@@ -711,6 +730,16 @@ export default function RankView({ projectId }: { projectId: string }) {
             </div>
           </div>
         </div>
+        <div className="space-y-1">
+          <label className="block text-sm font-medium text-gray-700">
+            Ubicación de la búsqueda <span className="text-gray-400 font-normal">(opcional)</span>
+          </label>
+          <LocationPicker value={newLocation} onChange={setNewLocation} />
+          <p className="text-xs text-gray-400">
+            Simula la búsqueda desde ese punto (ej. &laquo;Gijón&raquo;) en vez de España entera —
+            más fiable para negocios locales. Sin elegir nada, se usa España (nacional).
+          </p>
+        </div>
         {error && <p className="text-sm text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg">{error}</p>}
         <button
           type="submit"
@@ -900,8 +929,9 @@ export default function RankView({ projectId }: { projectId: string }) {
                             {kw.keyword}
                           </span>
                         </button>
-                        <p className="text-[11px] text-gray-400 pl-5">
+                        <p className="text-[11px] text-gray-400 pl-5 truncate max-w-[220px]" title={kw.locationName ?? "España (nacional)"}>
                           {kw.device === "mobile" ? "Móvil" : "Desktop"} · Top-{kw.depth}
+                          {kw.locationName && <> · {kw.locationName}</>}
                         </p>
                       </td>
                       <td className="py-2 px-3 text-right text-gray-600 tabular-nums whitespace-nowrap">
@@ -1020,6 +1050,15 @@ export default function RankView({ projectId }: { projectId: string }) {
                                     </Select.Content>
                                   </Select.Portal>
                                 </Select.Root>
+                              </div>
+                              <div className="flex items-center gap-2 min-w-[220px]">
+                                <label className="text-xs text-gray-500 shrink-0">Ubicación:</label>
+                                <div className="flex-1">
+                                  <LocationPicker
+                                    value={kw.locationName ? { code: kw.locationCode, name: kw.locationName } : null}
+                                    onChange={(loc) => handleLocation(kw.id, loc)}
+                                  />
+                                </div>
                               </div>
                             </div>
 

@@ -92,6 +92,12 @@ export async function POST(
       : "es";
   const rawLocation = Number(body.locationCode);
   const locationCode = Number.isInteger(rawLocation) && rawLocation > 0 ? rawLocation : 2724;
+  // Solo se persiste el nombre si viene junto a un locationCode distinto del
+  // nacional por defecto — así "España (nacional)" nunca guarda un nombre falso.
+  const locationName =
+    locationCode !== 2724 && typeof body.locationName === "string" && body.locationName.trim()
+      ? body.locationName.trim().slice(0, 160)
+      : null;
   const rawDepth = Number(body.depth);
   const depth = (ALLOWED_DEPTHS as readonly number[]).includes(rawDepth) ? rawDepth : 10;
   const group = typeof body.group === "string" && body.group.trim() ? body.group.trim().slice(0, 60) : null;
@@ -142,7 +148,7 @@ export async function POST(
     let created: RankKeyword | null = null;
     try {
       created = await prisma.rankKeyword.create({
-        data: { projectId: id, keyword: kw, device, frequency, languageCode, locationCode, depth, group },
+        data: { projectId: id, keyword: kw, device, frequency, languageCode, locationCode, locationName, depth, group },
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

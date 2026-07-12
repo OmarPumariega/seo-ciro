@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
+import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
 import { ALLOWED_DEPTHS } from "@/lib/rank/serp";
@@ -29,7 +30,14 @@ export async function PATCH(
     return NextResponse.json({ error: "Keyword no encontrada" }, { status: 404 });
   }
 
-  const data: { frequency?: string; device?: string; depth?: number; group?: string | null } = {};
+  const data: {
+    frequency?: string;
+    device?: string;
+    depth?: number;
+    group?: string | null;
+    locationCode?: number;
+    locationName?: string | null;
+  } = {};
   if (typeof body.frequency === "string" && (FREQUENCIES as readonly string[]).includes(body.frequency)) {
     data.frequency = body.frequency;
   }
@@ -44,13 +52,34 @@ export async function PATCH(
     const g = typeof body.group === "string" ? body.group.trim().slice(0, 60) : "";
     data.group = g || null;
   }
+  // La ubicación se cambia en pareja (código + nombre) para que nunca queden
+  // desincronizados — "locationCode" en el body sin más ("null") vuelve al
+  // nacional (2724, sin nombre).
+  if ("locationCode" in body) {
+    const raw = Number(body.locationCode);
+    data.locationCode = Number.isInteger(raw) && raw > 0 ? raw : 2724;
+    data.locationName =
+      data.locationCode !== 2724 && typeof body.locationName === "string" && body.locationName.trim()
+        ? body.locationName.trim().slice(0, 160)
+        : null;
+  }
 
   if (Object.keys(data).length === 0) {
     return NextResponse.json({ error: "Nada que actualizar" }, { status: 400 });
   }
 
-  const updated = await prisma.rankKeyword.update({ where: { id: kwId }, data });
-  return NextResponse.json(updated);
+  try {
+    const updated = await prisma.rankKeyword.update({ where: { id: kwId }, data });
+    return NextResponse.json(updated);
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return NextResponse.json(
+        { error: "Ya sigues esta keyword con esa ubicación/idioma/dispositivo" },
+        { status: 409 }
+      );
+    }
+    throw error;
+  }
 }
 
 export async function DELETE(
