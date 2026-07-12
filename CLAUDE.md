@@ -148,9 +148,9 @@ ficha de cada proyecto, no aquí — la conexión es una, las propiedades son po
 
 ### Ficha de proyecto (`/admin/proyectos/[id]/...`)
 Módulos anidados por ruta, con el nav en el sidebar global (no pestañas locales), en
-este orden: Perfil, Tareas, Keywords, Título y Meta, Schema, Rank Tracking, Google,
-Contenido, TF-IDF, Auditoría, Enlaces, Canibalizaciones, Competidores, Geogrid (solo si
-el proyecto es negocio local con coordenadas), Informe, Copilot.
+este orden: Perfil, Tareas, Keywords, Arquitectura, Título y Meta, Schema, Rank Tracking,
+Google, Contenido, TF-IDF, Auditoría, Enlaces, Canibalizaciones, Competidores, Geogrid
+(solo si el proyecto es negocio local con coordenadas), Informe, Copilot.
 
 - **Tareas** (Módulo 2, ampliado): CRUD manual de to-dos (texto + fecha límite
   opcional) **más** generación automática — al completarse una auditoría,
@@ -167,6 +167,14 @@ el proyecto es negocio local con coordenadas), Informe, Copilot.
   (resuelve vía caché + volumen/intención) sigue disponible. Sobre el estudio:
   "Generar estructura de URLs" (vía OpenRouter). Solo DataForSEO como fuente por ahora
   (Google Ads, fuente alternativa, pendiente).
+- **Arquitectura**: visualiza `KeywordStudy.structure` (la misma "Generar estructura de
+  URLs" del Módulo 1) como árbol en abanico horizontal — clic en una rama despliega sus
+  páginas hijas con la URL completa propuesta. `src/lib/keywords/structure-tree.ts`
+  agrupa las `slug` (rutas planas tipo "servicios/cambio-cerradura") por segmento de
+  ruta y calcula el volumen de cada rama sumando el `searchVolume` real de las keywords
+  que reclama (cruzado contra `Keyword`, nunca estimado), ordenando cada nivel por ese
+  volumen. Sin estructura generada todavía, permite generarla desde aquí (mismo
+  endpoint del Módulo 1).
 - **Título y Meta** (Módulo 3): URL → scraping real → 3 variantes de título/meta
   descripción vía OpenRouter, siguiendo [`docs/seo-rules.md`](./docs/seo-rules.md).
   Keyword objetivo manual opcional (puede venir del Módulo 1 cuando exista estudio).
@@ -177,11 +185,13 @@ el proyecto es negocio local con coordenadas), Informe, Copilot.
 - **Rank Tracking** (Módulo 5): keywords seguidas por proyecto (desacopladas de los
   estudios) → "comprobar ahora" síncrono vía DataForSEO SERP o frecuencias
   programadas (diaria/semanal/mensual) que procesa el cron. `depth` configurable
-  (10/30/50/100, default 10) por keyword — a mayor depth, mayor coste. Posición actual
-  con flecha de tendencia, mejor histórica y sparkline de evolución. Importa keywords
-  desde un estudio del Módulo 1. Solo orgánico (Geogrid → Módulo 9). Cada chequeo
-  alimenta `SerpCache` (reutilizada por TF-IDF) y dispara un aviso por email si la
-  posición cae ≥10.
+  (10/30/50/100, default 10) por keyword — a mayor depth, mayor coste. Ubicación real
+  opcional por keyword (comunidad/provincia/ciudad/municipio, `LocationPicker` — datos
+  reales de `GET /v3/serp/google/locations/ES`, sin coste): sin elegir nada, España
+  nacional (`locationCode` 2724). Posición actual con flecha de tendencia, mejor
+  histórica y sparkline de evolución. Importa keywords desde un estudio del Módulo 1.
+  Solo orgánico (Geogrid → Módulo 9). Cada chequeo alimenta `SerpCache` (reutilizada por
+  TF-IDF) y dispara un aviso por email si la posición cae ≥10.
 - **Google** (Módulo 6): si no hay conexión de agencia, enlaza a Configuración. Si la
   hay, selectores de propiedad de Search Console y GA4 (Business Profile deshabilitado,
   pendiente de aprobación de Google) + dashboard de últimos 28 días (clics/impresiones
@@ -193,10 +203,11 @@ el proyecto es negocio local con coordenadas), Informe, Copilot.
   son manuales (hasta que exista el Módulo 1) — si no se aportan, nunca se inventan.
   Generaciones agrupadas por tema (versionado): comparar versiones con diff línea a
   línea (LCS), restaurar una anterior o regenerar.
-- **TF-IDF**: siembra una keyword → top-10 orgánico real (vía `SerpCache` si ya existe,
-  si no una llamada SERP nueva) → scraping de cada resultado → términos más relevantes
-  por TF-IDF para orientar el contenido. Sin coste si el rank tracking ya consultó esa
-  keyword recientemente.
+- **TF-IDF**: siembra una keyword + ubicación opcional (mismo `LocationPicker` que Rank
+  Tracking) → top-10 orgánico real (vía `SerpCache` si ya existe, si no una llamada SERP
+  nueva) → scraping de cada resultado → términos más relevantes por TF-IDF para orientar
+  el contenido. Sin coste si el rank tracking ya consultó esa keyword/ubicación
+  recientemente.
 - **Auditoría** (Módulo 8): botón "Ejecutar auditoría ahora" → crea `AuditRun` pending
   → se procesa de inmediato (fire-and-forget) y también vía el cron interno como
   respaldo → rastreo del sitio (enlaces rotos, HTTPS, canonicals, meta robots,
@@ -213,11 +224,12 @@ el proyecto es negocio local con coordenadas), Informe, Copilot.
 - **Canibalizaciones**: consulta directa a Search Console (mismo query posicionando
   varias URLs en 90 días) — requiere GSC conectado para el proyecto, sin coste de
   DataForSEO/OpenRouter.
-- **Competidores** (Tier 2): trackear dominios competidores → "Analizar" pide
-  visibilidad real vía DataForSEO Labs (tráfico estimado, nº keywords, top keywords,
-  histórico de snapshots) y content gap (`domain_intersection`: keywords que ranquea
-  el competidor y el proyecto no). Ver histórico ya calculado es gratis, solo
-  "Analizar"/recalcular gap paga.
+- **Competidores** (Tier 2): trackear dominios competidores → ubicación de análisis
+  opcional (mismo `LocationPicker`, aplica a "Analizar" y "Gap" de toda la sesión) →
+  "Analizar" pide visibilidad real vía DataForSEO Labs (tráfico estimado, nº keywords,
+  top keywords, histórico de snapshots) y content gap (`domain_intersection`: keywords
+  que ranquea el competidor y el proyecto no). Ver histórico ya calculado es gratis,
+  solo "Analizar"/recalcular gap paga.
 - **Geogrid** (Módulo 9, solo negocios locales): keyword + rejilla (3×3/5×5/7×7) + radio
   → crea `GeogridRun` pending → se procesa de inmediato y también vía el cron →
   Maps SERP en cada punto con coordenada exacta, localiza la posición del negocio

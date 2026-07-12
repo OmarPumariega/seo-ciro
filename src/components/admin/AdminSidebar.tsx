@@ -23,6 +23,7 @@ function projectModules(base: string, isLocalBusiness: boolean) {
     { href: base, label: "Perfil" },
     { href: `${base}/tareas`, label: "Tareas" },
     { href: `${base}/keywords`, label: "Keywords" },
+    { href: `${base}/arquitectura`, label: "Arquitectura" },
     { href: `${base}/titulos-meta`, label: "Título y Meta" },
     { href: `${base}/schema`, label: "Schema" },
     { href: `${base}/rank`, label: "Rank Tracking" },
