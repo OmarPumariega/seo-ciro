@@ -38,6 +38,14 @@ export type TaskEnvelope = {
   result?: unknown;
 };
 
+// Códigos de tarea que NO son un error real, son un resultado vacío legítimo
+// (p.ej. Maps SERP en una coordenada sin negocios de esa categoría cerca, algo
+// completamente normal en los puntos periféricos de una rejilla de geogrid).
+// Tratarlos como excepción hacía fallar rejillas enteras porque UN solo punto
+// sin resultados abortaba los N² puntos ya comprobados y pagados.
+//   40102 — "No Search Results"
+const EMPTY_RESULT_TASK_CODES = new Set([40102]);
+
 export function extractTask(json: unknown, endpoint: string): TaskEnvelope {
   const top = json as { status_code?: number; status_message?: string; tasks?: TaskEnvelope[] };
   if (top.status_code !== 20000) {
@@ -46,7 +54,7 @@ export function extractTask(json: unknown, endpoint: string): TaskEnvelope {
     );
   }
   const task = top.tasks?.[0];
-  if (!task || task.status_code !== 20000) {
+  if (!task || (task.status_code !== 20000 && !EMPTY_RESULT_TASK_CODES.has(task.status_code ?? -1))) {
     throw new DataForSeoError(
       `DataForSEO ${endpoint}: ${task?.status_message ?? top.status_message ?? "error de tarea"} (código ${task?.status_code ?? "?"})`
     );

@@ -45,22 +45,31 @@ export async function runGeogridJob(): Promise<{ processed: number }> {
     let found = 0;
     let posSum = 0;
 
+    // Un punto suelto que falle (error transitorio, timeout de DataForSEO...)
+    // no debe tirar los N²-1 puntos restantes ya pagados — se registra como
+    // "sin datos" (null) y se sigue. Mismo principio que runRankJob (Módulo
+    // 5), que ya captura por keyword y continúa con las demás.
     for (const p of points) {
-      const { rank, costUsd } = await checkMapsRank({
-        keyword: run.keyword,
-        lat: p.lat,
-        lng: p.lng,
-        languageCode: "es",
-        projectDomain,
-        businessName: run.project.businessName ?? null,
-        gbpName: run.project.gbpName ?? null,
-        gbpPlaceId: run.project.gbpPlaceId ?? null,
-      });
-      results.push({ row: p.row, col: p.col, lat: p.lat, lng: p.lng, position: rank.position, title: rank.title });
-      if (costUsd !== null) totalCost += costUsd;
-      if (rank.position !== null) {
-        found++;
-        posSum += rank.position;
+      try {
+        const { rank, costUsd } = await checkMapsRank({
+          keyword: run.keyword,
+          lat: p.lat,
+          lng: p.lng,
+          languageCode: "es",
+          projectDomain,
+          businessName: run.project.businessName ?? null,
+          gbpName: run.project.gbpName ?? null,
+          gbpPlaceId: run.project.gbpPlaceId ?? null,
+        });
+        results.push({ row: p.row, col: p.col, lat: p.lat, lng: p.lng, position: rank.position, title: rank.title });
+        if (costUsd !== null) totalCost += costUsd;
+        if (rank.position !== null) {
+          found++;
+          posSum += rank.position;
+        }
+      } catch (e) {
+        console.error(`[geogrid] error en punto (${p.row},${p.col}) del run ${run.id}:`, e);
+        results.push({ row: p.row, col: p.col, lat: p.lat, lng: p.lng, position: null, title: null });
       }
     }
 
