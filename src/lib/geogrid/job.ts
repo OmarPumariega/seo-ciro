@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { Prisma } from "@prisma/client";
 import { assertWithinSpendLimit, DataForSeoSpendLimitError } from "@/lib/dataforseo/spend";
 import { generateGridPoints } from "@/lib/geogrid/grid";
-import { checkMapsRank, normalizeDomain } from "@/lib/geogrid/maps";
+import { checkMapsRank, normalizeDomain, type MapsTopItem } from "@/lib/geogrid/maps";
 
 const STALE_TIMEOUT_MIN = 15;
 
@@ -40,7 +40,15 @@ export async function runGeogridJob(): Promise<{ processed: number }> {
     const projectDomain = run.project.domain ? normalizeDomain(run.project.domain) : null;
     const points = generateGridPoints(run.centerLat, run.centerLng, run.gridSize, run.radiusKm);
 
-    const results: Array<{ row: number; col: number; lat: number; lng: number; position: number | null; title: string | null }> = [];
+    const results: Array<{
+      row: number;
+      col: number;
+      lat: number;
+      lng: number;
+      position: number | null;
+      title: string | null;
+      top: MapsTopItem[];
+    }> = [];
     let totalCost = 0;
     let found = 0;
     let posSum = 0;
@@ -51,7 +59,7 @@ export async function runGeogridJob(): Promise<{ processed: number }> {
     // 5), que ya captura por keyword y continúa con las demás.
     for (const p of points) {
       try {
-        const { rank, costUsd } = await checkMapsRank({
+        const { rank, costUsd, top } = await checkMapsRank({
           keyword: run.keyword,
           lat: p.lat,
           lng: p.lng,
@@ -61,7 +69,7 @@ export async function runGeogridJob(): Promise<{ processed: number }> {
           gbpName: run.project.gbpName ?? null,
           gbpPlaceId: run.project.gbpPlaceId ?? null,
         });
-        results.push({ row: p.row, col: p.col, lat: p.lat, lng: p.lng, position: rank.position, title: rank.title });
+        results.push({ row: p.row, col: p.col, lat: p.lat, lng: p.lng, position: rank.position, title: rank.title, top });
         if (costUsd !== null) totalCost += costUsd;
         if (rank.position !== null) {
           found++;
@@ -69,7 +77,7 @@ export async function runGeogridJob(): Promise<{ processed: number }> {
         }
       } catch (e) {
         console.error(`[geogrid] error en punto (${p.row},${p.col}) del run ${run.id}:`, e);
-        results.push({ row: p.row, col: p.col, lat: p.lat, lng: p.lng, position: null, title: null });
+        results.push({ row: p.row, col: p.col, lat: p.lat, lng: p.lng, position: null, title: null, top: [] });
       }
     }
 

@@ -1,12 +1,22 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Sparkles, XCircle, GitCompareArrows, Check, MapPin } from "lucide-react";
+import { Loader2, Sparkles, XCircle, GitCompareArrows, Check, MapPin, Star, MousePointerClick } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { geogridCostUsd } from "@/lib/dataforseo/pricing";
 import GeogridMap from "@/components/admin/GeogridMap";
+import UrlLink from "@/components/admin/UrlLink";
+import type { MapsTopItem } from "@/lib/geogrid/maps";
 
-type GridPoint = { row: number; col: number; lat: number; lng: number; position: number | null; title: string | null };
+type GridPoint = {
+  row: number;
+  col: number;
+  lat: number;
+  lng: number;
+  position: number | null;
+  title: string | null;
+  top?: MapsTopItem[];
+};
 
 type GeogridRun = {
   id: string;
@@ -34,6 +44,78 @@ function cellStyle(position: number | null): string {
 
 function sortPoints(points: GridPoint[] | null): GridPoint[] {
   return (points ?? []).slice().sort((a, b) => a.row - b.row || a.col - b.col);
+}
+
+// Mismo semáforo que cellStyle pero como color plano, para la insignia
+// numerada del ranking local (fondo de color + número en blanco).
+function badgeColor(position: number): string {
+  if (position <= 3) return "bg-emerald-500";
+  if (position <= 10) return "bg-amber-500";
+  if (position <= 20) return "bg-orange-400";
+  return "bg-red-500";
+}
+
+// Panel lateral "quién gana aquí" (estilo LocalFalcon/DinoRank): el pack
+// local real de un punto concreto de la rejilla, con valoración y web —
+// mismos datos que ya trae la llamada pagada de ese punto, no cuesta nada
+// nuevo mostrarlos.
+function PointRankingPanel({ point }: { point: GridPoint | null }) {
+  if (!point) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center text-center gap-2 text-gray-400 py-10">
+        <MousePointerClick className="h-5 w-5" />
+        <p className="text-xs">Haz clic en un punto del mapa para ver quién gana el pack local ahí.</p>
+      </div>
+    );
+  }
+  const top = point.top ?? [];
+  return (
+    <div className="space-y-1">
+      <p className="text-xs text-gray-400 mb-2">
+        Punto ({point.row + 1},{point.col + 1}) ·{" "}
+        {point.position === null ? "no aparece aquí" : `tú vas #${point.position}`}
+      </p>
+      {top.length === 0 ? (
+        <p className="text-sm text-gray-500">Sin negocios detectados en este punto.</p>
+      ) : (
+        <ul className="divide-y divide-gray-50">
+          {top.map((item) => (
+            <li
+              key={item.position}
+              className={cn("py-2 flex gap-2 rounded-md", item.isMatch && "bg-emerald-50 -mx-2 px-2")}
+            >
+              <span
+                className={cn(
+                  "h-6 w-6 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold text-white mt-0.5",
+                  badgeColor(item.position)
+                )}
+              >
+                {item.position}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-gray-900 truncate">
+                  {item.title}
+                  {item.isMatch && <span className="ml-1 text-[10px] font-semibold text-emerald-700">· TÚ</span>}
+                </p>
+                <p className="text-xs text-gray-500 flex items-center gap-1 flex-wrap">
+                  {item.rating !== null ? (
+                    <span className="flex items-center gap-0.5">
+                      <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                      {item.rating.toFixed(1)}/5.0{item.reviewsCount !== null && ` (${item.reviewsCount})`}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400">Sin valoraciones</span>
+                  )}
+                  {item.category && <span className="text-gray-400">· {item.category}</span>}
+                </p>
+                {item.url && <UrlLink url={item.url} className="text-xs mt-0.5" />}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 // Heatmap reutilizable: pinta la rejilla N×N de un run (o de una comparación).
@@ -95,6 +177,7 @@ export default function GeogridView({
   const [error, setError] = useState("");
   const [compareMode, setCompareMode] = useState(false);
   const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [selectedPoint, setSelectedPoint] = useState<{ row: number; col: number } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   function stopPolling() {
@@ -133,6 +216,23 @@ export default function GeogridView({
     return () => stopPolling();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  // Selección por defecto en el mapa: el punto donde mejor posiciona el
+  // negocio (o el primero si no aparece en ninguno) — así el panel lateral
+  // nunca arranca vacío al cargar un run ya completado.
+  useEffect(() => {
+    if (current?.status !== "completed" || !current.points || current.points.length === 0) {
+      setSelectedPoint(null);
+      return;
+    }
+    const points = sortPoints(current.points);
+    const withPosition = points.filter((p) => p.position !== null);
+    const best = withPosition.length > 0
+      ? withPosition.reduce((a, b) => ((a.position as number) <= (b.position as number) ? a : b))
+      : points[0];
+    setSelectedPoint({ row: best.row, col: best.col });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id]);
 
   async function loadDetail(runId: string) {
     const res = await fetch(`/api/proyectos/${projectId}/geogrid/${runId}`);
@@ -205,6 +305,11 @@ export default function GeogridView({
     }));
   }
 
+  const selectedPointData: GridPoint | null =
+    selectedPoint && current?.points
+      ? current.points.find((p) => p.row === selectedPoint.row && p.col === selectedPoint.col) ?? null
+      : null;
+
   return (
     <div className="space-y-6">
       <div>
@@ -217,28 +322,59 @@ export default function GeogridView({
       </div>
 
       {/* Mapa real (Leaflet/OSM), siempre visible desde el centro del negocio
-          aunque todavía no haya ningún geogrid ejecutado — así se ve de
-          entrada desde dónde se está buscando. */}
-      <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-2">
+          aunque todavía no haya ningún geogrid ejecutado, con un círculo
+          numerado por punto (mismo lenguaje visual que LocalFalcon/DinoRank)
+          y un panel lateral con el pack local real del punto seleccionado. */}
+      <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
         <div className="flex items-center gap-2">
           <MapPin className="h-4 w-4 text-gray-500" />
-          <h3 className="text-sm font-semibold text-gray-900">
-            {businessName ?? "Centro del negocio"}
-          </h3>
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">
+              {current?.status === "completed" ? current.keyword : businessName ?? "Centro del negocio"}
+            </h3>
+            {current?.status === "completed" && !canCompare && (
+              <p className="text-xs text-gray-400">
+                {current.gridSize}×{current.gridSize} · radio {current.radiusKm} km ·{" "}
+                {current.foundCount ?? 0}/{current.gridSize * current.gridSize} puntos posicionando
+                {current.averagePosition !== null && <> · media #{current.averagePosition}</>}
+                {" · "}{new Date(current.triggeredAt).toLocaleDateString("es-ES")}
+              </p>
+            )}
+          </div>
         </div>
+
         {centerLat === null || centerLng === null ? (
           <p className="text-sm text-gray-500">
             Faltan las coordenadas del negocio — defínelas en la ficha del proyecto para ver el mapa
             y poder ejecutar un geogrid.
           </p>
         ) : (
-          <GeogridMap
-            centerLat={centerLat}
-            centerLng={centerLng}
-            radiusKm={current?.status === "completed" ? current.radiusKm : radiusKm}
-            points={current?.status === "completed" ? current.points : null}
-            keyword={current?.status === "completed" ? current.keyword : undefined}
-          />
+          <div className="flex flex-col lg:flex-row gap-4">
+            <div className="flex-1 min-w-0">
+              <GeogridMap
+                centerLat={centerLat}
+                centerLng={centerLng}
+                radiusKm={current?.status === "completed" ? current.radiusKm : radiusKm}
+                points={current?.status === "completed" ? current.points : null}
+                keyword={current?.status === "completed" ? current.keyword : undefined}
+                selected={selectedPoint}
+                onSelectPoint={(p) => setSelectedPoint({ row: p.row, col: p.col })}
+              />
+            </div>
+            <div className="lg:w-72 shrink-0 lg:border-l lg:border-gray-100 lg:pl-4">
+              <PointRankingPanel point={selectedPointData} />
+            </div>
+          </div>
+        )}
+
+        {current?.status === "completed" && current.points && !canCompare && (
+          <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-500 pt-1">
+            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded-full bg-emerald-500" /> Top 3</span>
+            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded-full bg-amber-500" /> 4–10</span>
+            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded-full bg-orange-400" /> 11–20</span>
+            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded-full bg-red-500" /> +20</span>
+            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded-full bg-gray-400" /> No aparece</span>
+          </div>
         )}
       </div>
 
@@ -315,31 +451,6 @@ export default function GeogridView({
         <div className="flex items-center gap-2 text-sm bg-red-50 text-red-600 px-3 py-2 rounded-lg">
           <XCircle className="h-4 w-4 shrink-0" />
           {current.errorMessage ?? "El geogrid ha fallado."}
-        </div>
-      )}
-
-      {current?.status === "completed" && current.points && !canCompare && (
-        <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-semibold text-gray-900">
-                {current.keyword} · {current.gridSize}×{current.gridSize} · radio {current.radiusKm} km
-              </p>
-              <p className="text-xs text-gray-400">
-                {current.foundCount ?? 0}/{current.gridSize * current.gridSize} puntos posicionando
-                {current.averagePosition !== null && <> · media #{current.averagePosition}</>}
-                {" · "}{new Date(current.triggeredAt).toLocaleDateString("es-ES")}
-              </p>
-            </div>
-          </div>
-          <Heatmap run={current} />
-          <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-500">
-            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-emerald-500" /> Top 3</span>
-            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-amber-400" /> 4–10</span>
-            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-orange-400" /> 11–20</span>
-            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-red-500" /> +20</span>
-            <span className="flex items-center gap-1"><span className="h-3 w-3 rounded bg-gray-200" /> No aparece</span>
-          </div>
         </div>
       )}
 

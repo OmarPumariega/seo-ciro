@@ -17,9 +17,26 @@ export type MapsRank = {
   url: string | null;
 };
 
+// Top real del pack local en ese punto — mismo item que ya devuelve la
+// llamada pagada, simplemente ya no se descarta. Alimenta el panel lateral
+// "quién gana aquí" del mapa (estilo LocalFalcon/DinoRank), coste marginal
+// cero porque es la misma respuesta que localiza nuestro propio negocio.
+export type MapsTopItem = {
+  position: number;
+  title: string;
+  rating: number | null;
+  reviewsCount: number | null;
+  url: string | null;
+  category: string | null;
+  isMatch: boolean; // true si es el negocio del proyecto
+};
+
+const TOP_ITEMS_LIMIT = 5;
+
 export type MapsResult = {
   rank: MapsRank;
   costUsd: number | null;
+  top: MapsTopItem[];
 };
 
 type MapsItem = {
@@ -29,6 +46,8 @@ type MapsItem = {
   title?: string;
   url?: string | null;
   place_id?: string;
+  rating?: { value?: number; votes_count?: number } | null;
+  category?: string | null;
 };
 
 function normalizeName(s: string): string {
@@ -68,10 +87,14 @@ export async function checkMapsRank(params: {
   let bestPosition: number | null = null;
   let bestTitle: string | null = null;
   let bestUrl: string | null = null;
+  const allRanked: MapsTopItem[] = [];
 
   for (const raw of items) {
     const item = raw as MapsItem;
     if (item.type !== "maps_search") continue;
+
+    const pos = typeof item.rank_absolute === "number" ? item.rank_absolute : null;
+    if (pos === null) continue;
 
     const itemDomain = typeof item.domain === "string" ? item.domain : "";
     const itemTitle = typeof item.title === "string" ? item.title : "";
@@ -79,24 +102,35 @@ export async function checkMapsRank(params: {
 
     // Prioridad de matching: place_id (1:1) > nombre exacto GBP > dominio >
     // businessName (incluye). Cuanto más arriba en la cadena, más fiable.
-    const placeHit = wantPlaceId && itemPlaceId && itemPlaceId === wantPlaceId;
-    const gbpHit = normGbpName && itemTitle && normalizeName(itemTitle) === normGbpName;
-    const domainHit = projectDomain && itemDomain && domainMatches(itemDomain, projectDomain);
-    const nameHit = normBizName && itemTitle && normalizeName(itemTitle).includes(normBizName);
-    if (!placeHit && !gbpHit && !domainHit && !nameHit) continue;
+    const placeHit = Boolean(wantPlaceId && itemPlaceId && itemPlaceId === wantPlaceId);
+    const gbpHit = Boolean(normGbpName && itemTitle && normalizeName(itemTitle) === normGbpName);
+    const domainHit = Boolean(projectDomain && itemDomain && domainMatches(itemDomain, projectDomain));
+    const nameHit = Boolean(normBizName && itemTitle && normalizeName(itemTitle).includes(normBizName));
+    const isMatch = placeHit || gbpHit || domainHit || nameHit;
 
-    const pos = typeof item.rank_absolute === "number" ? item.rank_absolute : null;
-    if (pos === null) continue;
-    if (bestPosition === null || pos < bestPosition) {
+    allRanked.push({
+      position: pos,
+      title: itemTitle || "(sin nombre)",
+      rating: typeof item.rating?.value === "number" ? item.rating.value : null,
+      reviewsCount: typeof item.rating?.votes_count === "number" ? item.rating.votes_count : null,
+      url: typeof item.url === "string" ? item.url : null,
+      category: typeof item.category === "string" ? item.category : null,
+      isMatch,
+    });
+
+    if (isMatch && (bestPosition === null || pos < bestPosition)) {
       bestPosition = pos;
       bestTitle = itemTitle || null;
       bestUrl = typeof item.url === "string" ? item.url : null;
     }
   }
 
+  allRanked.sort((a, b) => a.position - b.position);
+
   return {
     rank: { position: bestPosition, title: bestTitle, url: bestUrl },
     costUsd: typeof task.cost === "number" ? task.cost : null,
+    top: allRanked.slice(0, TOP_ITEMS_LIMIT),
   };
 }
 
