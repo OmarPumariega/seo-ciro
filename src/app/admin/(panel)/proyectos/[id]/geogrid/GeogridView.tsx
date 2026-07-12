@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Sparkles, XCircle, GitCompareArrows, Check } from "lucide-react";
+import { Loader2, Sparkles, XCircle, GitCompareArrows, Check, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { geogridCostUsd } from "@/lib/dataforseo/pricing";
+import GeogridMap from "@/components/admin/GeogridMap";
 
 type GridPoint = { row: number; col: number; lat: number; lng: number; position: number | null; title: string | null };
 
@@ -72,7 +73,17 @@ function deltaStyle(posA: number | null, posB: number | null): { cls: string; la
 
 const GRID_OPTIONS = [3, 5, 7];
 
-export default function GeogridView({ projectId }: { projectId: string }) {
+export default function GeogridView({
+  projectId,
+  centerLat,
+  centerLng,
+  businessName,
+}: {
+  projectId: string;
+  centerLat: number | null;
+  centerLng: number | null;
+  businessName: string | null;
+}) {
   const [keyword, setKeyword] = useState("");
   const [gridSize, setGridSize] = useState(5);
   const [radiusKm, setRadiusKm] = useState(3);
@@ -203,6 +214,32 @@ export default function GeogridView({ projectId }: { projectId: string }) {
           una instantánea independiente — lanza uno hoy y otro dentro de un mes para ver la evolución
           (y compararlos lado a lado). Una rejilla 5×5 son 25 consultas a Maps SERP (~75s).
         </p>
+      </div>
+
+      {/* Mapa real (Leaflet/OSM), siempre visible desde el centro del negocio
+          aunque todavía no haya ningún geogrid ejecutado — así se ve de
+          entrada desde dónde se está buscando. */}
+      <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-2">
+        <div className="flex items-center gap-2">
+          <MapPin className="h-4 w-4 text-gray-500" />
+          <h3 className="text-sm font-semibold text-gray-900">
+            {businessName ?? "Centro del negocio"}
+          </h3>
+        </div>
+        {centerLat === null || centerLng === null ? (
+          <p className="text-sm text-gray-500">
+            Faltan las coordenadas del negocio — defínelas en la ficha del proyecto para ver el mapa
+            y poder ejecutar un geogrid.
+          </p>
+        ) : (
+          <GeogridMap
+            centerLat={centerLat}
+            centerLng={centerLng}
+            radiusKm={current?.status === "completed" ? current.radiusKm : radiusKm}
+            points={current?.status === "completed" ? current.points : null}
+            keyword={current?.status === "completed" ? current.keyword : undefined}
+          />
+        )}
       </div>
 
       <form onSubmit={handleTrigger} className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
