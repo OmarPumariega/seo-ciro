@@ -11,6 +11,7 @@ import {
   ArrowLeft,
   ArrowDownToLine,
   Download,
+  Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { suggestionsCostUsd } from "@/lib/dataforseo/pricing";
@@ -143,6 +144,12 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
 
+  // Subir CSV/documento con keywords ya investigadas (con volumen y,
+  // opcionalmente, competencia/CPC/intención) — crea el estudio directamente
+  // con esos datos, sin llamar a DataForSEO.
+  const [importingFile, setImportingFile] = useState(false);
+  const [importFileError, setImportFileError] = useState("");
+
   // Sugerencias
   const [seed, setSeed] = useState("");
   const [limit, setLimit] = useState(30);
@@ -195,6 +202,25 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
     setCreating(false);
     if (!res.ok) return;
     setNewName("");
+    setCurrent(data);
+    loadStudies();
+  }
+
+  async function handleImportFile(file: File) {
+    setImportFileError("");
+    setImportingFile(true);
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`/api/proyectos/${projectId}/keywords/estudios/importar-archivo`, {
+      method: "POST",
+      body: form,
+    });
+    const data = await res.json();
+    setImportingFile(false);
+    if (!res.ok) {
+      setImportFileError(data.error ?? "Error al importar el archivo");
+      return;
+    }
     setCurrent(data);
     loadStudies();
   }
@@ -586,6 +612,40 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
           Crear
         </button>
       </form>
+
+      <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-2">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h3 className="text-sm font-medium text-gray-700">O sube un CSV con keywords ya investigadas</h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Columnas: keyword (obligatoria) y, si las tienes, volumen / competencia / cpc / intención.
+              Se usan tal cual vengan en el archivo — no se completan con DataForSEO.
+            </p>
+          </div>
+          <label
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 cursor-pointer shrink-0",
+              importingFile && "opacity-50 pointer-events-none"
+            )}
+          >
+            {importingFile ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            Subir archivo
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = ""; // permite volver a subir el mismo archivo si falla
+                if (file) handleImportFile(file);
+              }}
+            />
+          </label>
+        </div>
+        {importFileError && (
+          <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{importFileError}</p>
+        )}
+      </div>
 
       <div>
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Estudios</h3>
