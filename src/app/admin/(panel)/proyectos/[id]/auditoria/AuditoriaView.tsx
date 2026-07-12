@@ -200,6 +200,7 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
   const pages = current?.pages ?? [];
   const pagesWithIssuesCount = pages.filter((p) => (p.issues?.length ?? 0) > 0).length;
   const totalIssueInstances = pages.reduce((sum, p) => sum + (p.issues?.length ?? 0), 0);
+  const totalBrokenLinks = pages.reduce((sum, p) => sum + p.brokenLinksCount, 0);
 
   const showContent =
     current?.status === "completed" && !current.robotsBlocked && current.categoryScores;
@@ -334,6 +335,12 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
                     />
                   );
                 })}
+                {/* 6ª casilla del grid 3×2 — no es parte de las 5 categorías
+                    puntuadas (no se fabrica una puntuación /100 para no
+                    inventar una fórmula), pero es el dato clásico de
+                    auditoría técnica que faltaba por resumir: enlaces rotos
+                    totales encontrados en todo el rastreo. */}
+                <KpiTile label="Enlaces rotos" value={totalBrokenLinks} />
               </div>
               {!current.categoryScores.rendimiento && (
                 <p className="text-xs text-gray-400">

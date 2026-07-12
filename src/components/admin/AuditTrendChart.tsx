@@ -54,8 +54,28 @@ export default function AuditTrendChart({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const wrapRef = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(640);
+  const roRef = useRef<ResizeObserver | null>(null);
+
+  // Ref callback en vez de useRef + effect separado: el div del gráfico solo
+  // existe en el DOM cuando loading/error/vacío ya se resolvieron (está
+  // detrás de un ternario), así que un effect con deps [] se ejecutaba ANTES
+  // de que el nodo montara, encontraba wrapRef.current===null y no volvía a
+  // engancharse — el ancho se quedaba en el default (640) para siempre y el
+  // SVG desbordaba la tarjeta. El ref callback se dispara exactamente cuando
+  // React monta/desmonta el nodo real, sin depender de ningún effect.
+  const wrapRef = (el: HTMLDivElement | null) => {
+    roRef.current?.disconnect();
+    roRef.current = null;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    setW(el.getBoundingClientRect().width || 640);
+    const ro = new ResizeObserver((entries) => {
+      const cw = entries[0]?.contentRect.width;
+      if (cw && cw > 0) setW(cw);
+    });
+    ro.observe(el);
+    roRef.current = ro;
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -78,20 +98,6 @@ export default function AuditTrendChart({ projectId }: { projectId: string }) {
       cancelled = true;
     };
   }, [projectId]);
-
-  // SVG nítido a cualquier ancho: medimos el contenedor y dibujamos el
-  // viewBox a ese ancho exacto (sin preserveAspectRatio="none", que
-  // deformaría círculos y trazos).
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver((entries) => {
-      const cw = entries[0]?.contentRect.width;
-      if (cw && cw > 0) setW(cw);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
 
   const points: Point[] = runs
     .filter((r) => r.status === "completed" && r.overallScore !== null)
@@ -154,7 +160,7 @@ export default function AuditTrendChart({ projectId }: { projectId: string }) {
         <p className="py-12 text-center text-sm text-gray-400">Aún no hay auditorías completadas</p>
       ) : (
         <>
-          <div ref={wrapRef} className="w-full">
+          <div ref={wrapRef} className="w-full overflow-hidden">
             <svg width={w} height={H} viewBox={`0 0 ${w} ${H}`} role="img" aria-label="Evolución del score de auditoría">
               {/* Rejilla horizontal + etiquetas eje Y (0-100) */}
               {yTicks.map((v) => (
