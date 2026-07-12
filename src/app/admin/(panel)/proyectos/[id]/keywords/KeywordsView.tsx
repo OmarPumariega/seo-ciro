@@ -56,6 +56,7 @@ type StudyListItem = {
   locationCode: number;
   createdAt: string;
   hasStructure: boolean;
+  notes: string | null;
   _count: { keywords: number };
 };
 
@@ -168,7 +169,13 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
   const [generatingStructure, setGeneratingStructure] = useState(false);
   const [structureError, setStructureError] = useState("");
 
-  // Edición / borrado del estudio
+  // Edición / borrado del estudio (desde la lista)
+  const [listEditId, setListEditId] = useState<string | null>(null);
+  const [listEditName, setListEditName] = useState("");
+  const [listEditNotes, setListEditNotes] = useState("");
+  const [listSaving, setListSaving] = useState(false);
+
+  // Edición / borrado del estudio (desde dentro del workspace)
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [editNotes, setEditNotes] = useState("");
@@ -191,6 +198,31 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
 
   function reloadCurrent() {
     if (current) openStudy(current.id);
+    loadStudies();
+  }
+
+  function startListEdit(study: StudyListItem) {
+    setListEditId(study.id);
+    setListEditName(study.name);
+    setListEditNotes(study.notes ?? "");
+  }
+
+  async function handleListSave() {
+    if (!listEditId) return;
+    setListSaving(true);
+    await fetch(`/api/proyectos/${projectId}/keywords/estudios/${listEditId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: listEditName.trim(), notes: listEditNotes.trim() || null }),
+    });
+    setListSaving(false);
+    setListEditId(null);
+    loadStudies();
+  }
+
+  async function handleListDelete(studyId: string, studyName: string) {
+    if (!confirm(`¿Eliminar el estudio "${studyName}" y todas sus keywords?`)) return;
+    await fetch(`/api/proyectos/${projectId}/keywords/estudios/${studyId}`, { method: "DELETE" });
     loadStudies();
   }
 
@@ -776,21 +808,77 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
         ) : (
           <div className="space-y-2">
             {studies.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => openStudy(s.id)}
-                className="w-full text-left bg-white rounded-lg border border-gray-100 p-3 hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-900">{s.name}</span>
-                  <span className="text-xs text-gray-400">
-                    {s._count.keywords} keywords{s.hasStructure ? " · estructura" : ""}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-400">
-                  {s.languageCode.toUpperCase()}/{s.locationCode} · {new Date(s.createdAt).toLocaleDateString("es-ES")}
-                </p>
-              </button>
+              <div key={s.id} className="bg-white rounded-lg border border-gray-100 p-3">
+                {listEditId === s.id ? (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={listEditName}
+                      onChange={(e) => setListEditName(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+                      placeholder="Nombre del estudio"
+                    />
+                    <textarea
+                      value={listEditNotes}
+                      onChange={(e) => setListEditNotes(e.target.value)}
+                      rows={2}
+                      className="w-full px-3 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+                      placeholder="Notas o descripción breve (opcional)..."
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleListSave}
+                        disabled={listSaving}
+                        className="px-3 py-1 bg-gray-900 text-white text-xs rounded-lg hover:bg-gray-800 disabled:opacity-50"
+                      >
+                        {listSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Guardar"}
+                      </button>
+                      <button
+                        onClick={() => setListEditId(null)}
+                        className="px-3 py-1 text-xs text-gray-500 hover:text-gray-900"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <button
+                        onClick={() => openStudy(s.id)}
+                        className="text-sm text-gray-900 hover:underline text-left flex-1 min-w-0 truncate"
+                      >
+                        {s.name}
+                      </button>
+                      <div className="flex items-center gap-1 shrink-0 ml-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); startListEdit(s); }}
+                          className="p-1 text-gray-300 hover:text-gray-900"
+                          title="Editar nombre y notas"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleListDelete(s.id, s.name); }}
+                          className="p-1 text-gray-300 hover:text-red-600"
+                          title="Eliminar estudio"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    {s.notes && (
+                      <p className="text-xs text-gray-500 mt-0.5 leading-snug">{s.notes}</p>
+                    )}
+                    <button
+                      onClick={() => openStudy(s.id)}
+                      className="text-xs text-gray-400 hover:text-gray-600 mt-0.5 block"
+                    >
+                      {s._count.keywords} keywords{s.hasStructure ? " · estructura" : ""} · {s.languageCode.toUpperCase()}/{s.locationCode} · {new Date(s.createdAt).toLocaleDateString("es-ES")}
+                    </button>
+                  </>
+                )}
+              </div>
             ))}
           </div>
         )}
