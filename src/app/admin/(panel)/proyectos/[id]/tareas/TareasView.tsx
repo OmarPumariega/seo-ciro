@@ -118,12 +118,103 @@ function AutoTaskCard({
   );
 }
 
+// Divide el texto libre de una tarea manual en "título" (primera línea) +
+// "detalle" (el resto) — mismo patrón visual que AutoTaskCard: colapsada solo
+// se ve el título, y al desplegar aparece el resto del texto. Las tareas
+// antiguas de una sola línea simplemente no tienen chevron (nada que ocultar).
+function splitManualTask(text: string): { title: string; detail: string } {
+  const idx = text.indexOf("\n");
+  if (idx === -1) return { title: text, detail: "" };
+  return { title: text.slice(0, idx).trim(), detail: text.slice(idx + 1).trim() };
+}
+
+function ManualTaskCard({
+  todo,
+  overdue,
+  busy,
+  onToggleDone,
+  onDelete,
+}: {
+  todo: Todo;
+  overdue: boolean;
+  busy: boolean;
+  onToggleDone: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const { title, detail } = splitManualTask(todo.text);
+  const hasDetail = detail.length > 0;
+
+  return (
+    <div className="border border-gray-100 rounded-lg overflow-hidden">
+      <div className="flex items-center gap-3 px-4 py-3">
+        <input
+          type="checkbox"
+          checked={todo.done}
+          onChange={onToggleDone}
+          disabled={busy}
+          title={todo.done ? "Marcar como pendiente" : "Marcar como completada"}
+          className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-400 shrink-0"
+        />
+        <button
+          type="button"
+          onClick={() => hasDetail && setOpen((v) => !v)}
+          className={cn("flex items-center gap-3 flex-1 min-w-0 text-left", !hasDetail && "cursor-default")}
+        >
+          <span className={cn("text-sm truncate", todo.done ? "text-gray-400 line-through" : "text-gray-900")}>
+            {title}
+          </span>
+          {todo.dueDate && (
+            <span
+              className={cn(
+                "text-[11px] px-2 py-0.5 rounded-full shrink-0",
+                overdue ? "bg-red-100 text-red-700 font-medium" : "bg-gray-100 text-gray-600"
+              )}
+            >
+              {overdue ? "vencida " : "vence "}
+              {new Date(todo.dueDate).toLocaleDateString("es-ES")}
+            </span>
+          )}
+          <span className="flex-1" />
+          {hasDetail &&
+            (open ? (
+              <ChevronUp className="h-4 w-4 text-gray-400 shrink-0" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
+            ))}
+        </button>
+        <button
+          onClick={onDelete}
+          disabled={busy}
+          className="p-1 text-gray-300 hover:text-red-600 disabled:opacity-50 shrink-0"
+          title="Eliminar tarea"
+        >
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+        </button>
+      </div>
+
+      {open && hasDetail && (
+        <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-2">
+          <p className={cn("text-sm whitespace-pre-line", todo.done ? "text-gray-400" : "text-gray-600")}>
+            {detail}
+          </p>
+          <p className="text-[11px] text-gray-400">
+            Creada el {new Date(todo.createdAt).toLocaleDateString("es-ES")}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TareasView({ projectId }: { projectId: string }) {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const [text, setText] = useState("");
+  const [title, setTitle] = useState("");
+  const [detail, setDetail] = useState("");
+  const [showDetail, setShowDetail] = useState(false);
   const [dueDate, setDueDate] = useState("");
   const [showDate, setShowDate] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -146,13 +237,17 @@ export default function TareasView({ projectId }: { projectId: string }) {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    const trimmed = text.trim();
-    if (!trimmed) return;
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) return;
+    const trimmedDetail = detail.trim();
+    // El título va siempre en la primera línea; el detalle (si lo hay) en el
+    // resto — es lo que ManualTaskCard separa para mostrar colapsado/expandido.
+    const text = trimmedDetail ? `${trimmedTitle}\n${trimmedDetail}` : trimmedTitle;
     setCreating(true);
     const res = await fetch(`/api/proyectos/${projectId}/todos`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: trimmed, dueDate: dueDate || undefined }),
+      body: JSON.stringify({ text, dueDate: dueDate || undefined }),
     });
     const data = await res.json();
     setCreating(false);
@@ -160,7 +255,9 @@ export default function TareasView({ projectId }: { projectId: string }) {
       setError(data.error ?? "Error al crear la tarea");
       return;
     }
-    setText("");
+    setTitle("");
+    setDetail("");
+    setShowDetail(false);
     setDueDate("");
     setShowDate(false);
     loadTodos();
@@ -204,25 +301,44 @@ export default function TareasView({ projectId }: { projectId: string }) {
       <form onSubmit={handleCreate} className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
         <div className="flex items-end gap-3">
           <div className="flex-1 space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Nueva tarea</label>
+            <label className="block text-sm font-medium text-gray-700">Título de la tarea</label>
             <input
               type="text"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              maxLength={500}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              maxLength={200}
               placeholder="Revisar títulos de la home"
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
             />
           </div>
           <button
             type="submit"
-            disabled={creating || !text.trim()}
+            disabled={creating || !title.trim()}
             className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50"
           >
             {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             Añadir tarea
           </button>
         </div>
+
+        <button
+          type="button"
+          onClick={() => setShowDetail((v) => !v)}
+          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"
+        >
+          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showDetail && "rotate-180")} />
+          Añadir detalle (opcional)
+        </button>
+        {showDetail && (
+          <textarea
+            value={detail}
+            onChange={(e) => setDetail(e.target.value)}
+            maxLength={2000}
+            rows={3}
+            placeholder="Notas, contexto o pasos adicionales — se ven al desplegar la tarea"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 resize-y"
+          />
+        )}
 
         <button
           type="button"
@@ -281,64 +397,31 @@ export default function TareasView({ projectId }: { projectId: string }) {
 
           <div className="space-y-2">
             {autoTodos.length > 0 && <h3 className="text-sm font-semibold text-gray-900">Tareas manuales</h3>}
-            <div className="bg-white rounded-xl border border-gray-100 p-5">
-              {manualTodos.length === 0 ? (
+            {manualTodos.length === 0 ? (
+              <div className="bg-white rounded-xl border border-gray-100 p-5">
                 <p className="text-sm text-gray-500">
                   {autoTodos.length > 0
                     ? "Sin tareas manuales todavía."
                     : "Todavía no hay tareas para este proyecto."}
                 </p>
-              ) : (
-                <ul className="divide-y divide-gray-50">
-                  {manualTodos.map((todo) => {
-                    const overdue = !todo.done && todo.dueDate !== null && new Date(todo.dueDate) < today;
-                    return (
-                      <li key={todo.id} className="flex items-center gap-3 py-2.5">
-                        <input
-                          type="checkbox"
-                          checked={todo.done}
-                          onChange={() => toggleDone(todo)}
-                          disabled={busyId === todo.id}
-                          className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-400"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p
-                            className={cn(
-                              "text-sm whitespace-pre-line",
-                              todo.done ? "line-through text-gray-400" : "text-gray-900"
-                            )}
-                          >
-                            {todo.text}
-                          </p>
-                          {todo.dueDate && (
-                            <p
-                              className={cn(
-                                "text-xs mt-0.5",
-                                overdue ? "text-red-600 font-medium" : "text-gray-500"
-                              )}
-                            >
-                              Vence: {new Date(todo.dueDate).toLocaleDateString("es-ES")}
-                            </p>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => setConfirmDeleteId(todo.id)}
-                          disabled={busyId === todo.id}
-                          className="p-1 text-gray-300 hover:text-red-600 disabled:opacity-50"
-                          title="Eliminar tarea"
-                        >
-                          {busyId === todo.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {manualTodos.map((todo) => {
+                  const overdue = !todo.done && todo.dueDate !== null && new Date(todo.dueDate) < today;
+                  return (
+                    <ManualTaskCard
+                      key={todo.id}
+                      todo={todo}
+                      overdue={overdue}
+                      busy={busyId === todo.id}
+                      onToggleDone={() => toggleDone(todo)}
+                      onDelete={() => setConfirmDeleteId(todo.id)}
+                    />
+                  );
+                })}
+              </div>
+            )}
           </div>
         </>
       )}
