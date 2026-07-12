@@ -25,10 +25,10 @@ type Todo = {
 // Prioridades: etiqueta + clases de color para la pastilla (tarjeta) y para
 // el botón activo del formulario. baja=verde, media=ámbar, alta=rojo.
 type Priority = "baja" | "media" | "alta";
-const PRIORITY_META: Record<Priority, { label: string; badge: string; button: string }> = {
-  baja: { label: "Baja", badge: "bg-emerald-100 text-emerald-700", button: "🟢 Baja" },
-  media: { label: "Media", badge: "bg-amber-100 text-amber-700", button: "🟡 Media" },
-  alta: { label: "Alta", badge: "bg-red-100 text-red-700", button: "🔴 Alta" },
+const PRIORITY_META: Record<Priority, { label: string; badge: string; button: string; dot: string }> = {
+  baja: { label: "Baja", badge: "bg-emerald-100 text-emerald-700", button: "Baja", dot: "bg-emerald-500" },
+  media: { label: "Media", badge: "bg-amber-100 text-amber-700", button: "Media", dot: "bg-amber-500" },
+  alta: { label: "Alta", badge: "bg-red-100 text-red-700", button: "Alta", dot: "bg-red-500" },
 };
 const PRIORITY_ORDER: Record<Priority, number> = { alta: 0, media: 1, baja: 2 };
 function priorityRank(p: string): number {
@@ -168,13 +168,9 @@ function ManualTaskCard({
         />
         <div className="flex items-center gap-3 flex-1 min-w-0 text-left">
           <span
-            className={cn(
-              "text-[11px] px-2 py-0.5 rounded-full shrink-0 font-medium",
-              prioMeta.badge
-            )}
-          >
-            {prioMeta.label}
-          </span>
+            className={cn("h-2 w-2 rounded-full shrink-0", prioMeta.dot)}
+            title={prioMeta.label}
+          />
           <span className={cn("text-sm truncate", todo.done ? "text-gray-400 line-through" : "text-gray-900")}>
             {title}
           </span>
@@ -362,12 +358,13 @@ export default function TareasView({ projectId }: { projectId: string }) {
                 type="button"
                 onClick={() => setPriority(p)}
                 className={cn(
-                  "px-3 py-1.5 text-sm rounded-lg border transition-colors",
+                  "flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors",
                   priority === p
                     ? cn(PRIORITY_META[p].badge, "border-transparent font-medium")
                     : "border-gray-200 text-gray-500 hover:text-gray-900 hover:border-gray-300"
                 )}
               >
+                <span className={cn("h-2 w-2 rounded-full", PRIORITY_META[p].dot)} />
                 {PRIORITY_META[p].button}
               </button>
             ))}
