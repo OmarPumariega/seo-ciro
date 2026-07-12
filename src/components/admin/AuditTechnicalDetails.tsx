@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { FileText, AlertTriangle, Loader2, ChevronDown, ChevronUp } from "lucide-react";
+import UrlLink from "@/components/admin/UrlLink";
 
 type AuditPage = {
   id: string;
@@ -145,10 +146,10 @@ export default function AuditTechnicalDetails({
                       Ver URLs
                     </button>
                     {showSitemapUrls && (
-                      <ul className="mt-2 space-y-1 text-xs text-gray-600 font-mono break-all">
+                      <ul className="mt-2 space-y-1 text-xs font-mono">
                         {sitemapUrlSample.map((u) => (
-                          <li key={u} className="truncate">
-                            {u}
+                          <li key={u}>
+                            <UrlLink url={u} className="text-xs" />
                           </li>
                         ))}
                       </ul>
@@ -191,8 +192,15 @@ export default function AuditTechnicalDetails({
                 <tbody>
                   {topDomains.map(([domain, count]) => (
                     <tr key={domain} className="border-b border-gray-50 last:border-0">
-                      <td className="py-1.5 pr-3 text-gray-900 font-mono text-xs break-all">
-                        {domain}
+                      <td className="py-1.5 pr-3 font-mono text-xs break-all">
+                        <a
+                          href={`https://${domain}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-indigo-600 hover:text-indigo-800 hover:underline"
+                        >
+                          {domain}
+                        </a>
                       </td>
                       <td className="py-1.5 pl-3 text-gray-700 text-right tabular-nums">{count}</td>
                     </tr>

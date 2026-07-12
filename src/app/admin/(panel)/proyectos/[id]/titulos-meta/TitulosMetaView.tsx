@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Copy, Check, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import UrlLink from "@/components/admin/UrlLink";
 
 type Variant = { title: string; description: string };
 
@@ -195,20 +196,23 @@ export default function TitulosMetaView({ projectId }: { projectId: string }) {
         ) : (
           <div className="space-y-2">
             {history.map((gen) => (
-              <button
+              <div
                 key={gen.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => setCurrent(gen)}
+                onKeyDown={(e) => e.key === "Enter" && setCurrent(gen)}
                 className={cn(
-                  "w-full text-left bg-white rounded-lg border p-3 hover:bg-gray-50 transition-colors",
+                  "w-full text-left bg-white rounded-lg border p-3 hover:bg-gray-50 transition-colors cursor-pointer",
                   current?.id === gen.id ? "border-gray-900" : "border-gray-100"
                 )}
               >
-                <p className="text-sm text-gray-900 truncate">{gen.url}</p>
-                <p className="text-xs text-gray-400">
+                <UrlLink url={gen.url} className="text-sm" />
+                <p className="text-xs text-gray-400 mt-0.5">
                   {new Date(gen.createdAt).toLocaleString("es-ES")}
                   {gen.keyword ? ` · ${gen.keyword}` : ""}
                 </p>
-              </button>
+              </div>
             ))}
           </div>
         )}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Loader2, GitBranch, AlertTriangle, Crown } from "lucide-react";
+import UrlLink from "@/components/admin/UrlLink";
 
 type CannibalizedPage = {
   url: string;
@@ -106,9 +107,7 @@ export default function CanibalizacionesView({ projectId }: { projectId: string 
                 <ul className="space-y-2">
                   <li className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
                     <Crown className="h-4 w-4 text-emerald-600 shrink-0" />
-                    <span className="text-sm text-gray-900 truncate flex-1 min-w-0">
-                      {winner.url}
-                    </span>
+                    <UrlLink url={winner.url} className="text-sm flex-1" />
                     <span className="text-xs font-medium text-emerald-700">
                       {winner.clicks} clics · pos. {winner.position.toFixed(1)}
                     </span>
@@ -119,9 +118,7 @@ export default function CanibalizacionesView({ projectId }: { projectId: string 
                       className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 px-3 py-2"
                     >
                       <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-                      <span className="text-sm text-gray-700 truncate flex-1 min-w-0">
-                        {page.url}
-                      </span>
+                      <UrlLink url={page.url} className="text-sm flex-1" />
                       <span className="text-xs text-gray-500">
                         {page.clicks} clics · pos. {page.position.toFixed(1)}
                       </span>

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import * as Select from "@radix-ui/react-select";
 import { Loader2, Copy, Check, Sparkles, ChevronDown, CheckCircle2, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import UrlLink from "@/components/admin/UrlLink";
 
 const SCHEMA_TYPE_LABELS: Record<string, string> = {
   LocalBusiness: "LocalBusiness (negocio local)",
@@ -218,22 +219,25 @@ export default function SchemaView({ projectId }: { projectId: string }) {
         ) : (
           <div className="space-y-2">
             {history.map((gen) => (
-              <button
+              <div
                 key={gen.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => setCurrent(gen)}
+                onKeyDown={(e) => e.key === "Enter" && setCurrent(gen)}
                 className={cn(
-                  "w-full text-left bg-white rounded-lg border p-3 hover:bg-gray-50 transition-colors",
+                  "w-full text-left bg-white rounded-lg border p-3 hover:bg-gray-50 transition-colors cursor-pointer",
                   current?.id === gen.id ? "border-gray-900" : "border-gray-100"
                 )}
               >
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-gray-900 truncate">{gen.url}</p>
-                  <span className="text-xs text-gray-400 shrink-0 ml-2">
+                <div className="flex items-center justify-between gap-2">
+                  <UrlLink url={gen.url} className="text-sm" />
+                  <span className="text-xs text-gray-400 shrink-0">
                     {SCHEMA_TYPE_LABELS[gen.selectedType] ?? gen.selectedType}
                   </span>
                 </div>
-                <p className="text-xs text-gray-400">{new Date(gen.createdAt).toLocaleString("es-ES")}</p>
-              </button>
+                <p className="text-xs text-gray-400 mt-0.5">{new Date(gen.createdAt).toLocaleString("es-ES")}</p>
+              </div>
             ))}
           </div>
         )}

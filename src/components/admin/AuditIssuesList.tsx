@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { AlertCircle, CheckCircle2, ChevronDown, ChevronUp, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ISSUE_META } from "@/lib/audit/issue-meta";
+import UrlLink from "@/components/admin/UrlLink";
 
 type AuditPage = {
   id: string;
@@ -22,15 +23,6 @@ type AuditPage = {
   brokenLinksCount: number;
   wordCount: number | null;
 };
-
-function pathOf(url: string): string {
-  try {
-    const u = new URL(url);
-    return u.pathname + u.search || "/";
-  } catch {
-    return url;
-  }
-}
 
 // Contexto breve por tipo de incidencia — el dato concreto que explica por
 // qué esa página está en la lista, no solo la URL.
@@ -143,8 +135,8 @@ function IssueRow({ issue, pages }: { issue: string; pages: AuditPage[] }) {
                   const detail = issueDetail(issue, page);
                   return (
                     <tr key={page.id} className="border-b border-gray-50 last:border-0">
-                      <td className="py-1.5 pr-3 font-mono text-xs text-gray-900 break-all max-w-xs">
-                        {pathOf(page.url)}
+                      <td className="py-1.5 pr-3 font-mono text-xs break-all max-w-xs">
+                        <UrlLink url={page.url} />
                       </td>
                       <td className="py-1.5 px-3 text-xs text-gray-500 break-all">{detail ?? "—"}</td>
                       <td className="py-1.5 pl-3">

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Loader2, Network, Link2, AlertTriangle, Download } from "lucide-react";
 import { downloadCsv } from "@/lib/csv";
+import UrlLink from "@/components/admin/UrlLink";
 
 type PageRow = {
   url: string;
@@ -18,15 +19,6 @@ type EnlacesData = {
   topHubs: string[];
   auditDate: string;
 };
-
-function pathOf(url: string): string {
-  try {
-    const u = new URL(url);
-    return u.pathname + u.search || "/";
-  } catch {
-    return url;
-  }
-}
 
 export default function EnlacesView({ projectId }: { projectId: string }) {
   const [data, setData] = useState<EnlacesData | null>(null);
@@ -132,8 +124,8 @@ export default function EnlacesView({ projectId }: { projectId: string }) {
                 const widthPct = maxRank > 0 ? (page.pagerank / maxRank) * 100 : 0;
                 return (
                   <tr key={page.url} className="border-b border-gray-50">
-                    <td className="py-1.5 pr-4 text-gray-700 truncate max-w-[260px]" title={page.url}>
-                      {pathOf(page.url)}
+                    <td className="py-1.5 pr-4 max-w-[320px]">
+                      <UrlLink url={page.url} className="text-xs" />
                     </td>
                     <td className="py-1.5 px-2 text-right text-gray-500 tabular-nums text-xs">
                       {(page.pagerank * 100).toFixed(2)}%
@@ -176,11 +168,8 @@ export default function EnlacesView({ projectId }: { projectId: string }) {
             <ul className="space-y-1.5">
               {data.orphans.map((url) => (
                 <li key={url}>
-                  <span
-                    className="inline-block text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded-md truncate max-w-full align-middle"
-                    title={url}
-                  >
-                    {pathOf(url)}
+                  <span className="inline-block bg-amber-50 px-2 py-1 rounded-md max-w-full align-middle">
+                    <UrlLink url={url} className="text-xs text-amber-700 hover:text-amber-900" showIcon={false} />
                   </span>
                 </li>
               ))}
@@ -201,9 +190,9 @@ export default function EnlacesView({ projectId }: { projectId: string }) {
           <ol className="space-y-1.5">
             {hubs.map((hub, i) => (
               <li key={hub.url} className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-gray-700 truncate" title={hub.url}>
-                  <span className="text-gray-400 mr-2 tabular-nums">{i + 1}.</span>
-                  {pathOf(hub.url)}
+                <span className="flex items-center min-w-0">
+                  <span className="text-gray-400 mr-2 tabular-nums shrink-0">{i + 1}.</span>
+                  <UrlLink url={hub.url} className="text-sm" />
                 </span>
                 <span className="text-xs text-gray-400 shrink-0 tabular-nums">
                   {hub.outgoing} salientes
