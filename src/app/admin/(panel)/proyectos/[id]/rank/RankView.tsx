@@ -276,17 +276,21 @@ export default function RankView({ projectId }: { projectId: string }) {
     }
   }
 
+  // OJO: los efectos (fetch de historial/competidores) van en el cuerpo de
+  // la función, NUNCA dentro del updater de setSelectedId — React (Strict
+  // Mode, activo por defecto en `next dev`) puede invocar un updater dos
+  // veces para detectar side effects, lo que duplicaba las llamadas y
+  // producía condiciones de carrera: la fila expandía y volvía a colapsar
+  // sola en el segundo click, dependiendo de qué llamada resolviera última.
   function selectKeyword(kwId: string) {
-    setSelectedId((prev) => {
-      const next = prev === kwId ? null : kwId;
-      setHistory([]);
-      setCompetitors([]);
-      if (next) {
-        loadHistory(next);
-        loadCompetitors(next);
-      }
-      return next;
-    });
+    const next = selectedId === kwId ? null : kwId;
+    setSelectedId(next);
+    setHistory([]);
+    setCompetitors([]);
+    if (next) {
+      loadHistory(next);
+      loadCompetitors(next);
+    }
   }
 
   async function handleAdd(e: React.FormEvent) {
