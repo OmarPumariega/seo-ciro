@@ -619,7 +619,9 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
             <h3 className="text-sm font-medium text-gray-700">O sube un CSV con keywords ya investigadas</h3>
             <p className="text-xs text-gray-500 mt-0.5">
               Columnas: keyword (obligatoria) y, si las tienes, volumen / competencia / cpc / intención.
-              Se usan tal cual vengan en el archivo — no se completan con DataForSEO.
+              También acepta la exportación tal cual de Google Ads Keyword Planner (&laquo;Historial de
+              estadísticas de palabras clave&raquo;). Se usan tal cual vengan en el archivo — no se
+              completan con DataForSEO.
             </p>
           </div>
           <label

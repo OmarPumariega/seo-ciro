@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { NextRequest, NextResponse } from "next/server";
-import { parseKeywordFile, ImportFileError } from "@/lib/keywords/import-file";
+import { parseKeywordFile, ImportFileError, decodeFileContent } from "@/lib/keywords/import-file";
 import { computePriorities } from "@/lib/keywords/priority";
 
 // Tope por estudio: mismo límite que el resto del Módulo 1 (route.ts de
@@ -46,7 +46,12 @@ export async function POST(
     return NextResponse.json({ error: "El archivo supera los 2 MB" }, { status: 400 });
   }
 
-  const content = await file.text();
+  // ArrayBuffer, no .text(): Google Ads exporta en UTF-16 con BOM y
+  // file.text() siempre decodifica como UTF-8, lo que rompería esos
+  // caracteres — decodeFileContent detecta el BOM real y usa la
+  // codificación correcta (ver src/lib/keywords/import-file.ts).
+  const buffer = await file.arrayBuffer();
+  const content = decodeFileContent(buffer);
   let rows;
   try {
     rows = parseKeywordFile(content);
