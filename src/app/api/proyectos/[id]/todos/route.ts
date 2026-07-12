@@ -41,12 +41,26 @@ export async function POST(
     return NextResponse.json({ error: "Cuerpo de la petición inválido" }, { status: 400 });
   }
 
+  // title (preferido) con fallback a text (legacy). El title se guarda aparte
+  // y además se reconstruye text="title\ndetail" para compat con Informe.
+  const rawTitle = typeof body.title === "string" ? body.title.trim() : "";
   const rawText = typeof body.text === "string" ? body.text.trim() : "";
-  if (!rawText) {
-    return NextResponse.json({ error: "El texto de la tarea es obligatorio" }, { status: 400 });
+  const title = rawTitle || rawText;
+  if (!title) {
+    return NextResponse.json({ error: "El título de la tarea es obligatorio" }, { status: 400 });
   }
-  if (rawText.length > 500) {
-    return NextResponse.json({ error: "El texto no puede superar los 500 caracteres" }, { status: 400 });
+  if (title.length > 500) {
+    return NextResponse.json({ error: "El título no puede superar los 500 caracteres" }, { status: 400 });
+  }
+
+  const rawDetail = typeof body.detail === "string" ? body.detail.trim() : "";
+
+  let priority = "media";
+  if (body.priority !== undefined && body.priority !== null) {
+    if (typeof body.priority !== "string" || !["baja", "media", "alta"].includes(body.priority)) {
+      return NextResponse.json({ error: "Prioridad inválida" }, { status: 400 });
+    }
+    priority = body.priority;
   }
 
   let dueDate: Date | undefined;
@@ -61,10 +75,17 @@ export async function POST(
     dueDate = parsed;
   }
 
+  // text mantiene el formato legacy "title\ndetail" para Informe y otros
+  // consumidores que aún separan por saltos de línea (splitManualTask).
+  const text = rawDetail ? `${title}\n${rawDetail}` : title;
+
   const todo = await prisma.todoItem.create({
     data: {
       projectId: id,
-      text: rawText,
+      text,
+      title,
+      detail: rawDetail || undefined,
+      priority,
       dueDate,
     },
   });

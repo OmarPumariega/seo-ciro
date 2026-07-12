@@ -1,65 +1,49 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { prisma } from "@/lib/db/prisma";
-import PrintButton from "./PrintButton";
-import { splitManualTask } from "@/lib/tasks";
-import { ISSUE_META } from "@/lib/audit/issue-meta";
-import { Gauge, Target, Search, MapPin, Wallet, FileText, ClipboardCheck, ChevronLeft, ChevronRight } from "lucide-react";
-
-// Estructura del JSON categoryScores que genera src/lib/audit/scoring.ts.
-type CategoryScore = { score: number; max: number; detail: Record<string, number> };
-type CategoryScores = {
-  indexabilidad: CategoryScore;
-  enlaces: CategoryScore;
-  onpage: CategoryScore;
-  rendimiento: CategoryScore | null;
-  accesibilidadImagenes: CategoryScore;
-};
-
-const CATEGORY_LABELS: { key: keyof CategoryScores; label: string }[] = [
-  { key: "indexabilidad", label: "Indexabilidad" },
-  { key: "enlaces", label: "Enlaces" },
-  { key: "onpage", label: "On-page" },
-  { key: "rendimiento", label: "Rendimiento" },
-  { key: "accesibilidadImagenes", label: "Accesibilidad imágenes" },
-];
-
-function scoreTone(score: number | null): string {
-  if (score == null) return "text-gray-400";
-  if (score >= 80) return "text-emerald-600";
-  if (score >= 50) return "text-amber-600";
-  return "text-red-600";
-}
-
-function SectionTitle({
-  icon,
-  children,
-}: {
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <h2 className="flex items-center gap-2 text-base font-semibold text-gray-900 border-b border-gray-200 pb-2 mb-4">
-      <span className="text-gray-400 print:text-black">{icon}</span>
-      {children}
-    </h2>
-  );
-}
-
-function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="break-inside-avoid">
-      <div className="text-xl font-semibold text-gray-900 tabular-nums print:text-black">
-        {value}
-      </div>
-      <div className="text-xs text-gray-500">{label}</div>
-      {sub && <div className="text-[11px] text-gray-400">{sub}</div>}
-    </div>
-  );
-}
+import InformeBuilder, {
+  type ReportData,
+  type ReportSections,
+  type CategoryScores,
+} from "./InformeBuilder";
+import { Prisma } from "@prisma/client";
+import { computePageRank, type LinkNode } from "@/lib/links/pagerank";
 
 function capitalizeFirst(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+const DEFAULT_SECTIONS: ReportSections = {
+  audit: true,
+  rank: true,
+  keywords: true,
+  geogrid: true,
+  costs: true,
+  tasks: true,
+  links: true,
+  competitors: true,
+};
+
+// Valida que el `linkGraph` (Json?) tenga la forma esperada por el crawler:
+// array de { url: string, links: string[] }. Mismo parser que la ruta de
+// enlaces — cualquier entrada malformada se descarta.
+function parseLinkGraph(raw: unknown): LinkNode[] {
+  if (!Array.isArray(raw)) return [];
+  const nodes: LinkNode[] = [];
+  for (const entry of raw) {
+    if (
+      entry &&
+      typeof entry === "object" &&
+      typeof (entry as { url?: unknown }).url === "string" &&
+      Array.isArray((entry as { links?: unknown }).links)
+    ) {
+      const e = entry as { url: string; links: unknown[] };
+      nodes.push({
+        url: e.url,
+        links: e.links.filter((l): l is string => typeof l === "string"),
+      });
+    }
+  }
+  return nodes;
 }
 
 export default async function InformePage({
@@ -81,6 +65,7 @@ export default async function InformePage({
       isLocalBusiness: true,
       businessName: true,
       address: true,
+      reportConfig: true,
     },
   });
   if (!project) notFound();
@@ -88,8 +73,10 @@ export default async function InformePage({
   const now = new Date();
   const rawYear = Number(sp.year);
   const rawMonth = Number(sp.month); // 1-12
-  const year = Number.isInteger(rawYear) && rawYear >= 2000 && rawYear <= 3000 ? rawYear : now.getFullYear();
-  const month = Number.isInteger(rawMonth) && rawMonth >= 1 && rawMonth <= 12 ? rawMonth : now.getMonth() + 1;
+  const year =
+    Number.isInteger(rawYear) && rawYear >= 2000 && rawYear <= 3000 ? rawYear : now.getFullYear();
+  const month =
+    Number.isInteger(rawMonth) && rawMonth >= 1 && rawMonth <= 12 ? rawMonth : now.getMonth() + 1;
   const startOfMonth = new Date(year, month - 1, 1);
   const startOfNextMonth = new Date(year, month, 1);
   const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;
@@ -99,9 +86,11 @@ export default async function InformePage({
   }
   const prevMonth = month === 1 ? { y: year - 1, m: 12 } : { y: year, m: month - 1 };
   const nextMonth = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 };
-  const nextDisabled = nextMonth.y > now.getFullYear() || (nextMonth.y === now.getFullYear() && nextMonth.m > now.getMonth() + 1);
+  const nextDisabled =
+    nextMonth.y > now.getFullYear() ||
+    (nextMonth.y === now.getFullYear() && nextMonth.m > now.getMonth() + 1);
 
-  const [latestAudit, rankKeywords, studyCount, keywordTotal, monthCostAgg, latestGeogrid, completedTodos] =
+  const [latestAudit, rankKeywords, studyCount, keywordTotal, monthCostAgg, latestGeogrid, completedTodos, linksRun, competitors] =
     await Promise.all([
       // Estado "a fecha de fin de ese mes": la auditoría más reciente completada
       // hasta ese momento, no siempre la más reciente de hoy — así un informe de
@@ -150,6 +139,23 @@ export default async function InformePage({
         orderBy: { completedAt: "desc" },
         select: { id: true, text: true, issueType: true, affectedUrls: true, completedAt: true },
       }),
+      // Grafo de enlaces de la auditoría completada más reciente (sin tope de
+      // mes: el enlazado interno es estructural, no mensual — igual que la
+      // vista de Enlaces).
+      prisma.auditRun.findFirst({
+        where: {
+          projectId: id,
+          status: "completed",
+          linkGraph: { not: Prisma.DbNull },
+        },
+        orderBy: { triggeredAt: "desc" },
+        select: { linkGraph: true, completedAt: true, triggeredAt: true },
+      }),
+      prisma.competitor.findMany({
+        where: { projectId: id },
+        orderBy: { createdAt: "asc" },
+        select: { id: true, domain: true },
+      }),
     ]);
 
   const monthCost = monthCostAgg._sum.costUsd ? Number(monthCostAgg._sum.costUsd) : 0;
@@ -178,296 +184,150 @@ export default async function InformePage({
     startOfMonth.toLocaleDateString("es-ES", { month: "long", year: "numeric" })
   );
 
-  const fmtDate = (d: Date | null) =>
-    d ? new Date(d).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" }) : "—";
+  // --- Enlaces internos: replica el cálculo de la ruta /api/.../enlaces ---
+  let linksData: ReportData["links"] = null;
+  if (linksRun?.linkGraph) {
+    const graph = parseLinkGraph(linksRun.linkGraph as unknown);
+    if (graph.length > 0) {
+      const nodeSet = new Set(graph.map((g) => g.url));
+      const outAdjacency = new Map<string, Set<string>>();
+      for (const entry of graph) {
+        const targets = new Set<string>();
+        for (const link of entry.links) {
+          if (link !== entry.url && nodeSet.has(link)) targets.add(link);
+        }
+        outAdjacency.set(entry.url, targets);
+      }
+      const incomingCount = new Map<string, number>();
+      for (const targets of outAdjacency.values()) {
+        for (const target of targets) {
+          incomingCount.set(target, (incomingCount.get(target) ?? 0) + 1);
+        }
+      }
+      const ranks = computePageRank(graph);
+      const pages = graph
+        .map((entry) => ({
+          url: entry.url,
+          pagerank: ranks.get(entry.url) ?? 0,
+          incoming: incomingCount.get(entry.url) ?? 0,
+          outgoing: outAdjacency.get(entry.url)?.size ?? 0,
+        }))
+        .sort((a, b) => b.pagerank - a.pagerank);
+      const orphans = pages
+        .filter((p) => p.incoming === 0)
+        .map((p) => p.url)
+        .sort();
+      const topHubs = [...pages]
+        .sort((a, b) => b.outgoing - a.outgoing)
+        .slice(0, 5)
+        .map((p) => p.url);
+      linksData = {
+        pages,
+        orphans,
+        topHubs,
+        auditDate: linksRun.completedAt ?? linksRun.triggeredAt,
+      };
+    }
+  }
 
-  const deviceLabel = (d: string) => (d === "mobile" ? "Móvil" : "Escritorio");
-
-  return (
-    <div className="max-w-4xl mx-auto">
-      {/* CSS de impresión: oculta el cromado de la app (sidebar, cabecera,
-          pestañas) y deja que el documento ocupe la página con márgenes. */}
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-          @media print {
-            @page { margin: 1.5cm; }
-            html, body {
-              height: auto !important;
-              overflow: visible !important;
-              background: #fff !important;
-            }
-            aside, header, nav { display: none !important; }
-            main { overflow: visible !important; height: auto !important; padding: 0 !important; }
-            section { break-inside: avoid; }
-            tr { break-inside: avoid; }
-          }
-          `,
-        }}
-      />
-
-      {/* Barra de acciones (no imprime) */}
-      <div className="flex items-center justify-between mb-4 print:hidden">
-        <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg px-1 py-1">
-          <Link
-            href={monthHref(prevMonth.y, prevMonth.m)}
-            className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-md"
-            title="Mes anterior"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Link>
-          <span className="text-sm font-medium text-gray-900 px-2 min-w-[9rem] text-center">
-            {monthLabel}
-          </span>
-          {nextDisabled ? (
-            <span className="p-1.5 text-gray-300">
-              <ChevronRight className="h-4 w-4" />
-            </span>
-          ) : (
-            <Link
-              href={monthHref(nextMonth.y, nextMonth.m)}
-              className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-md"
-              title="Mes siguiente"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Link>
-          )}
-        </div>
-        <PrintButton />
-      </div>
-
-      {/* Hoja del informe */}
-      <div className="bg-white rounded-xl border border-gray-200 px-8 py-10 space-y-8 print:border-0 print:rounded-none print:px-0 print:py-0">
-
-        {/* Cabecera */}
-        <div className="border-b border-gray-200 pb-5">
-          <div className="flex items-center gap-2 text-gray-400 mb-1">
-            <FileText className="h-4 w-4" />
-            <span className="text-xs uppercase tracking-wide font-medium">Informe SEO</span>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
-          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-500">
-            {project.domain && <span>{project.domain}</span>}
-            <span>Periodo: {monthLabel}</span>
-            <span>Generado el {generationDate}</span>
-          </div>
-        </div>
-
-        {/* Trabajos realizados este mes — lo primero que ve el cliente: qué se
-            hizo, no solo cómo está la web. Incluye tareas manuales y las
-            auto-generadas desde hallazgos de auditoría, solo cuando quedaron
-            genuinamente resueltas (ver generateAuditTasks). */}
-        <section className="space-y-4">
-          <SectionTitle icon={<ClipboardCheck className="h-4 w-4" />}>
-            Trabajos realizados{" "}
-            <span className="text-gray-400 font-normal text-sm">({monthLabel})</span>
-          </SectionTitle>
-          {completedTodos.length === 0 ? (
-            <p className="text-sm text-gray-500">Sin tareas completadas registradas este mes.</p>
-          ) : (
-            <ul className="space-y-2">
-              {completedTodos.map((t) => {
-                const label = t.issueType
-                  ? (ISSUE_META[t.issueType]?.label ?? t.issueType)
-                  : splitManualTask(t.text).title;
-                const sub = t.issueType
-                  ? `${t.affectedUrls.length} página${t.affectedUrls.length === 1 ? "" : "s"} corregida${t.affectedUrls.length === 1 ? "" : "s"}`
-                  : null;
-                return (
-                  <li key={t.id} className="flex items-start justify-between gap-3 text-sm border-b border-gray-100 pb-2 last:border-0">
-                    <div className="min-w-0">
-                      <p className="text-gray-900">{label}</p>
-                      {sub && <p className="text-xs text-gray-400">{sub}</p>}
-                    </div>
-                    <span className="text-xs text-gray-400 shrink-0 whitespace-nowrap">
-                      {fmtDate(t.completedAt)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
-
-        {/* Salud técnica (Módulo 8) */}
-        <section className="space-y-4">
-          <SectionTitle icon={<Gauge className="h-4 w-4" />}>
-            Salud técnica <span className="text-gray-400 font-normal text-sm">(Auditoría)</span>
-          </SectionTitle>
-          {!latestAudit || latestAudit.overallScore == null ? (
-            <p className="text-sm text-gray-500">Sin auditorías completadas hasta este mes.</p>
-          ) : (
-            <>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
-                <div className="break-inside-avoid">
-                  <div
-                    className={`text-3xl font-bold tabular-nums print:text-black ${scoreTone(
-                      latestAudit.overallScore
-                    )}`}
-                  >
-                    {latestAudit.overallScore}
-                    <span className="text-base font-medium text-gray-400">/100</span>
-                  </div>
-                  <div className="text-xs text-gray-500">Puntuación global</div>
-                </div>
-                {CATEGORY_LABELS.map(({ key, label }) => {
-                  const cat = cats?.[key];
-                  return (
-                    <Stat
-                      key={key}
-                      label={label}
-                      value={cat ? `${cat.score}/${cat.max}` : "—"}
-                      sub={
-                        key === "rendimiento" && !cat ? "sin dato PSI" : undefined
-                      }
-                    />
-                  );
-                })}
-              </div>
-              <p className="text-xs text-gray-400">
-                {latestAudit.pagesCrawled} página{latestAudit.pagesCrawled === 1 ? "" : "s"} rastreada
-                {latestAudit.pagesCrawled === 1 ? "" : "s"} · Auditoría completada el{" "}
-                {fmtDate(latestAudit.completedAt)}
-              </p>
-            </>
-          )}
-        </section>
-
-        {/* Posicionamiento (Módulo 5) */}
-        <section className="space-y-4">
-          <SectionTitle icon={<Target className="h-4 w-4" />}>
-            Posicionamiento <span className="text-gray-400 font-normal text-sm">(Rank tracking, estado actual)</span>
-          </SectionTitle>
-          {rankKeywords.length === 0 ? (
-            <p className="text-sm text-gray-500">Sin keywords en seguimiento.</p>
-          ) : (
-            <>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                <Stat
-                  label="Keywords en seguimiento"
-                  value={String(rankKeywords.length)}
-                />
-                <Stat
-                  label="Con posición registrada"
-                  value={String(rankedCount)}
-                  sub={`de ${rankKeywords.length} totales`}
-                />
-                <Stat
-                  label="Mejor posición media"
-                  value={
-                    rankedCount > 0
-                      ? (
-                          rankKeywords
-                            .filter((k) => k.bestPosition != null)
-                            .reduce((s, k) => s + (k.bestPosition as number), 0) /
-                          Math.max(1, rankKeywords.filter((k) => k.bestPosition != null).length)
-                        ).toFixed(1)
-                      : "—"
-                  }
-                />
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-gray-400 border-b border-gray-200">
-                      <th className="py-2 pr-4 font-medium">Keyword</th>
-                      <th className="py-2 pr-4 font-medium">Dispositivo</th>
-                      <th className="py-2 pr-4 font-medium text-right">Última</th>
-                      <th className="py-2 pr-4 font-medium text-right">Mejor</th>
-                      <th className="py-2 pr-4 font-medium">Chequeo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {topRank.map((k, i) => (
-                      <tr key={i} className="border-b border-gray-100 last:border-0">
-                        <td className="py-2 pr-4 text-gray-900">{k.keyword}</td>
-                        <td className="py-2 pr-4 text-gray-500">{deviceLabel(k.device)}</td>
-                        <td className="py-2 pr-4 text-right tabular-nums text-gray-900">
-                          {k.lastPosition ?? "—"}
-                        </td>
-                        <td className="py-2 pr-4 text-right tabular-nums font-medium text-gray-900">
-                          {k.bestPosition ?? "—"}
-                        </td>
-                        <td className="py-2 pr-4 text-gray-400">{fmtDate(k.lastCheckedAt)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {rankKeywords.length > 10 && (
-                  <p className="text-xs text-gray-400 mt-2">
-                    Mostrando las 10 mejores de {rankKeywords.length} keywords.
-                  </p>
-                )}
-              </div>
-            </>
-          )}
-        </section>
-
-        {/* Keywords (Módulo 1) */}
-        <section className="space-y-4">
-          <SectionTitle icon={<Search className="h-4 w-4" />}>
-            Investigación de keywords{" "}
-            <span className="text-gray-400 font-normal text-sm">(Estudios, estado actual)</span>
-          </SectionTitle>
-          <div className="grid grid-cols-2 gap-4">
-            <Stat label="Estudios guardados" value={String(studyCount)} />
-            <Stat label="Keywords investigadas" value={String(keywordTotal)} />
-          </div>
-          {studyCount === 0 && (
-            <p className="text-sm text-gray-500">Aún no hay estudios de keywords para este proyecto.</p>
-          )}
-        </section>
-
-        {/* Local (Módulo 9) */}
-        {project.isLocalBusiness && (
-          <section className="space-y-4">
-            <SectionTitle icon={<MapPin className="h-4 w-4" />}>
-              SEO Local <span className="text-gray-400 font-normal text-sm">(Geogrid)</span>
-            </SectionTitle>
-            {!latestGeogrid || latestGeogrid.foundCount == null ? (
-              <p className="text-sm text-gray-500">Sin geogrids completados hasta este mes.</p>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  <Stat
-                    label="Visibilidad"
-                    value={`${latestGeogrid.foundCount}/${latestGeogrid.gridSize * latestGeogrid.gridSize}`}
-                    sub="puntos donde aparece"
-                  />
-                  <Stat
-                    label="Posición media"
-                    value={
-                      latestGeogrid.averagePosition != null
-                        ? latestGeogrid.averagePosition.toFixed(1)
-                        : "—"
-                    }
-                  />
-                  <Stat label="Rejilla" value={`${latestGeogrid.gridSize}×${latestGeogrid.gridSize}`} />
-                </div>
-                <p className="text-xs text-gray-400">
-                  «{latestGeogrid.keyword}» · Geogrid completado el {fmtDate(latestGeogrid.completedAt)}
-                </p>
-              </>
-            )}
-          </section>
-        )}
-
-        {/* Coste del mes */}
-        <section className="space-y-4">
-          <SectionTitle icon={<Wallet className="h-4 w-4" />}>
-            Coste del mes <span className="text-gray-400 font-normal text-sm">({monthLabel})</span>
-          </SectionTitle>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-            <Stat label="Gasto en APIs" value={`${monthCost.toFixed(2)}$`} sub="DataForSEO + OpenRouter" />
-          </div>
-        </section>
-
-        {/* Pie */}
-        <footer className="border-t border-gray-200 pt-4 text-xs text-gray-400 print:text-black">
-          Informe generado por SEO Ciro · Agencia Ciro · Sentido Común Internet SL
-          {!isCurrentMonth && " · Informe de un mes anterior — los datos de estado (salud técnica, SEO local) reflejan la última medición hasta el fin de ese mes."}
-        </footer>
-      </div>
-    </div>
+  // --- Competidores: último snapshot de visibilidad por dominio ---
+  const competitorSnapshots = await Promise.all(
+    competitors.map(async (c) => {
+      const snap = await prisma.visibilitySnapshot.findFirst({
+        where: { projectId: id, domain: c.domain },
+        orderBy: { fetchedAt: "desc" },
+        select: {
+          organicTraffic: true,
+          organicKeywords: true,
+          topKeywords: true,
+          fetchedAt: true,
+        },
+      });
+      return {
+        domain: c.domain,
+        organicTraffic: snap?.organicTraffic ?? null,
+        organicKeywords: snap?.organicKeywords ?? null,
+        topKeywords: (snap?.topKeywords ?? null) as ReportData["competitors"][number]["topKeywords"],
+        fetchedAt: snap?.fetchedAt ?? null,
+      };
+    })
   );
+
+  // --- Configuración de secciones guardada ---
+  let initialConfig = DEFAULT_SECTIONS;
+  if (project.reportConfig && typeof project.reportConfig === "object") {
+    const stored = (project.reportConfig as { sections?: Record<string, unknown> }).sections;
+    if (stored && typeof stored === "object") {
+      initialConfig = {
+        audit: typeof stored.audit === "boolean" ? stored.audit : true,
+        rank: typeof stored.rank === "boolean" ? stored.rank : true,
+        keywords: typeof stored.keywords === "boolean" ? stored.keywords : true,
+        geogrid: typeof stored.geogrid === "boolean" ? stored.geogrid : true,
+        costs: typeof stored.costs === "boolean" ? stored.costs : true,
+        tasks: typeof stored.tasks === "boolean" ? stored.tasks : true,
+        links: typeof stored.links === "boolean" ? stored.links : true,
+        competitors: typeof stored.competitors === "boolean" ? stored.competitors : true,
+      };
+    }
+  }
+
+  const data: ReportData = {
+    project: {
+      name: project.name,
+      domain: project.domain,
+      isLocalBusiness: project.isLocalBusiness,
+    },
+    monthLabel,
+    generationDate,
+    isCurrentMonth,
+    prevHref: monthHref(prevMonth.y, prevMonth.m),
+    nextHref: nextDisabled ? null : monthHref(nextMonth.y, nextMonth.m),
+    tasks: completedTodos.map((t) => ({
+      id: t.id,
+      text: t.text,
+      issueType: t.issueType,
+      affectedUrls: t.affectedUrls,
+      completedAt: t.completedAt,
+    })),
+    audit: latestAudit
+      ? {
+          overallScore: latestAudit.overallScore,
+          categoryScores: cats,
+          pagesCrawled: latestAudit.pagesCrawled,
+          completedAt: latestAudit.completedAt,
+        }
+      : null,
+    rank: {
+      keywords: rankKeywords.map((k) => ({
+        keyword: k.keyword,
+        device: k.device,
+        lastPosition: k.lastPosition,
+        bestPosition: k.bestPosition,
+        lastCheckedAt: k.lastCheckedAt,
+      })),
+      topRank: topRank.map((k) => ({
+        keyword: k.keyword,
+        device: k.device,
+        lastPosition: k.lastPosition,
+        bestPosition: k.bestPosition,
+        lastCheckedAt: k.lastCheckedAt,
+      })),
+      rankedCount,
+    },
+    keywords: { studyCount, keywordTotal },
+    geogrid: latestGeogrid
+      ? {
+          keyword: latestGeogrid.keyword,
+          gridSize: latestGeogrid.gridSize,
+          foundCount: latestGeogrid.foundCount,
+          averagePosition: latestGeogrid.averagePosition,
+          completedAt: latestGeogrid.completedAt,
+        }
+      : null,
+    costs: { monthCost },
+    links: linksData,
+    competitors: competitorSnapshots,
+  };
+
+  return <InformeBuilder projectId={id} data={data} initialConfig={initialConfig} />;
 }

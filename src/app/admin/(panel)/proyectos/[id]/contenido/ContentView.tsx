@@ -30,12 +30,51 @@ type Generation = {
   keyword: string | null;
   targetUrl: string | null;
   content: string;
+  internalLinks: string | null;
   wordCount: number;
   model: string;
   createdAt: string;
 };
 
 type Group = { topic: string; versions: Generation[] };
+
+// --- Helpers para sugerencias de enlaces internos ---
+// El grafo de la auditoría guarda URLs completas; la estructura de keywords
+// guarda slugs relativos que hay que combinar con el dominio del proyecto.
+function urlToPathname(fullUrl: string): string {
+  try {
+    const u = new URL(fullUrl);
+    const path = u.pathname;
+    return path === "/" ? "/" : path.replace(/\/+$/, "");
+  } catch {
+    return fullUrl;
+  }
+}
+
+function buildFullUrl(domain: string, slug: string): string {
+  const host = domain.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  const path = slug.replace(/^\/+/, "").replace(/\/+$/, "");
+  return path ? `https://${host}/${path}` : `https://${host}/`;
+}
+
+// Mismo filtrado defensivo que `parseLinkGraph` en /api/.../enlaces: descarta
+// entradas malformadas del JSON sin romper el resto.
+function extractUrlsFromGraph(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const urls: string[] = [];
+  for (const entry of raw) {
+    if (
+      entry &&
+      typeof entry === "object" &&
+      typeof (entry as { url?: unknown }).url === "string"
+    ) {
+      urls.push((entry as { url: string }).url);
+    }
+  }
+  return urls;
+}
+
+type ProjectUrl = { full: string; short: string };
 
 export default function ContentView({ projectId }: { projectId: string }) {
   const [type, setType] = useState<ContentType>("blog");
@@ -55,6 +94,11 @@ export default function ContentView({ projectId }: { projectId: string }) {
   const [groups, setGroups] = useState<Group[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
 
+  // URLs conocidas del proyecto (auditoría + estructura de keywords) para
+  // sugerirlas como enlaces internos con un clic.
+  const [projectUrls, setProjectUrls] = useState<ProjectUrl[]>([]);
+  const [loadingUrls, setLoadingUrls] = useState(true);
+
   // Versión contra la que se compara la actual (null = sin modo comparación).
   const [compareTarget, setCompareTarget] = useState<Generation | null>(null);
 
@@ -73,6 +117,90 @@ export default function ContentView({ projectId }: { projectId: string }) {
         setLoadingHistory(false);
       });
   }, [projectId]);
+
+  // Carga las URLs del sitio desde la última auditoría con grafo de enlaces
+  // y, como complemento, las páginas propuestas en la estructura de keywords
+  // del estudio más reciente que la tenga. Prioridad: auditoría (URLs reales
+  // rastreadas) sobre estructura (slugs propuestos, no garantiza que existan).
+  useEffect(() => {
+    let cancelled = false;
+    async function loadProjectUrls() {
+      setLoadingUrls(true);
+      try {
+        const [auditRes, studiesRes, projectRes] = await Promise.all([
+          fetch(`/api/proyectos/${projectId}/auditorias`).then((r) => r.json()),
+          fetch(`/api/proyectos/${projectId}/keywords/estudios`).then((r) => r.json()),
+          fetch(`/api/proyectos/${projectId}`).then((r) => r.json()),
+        ]);
+        if (cancelled) return;
+
+        const urls: ProjectUrl[] = [];
+        const seen = new Set<string>();
+        const addUnique = (full: string) => {
+          if (seen.has(full)) return;
+          seen.add(full);
+          urls.push({ full, short: urlToPathname(full) });
+        };
+
+        // 1) Auditoría completada más reciente con linkGraph no nulo.
+        const runs: Array<{ status: string; linkGraph: unknown }> = Array.isArray(auditRes)
+          ? auditRes
+          : [];
+        const latestWithGraph = runs.find((r) => r.status === "completed" && r.linkGraph);
+        if (latestWithGraph) {
+          for (const u of extractUrlsFromGraph(latestWithGraph.linkGraph)) addUnique(u);
+        }
+
+        // 2) Estructura de keywords (slugs → URL completa con el dominio).
+        const domain: string | null =
+          projectRes && typeof projectRes.domain === "string" ? projectRes.domain : null;
+        const studies: Array<{ id: string; hasStructure: boolean }> = Array.isArray(studiesRes)
+          ? studiesRes
+          : [];
+        const withStructure = studies.find((s) => s.hasStructure);
+        if (withStructure && domain) {
+          const detail = await fetch(
+            `/api/proyectos/${projectId}/keywords/estudios/${withStructure.id}`
+          ).then((r) => r.json());
+          if (!cancelled) {
+            const pages: Array<{ slug?: unknown }> =
+              detail?.structure?.pages && Array.isArray(detail.structure.pages)
+                ? detail.structure.pages
+                : [];
+            for (const p of pages) {
+              if (typeof p.slug === "string" && p.slug.trim()) {
+                addUnique(buildFullUrl(domain, p.slug));
+              }
+            }
+          }
+        }
+
+        if (!cancelled) setProjectUrls(urls.slice(0, 20));
+      } catch {
+        if (!cancelled) setProjectUrls([]);
+      } finally {
+        if (!cancelled) setLoadingUrls(false);
+      }
+    }
+    loadProjectUrls();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  // URLs ya presentes en el textarea (para marcar chips como añadidos).
+  const addedUrls = useMemo(
+    () => new Set(internalLinks.split("\n").map((l) => l.trim()).filter(Boolean)),
+    [internalLinks]
+  );
+
+  function addInternalLink(url: string) {
+    setInternalLinks((prev) => {
+      const lines = prev.split("\n").map((l) => l.trim()).filter(Boolean);
+      if (lines.includes(url)) return prev;
+      return lines.length === 0 ? url : `${lines.join("\n")}\n${url}`;
+    });
+  }
 
   // Resto de versiones del mismo tema que la generación actual (excluida).
   // Se prefiere `groups` (tra todas) y se cae a `history` si no hubiera grupo.
@@ -260,6 +388,48 @@ export default function ContentView({ projectId }: { projectId: string }) {
             placeholder={"https://www.ejemplo.com/servicios\nhttps://www.ejemplo.com/contacto"}
             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
           />
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-gray-500">
+              URLs del proyecto
+            </span>
+            {projectUrls.length > 0 && (
+              <span className="text-[11px] text-gray-400">Clic para añadir como enlace interno</span>
+            )}
+          </div>
+          {loadingUrls ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />
+          ) : projectUrls.length === 0 ? (
+            <p className="text-xs text-gray-400">
+              Ejecuta una auditoría para ver las URLs del sitio y sugerir enlaces.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {projectUrls.map((u) => {
+                const already = addedUrls.has(u.full);
+                return (
+                  <button
+                    key={u.full}
+                    type="button"
+                    onClick={() => addInternalLink(u.full)}
+                    disabled={already}
+                    title={u.full}
+                    className={cn(
+                      "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs transition-colors",
+                      already
+                        ? "bg-emerald-50 text-emerald-600 cursor-default"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer"
+                    )}
+                  >
+                    {u.short}
+                    {already && <Check className="h-3 w-3" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}

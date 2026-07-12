@@ -11,6 +11,9 @@ import { splitManualTask } from "@/lib/tasks";
 type Todo = {
   id: string;
   text: string;
+  title: string | null;
+  detail: string | null;
+  priority: string;
   done: boolean;
   dueDate: string | null;
   completedAt: string | null;
@@ -18,6 +21,19 @@ type Todo = {
   issueType: string | null;
   affectedUrls: string[];
 };
+
+// Prioridades: etiqueta + clases de color para la pastilla (tarjeta) y para
+// el botón activo del formulario. baja=verde, media=ámbar, alta=rojo.
+type Priority = "baja" | "media" | "alta";
+const PRIORITY_META: Record<Priority, { label: string; badge: string; button: string }> = {
+  baja: { label: "Baja", badge: "bg-emerald-100 text-emerald-700", button: "🟢 Baja" },
+  media: { label: "Media", badge: "bg-amber-100 text-amber-700", button: "🟡 Media" },
+  alta: { label: "Alta", badge: "bg-red-100 text-red-700", button: "🔴 Alta" },
+};
+const PRIORITY_ORDER: Record<Priority, number> = { alta: 0, media: 1, baja: 2 };
+function priorityRank(p: string): number {
+  return p in PRIORITY_ORDER ? PRIORITY_ORDER[p as Priority] : 1;
+}
 
 function startOfToday(): Date {
   const d = new Date();
@@ -132,9 +148,12 @@ function ManualTaskCard({
   onToggleDone: () => void;
   onDelete: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const { title, detail } = splitManualTask(todo.text);
-  const hasDetail = detail.length > 0;
+  // Backward compat: tareas legacy sin title/detail se separan de text por
+  // saltos de línea (splitManualTask). Las nuevas ya traen title/detail.
+  const legacy = todo.title === null ? splitManualTask(todo.text) : null;
+  const title = todo.title ?? legacy?.title ?? todo.text;
+  const detail = todo.detail ?? legacy?.detail ?? "";
+  const prioMeta = PRIORITY_META[todo.priority as Priority] ?? PRIORITY_META.media;
 
   return (
     <div className="border border-gray-100 rounded-lg overflow-hidden">
@@ -147,11 +166,15 @@ function ManualTaskCard({
           title={todo.done ? "Marcar como pendiente" : "Marcar como completada"}
           className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-400 shrink-0"
         />
-        <button
-          type="button"
-          onClick={() => hasDetail && setOpen((v) => !v)}
-          className={cn("flex items-center gap-3 flex-1 min-w-0 text-left", !hasDetail && "cursor-default")}
-        >
+        <div className="flex items-center gap-3 flex-1 min-w-0 text-left">
+          <span
+            className={cn(
+              "text-[11px] px-2 py-0.5 rounded-full shrink-0 font-medium",
+              prioMeta.badge
+            )}
+          >
+            {prioMeta.label}
+          </span>
           <span className={cn("text-sm truncate", todo.done ? "text-gray-400 line-through" : "text-gray-900")}>
             {title}
           </span>
@@ -166,14 +189,7 @@ function ManualTaskCard({
               {new Date(todo.dueDate).toLocaleDateString("es-ES")}
             </span>
           )}
-          <span className="flex-1" />
-          {hasDetail &&
-            (open ? (
-              <ChevronUp className="h-4 w-4 text-gray-400 shrink-0" />
-            ) : (
-              <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
-            ))}
-        </button>
+        </div>
         <button
           onClick={onDelete}
           disabled={busy}
@@ -184,7 +200,7 @@ function ManualTaskCard({
         </button>
       </div>
 
-      {open && hasDetail && (
+      {detail && (
         <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-2">
           <p className={cn("text-sm whitespace-pre-line", todo.done ? "text-gray-400" : "text-gray-600")}>
             {detail}
@@ -205,7 +221,7 @@ export default function TareasView({ projectId }: { projectId: string }) {
 
   const [title, setTitle] = useState("");
   const [detail, setDetail] = useState("");
-  const [showDetail, setShowDetail] = useState(false);
+  const [priority, setPriority] = useState<Priority>("media");
   const [dueDate, setDueDate] = useState("");
   const [showDate, setShowDate] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -232,14 +248,16 @@ export default function TareasView({ projectId }: { projectId: string }) {
     const trimmedTitle = title.trim();
     if (!trimmedTitle) return;
     const trimmedDetail = detail.trim();
-    // El título va siempre en la primera línea; el detalle (si lo hay) en el
-    // resto — es lo que ManualTaskCard separa para mostrar colapsado/expandido.
-    const text = trimmedDetail ? `${trimmedTitle}\n${trimmedDetail}` : trimmedTitle;
     setCreating(true);
     const res = await fetch(`/api/proyectos/${projectId}/todos`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, dueDate: dueDate || undefined }),
+      body: JSON.stringify({
+        title: trimmedTitle,
+        detail: trimmedDetail || undefined,
+        priority,
+        dueDate: dueDate || undefined,
+      }),
     });
     const data = await res.json();
     setCreating(false);
@@ -249,7 +267,7 @@ export default function TareasView({ projectId }: { projectId: string }) {
     }
     setTitle("");
     setDetail("");
-    setShowDetail(false);
+    setPriority("media");
     setDueDate("");
     setShowDate(false);
     loadTodos();
@@ -281,7 +299,14 @@ export default function TareasView({ projectId }: { projectId: string }) {
   const completedCount = todos.filter((t) => t.done).length;
   const tabTodos = todos.filter((t) => (tab === "pendientes" ? !t.done : t.done));
   const autoTodos = tabTodos.filter((t) => t.issueType !== null);
-  const manualTodos = tabTodos.filter((t) => t.issueType === null);
+  // Pendientes manuales ordenadas por prioridad (alta → media → baja); las
+  // completadas respetan el orden del servidor (createdAt desc).
+  const manualTodos = tabTodos
+    .filter((t) => t.issueType === null)
+    .sort((a, b) => {
+      if (tab !== "pendientes") return 0;
+      return priorityRank(a.priority) - priorityRank(b.priority);
+    });
 
   return (
     <div className="space-y-6">
@@ -316,24 +341,38 @@ export default function TareasView({ projectId }: { projectId: string }) {
           </button>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowDetail((v) => !v)}
-          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"
-        >
-          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showDetail && "rotate-180")} />
-          Añadir detalle (opcional)
-        </button>
-        {showDetail && (
+        <div className="space-y-1">
+          <label className="block text-sm font-medium text-gray-700">Detalle (opcional)</label>
           <textarea
             value={detail}
             onChange={(e) => setDetail(e.target.value)}
             maxLength={2000}
             rows={3}
-            placeholder="Notas, contexto o pasos adicionales — se ven al desplegar la tarea"
+            placeholder="Notas, contexto o pasos adicionales"
             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 resize-y"
           />
-        )}
+        </div>
+
+        <div className="space-y-1">
+          <label className="block text-sm font-medium text-gray-700">Prioridad</label>
+          <div className="flex items-center gap-2">
+            {(["baja", "media", "alta"] as Priority[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPriority(p)}
+                className={cn(
+                  "px-3 py-1.5 text-sm rounded-lg border transition-colors",
+                  priority === p
+                    ? cn(PRIORITY_META[p].badge, "border-transparent font-medium")
+                    : "border-gray-200 text-gray-500 hover:text-gray-900 hover:border-gray-300"
+                )}
+              >
+                {PRIORITY_META[p].button}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <button
           type="button"

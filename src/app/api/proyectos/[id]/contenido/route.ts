@@ -118,6 +118,7 @@ export async function POST(
       topic,
       keyword,
       targetUrl,
+      internalLinks: internalLinks ?? null,
       content,
       wordCount: countWords(content),
       model,

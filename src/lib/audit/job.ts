@@ -249,6 +249,45 @@ export async function runAuditJob(): Promise<{ processed: number }> {
   }
 }
 
+// Severidad por tipo de incidencia → prioridad de la tarea auto-generada.
+// Las que no aparecen aquí (noindex, no_gsc_impressions) no generan tarea
+// porque su fix es null. Mismo orden de gravedad que el que un SEO aplicaría
+// a mano: indexabilidad/rotos = urgente, on-page = medio, estéticos = bajo.
+const ISSUE_PRIORITY: Record<string, "alta" | "media" | "baja"> = {
+  broken_links: "alta",
+  no_https: "alta",
+  missing_title: "alta",
+  missing_meta: "media",
+  title_long: "media",
+  duplicate_title: "media",
+  thin_content: "media",
+  missing_canonical: "media",
+  missing_h1: "media",
+  multiple_h1: "media",
+  duplicate_meta: "media",
+  redirect: "media",
+  missing_alt: "baja",
+  title_short: "baja",
+  meta_short: "baja",
+  meta_long: "baja",
+};
+
+function buildIssueTodoFields(
+  issue: string,
+  urls: string[],
+  meta: { label: string; fix: string | null },
+  dateStr: string
+): { title: string; detail: string; text: string; priority: string } {
+  const n = urls.length;
+  const label = meta.label.toLowerCase();
+  return {
+    title: `🔍 ${n} ${n === 1 ? "página" : "páginas"} ${label}`,
+    detail: `Páginas afectadas:\n${urls.join("\n")}\n\nCómo arreglarlo: ${meta.fix}`,
+    text: `🔍 [Auditoría ${dateStr}] ${n} página(s) — ${meta.label}`,
+    priority: ISSUE_PRIORITY[issue] ?? "media",
+  };
+}
+
 // --- Generación de tareas desde hallazgos de auditoría ---
 
 async function generateAuditTasks(
@@ -315,10 +354,14 @@ async function generateAuditTasks(
     const urls = issueUrls.get(t.issueType)!;
     const meta = ISSUE_META[t.issueType];
     if (!meta) continue;
+    const fields = buildIssueTodoFields(t.issueType, urls, meta, dateStr);
     await prisma.todoItem.update({
       where: { id: t.id },
       data: {
-        text: `🔍 [Auditoría ${dateStr}] ${urls.length} página(s) — ${meta.label}`,
+        title: fields.title,
+        detail: fields.detail,
+        priority: fields.priority,
+        text: fields.text,
         affectedUrls: urls,
       },
     });
@@ -330,10 +373,14 @@ async function generateAuditTasks(
   for (const [issue, urls] of issueUrls) {
     const meta = ISSUE_META[issue];
     if (!meta?.fix) continue;
+    const fields = buildIssueTodoFields(issue, urls, meta, dateStr);
     await prisma.todoItem.create({
       data: {
         projectId,
-        text: `🔍 [Auditoría ${dateStr}] ${urls.length} página(s) — ${meta.label}`,
+        title: fields.title,
+        detail: fields.detail,
+        priority: fields.priority,
+        text: fields.text,
         issueType: issue,
         affectedUrls: urls,
       },

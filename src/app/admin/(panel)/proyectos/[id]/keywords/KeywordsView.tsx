@@ -12,6 +12,7 @@ import {
   ArrowDownToLine,
   Download,
   Upload,
+  Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { suggestionsCostUsd } from "@/lib/dataforseo/pricing";
@@ -44,6 +45,7 @@ type Study = {
   updatedAt: string;
   structure: { pages: StructurePage[] } | null;
   structureModel: string | null;
+  notes: string | null;
   keywords: Keyword[];
 };
 
@@ -166,6 +168,13 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
   const [generatingStructure, setGeneratingStructure] = useState(false);
   const [structureError, setStructureError] = useState("");
 
+  // Edición / borrado del estudio
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [savingStudy, setSavingStudy] = useState(false);
+  const [deletingStudy, setDeletingStudy] = useState(false);
+
   function loadStudies() {
     return fetch(`/api/proyectos/${projectId}/keywords/estudios`)
       .then((r) => r.json())
@@ -182,6 +191,46 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
 
   function reloadCurrent() {
     if (current) openStudy(current.id);
+    loadStudies();
+  }
+
+  function startEdit() {
+    if (!current) return;
+    setEditName(current.name);
+    setEditNotes(current.notes ?? "");
+    setEditing(true);
+  }
+
+  async function handleSaveStudy() {
+    if (!current) return;
+    setSavingStudy(true);
+    const res = await fetch(`/api/proyectos/${projectId}/keywords/estudios/${current.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: editName.trim() ? editName : current.name,
+        notes: editNotes.trim() ? editNotes : null,
+      }),
+    });
+    const data = await res.json();
+    setSavingStudy(false);
+    if (!res.ok) return;
+    setCurrent(data);
+    setEditing(false);
+    loadStudies();
+  }
+
+  async function handleDeleteStudy() {
+    if (!current) return;
+    if (!window.confirm(`¿Eliminar el estudio '${current.name}' y todas sus keywords?`)) return;
+    setDeletingStudy(true);
+    const res = await fetch(`/api/proyectos/${projectId}/keywords/estudios/${current.id}`, {
+      method: "DELETE",
+    });
+    setDeletingStudy(false);
+    if (!res.ok) return;
+    setCurrent(null);
+    setEditing(false);
     loadStudies();
   }
 
@@ -322,11 +371,80 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
         </button>
 
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">{current.name}</h2>
-          <p className="text-sm text-gray-500 mt-1">
-            {current.keywords.length} keywords · {current.languageCode.toUpperCase()}/{current.locationCode} · {new Date(current.createdAt).toLocaleDateString("es-ES")}
-          </p>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">{current.name}</h2>
+              <p className="text-sm text-gray-500 mt-1">
+                {current.keywords.length} keywords · {current.languageCode.toUpperCase()}/{current.locationCode} · {new Date(current.createdAt).toLocaleDateString("es-ES")}
+              </p>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={startEdit}
+                disabled={deletingStudy}
+                className="p-1.5 text-gray-400 hover:text-gray-900 disabled:opacity-50"
+                title="Editar estudio"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+              <button
+                onClick={handleDeleteStudy}
+                disabled={deletingStudy}
+                className="p-1.5 text-gray-400 hover:text-red-600 disabled:opacity-50"
+                title="Eliminar estudio"
+              >
+                {deletingStudy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
+          {current.notes && !editing && (
+            <p className="text-sm text-gray-600 mt-2 whitespace-pre-wrap">{current.notes}</p>
+          )}
         </div>
+
+        {/* Panel inline de edición del estudio */}
+        {editing && (
+          <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Nombre del estudio</label>
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                maxLength={120}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Notas</label>
+              <textarea
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                rows={4}
+                maxLength={2000}
+                placeholder="Notas internas sobre este estudio (opcional)..."
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleSaveStudy}
+                disabled={savingStudy}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50"
+              >
+                {savingStudy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Guardar
+              </button>
+              <button
+                onClick={() => setEditing(false)}
+                disabled={savingStudy}
+                className="px-4 py-2 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Buscar keywords relacionadas (Planificador) */}
         <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">

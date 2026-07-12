@@ -28,10 +28,41 @@ export async function PATCH(
 
   const data: {
     text?: string;
+    title?: string;
+    detail?: string | null;
+    priority?: string;
     done?: boolean;
     dueDate?: Date | null;
     completedAt?: Date | null;
   } = {};
+
+  if (typeof body.title === "string") {
+    const trimmed = body.title.trim();
+    if (!trimmed) {
+      return NextResponse.json({ error: "El título de la tarea es obligatorio" }, { status: 400 });
+    }
+    if (trimmed.length > 500) {
+      return NextResponse.json({ error: "El título no puede superar los 500 caracteres" }, { status: 400 });
+    }
+    data.title = trimmed;
+  }
+
+  if (body.detail !== undefined) {
+    if (body.detail === null) {
+      data.detail = null;
+    } else if (typeof body.detail === "string") {
+      data.detail = body.detail.trim();
+    } else {
+      return NextResponse.json({ error: "Detalle inválido" }, { status: 400 });
+    }
+  }
+
+  if (body.priority !== undefined && body.priority !== null) {
+    if (typeof body.priority !== "string" || !["baja", "media", "alta"].includes(body.priority)) {
+      return NextResponse.json({ error: "Prioridad inválida" }, { status: 400 });
+    }
+    data.priority = body.priority;
+  }
 
   if (typeof body.text === "string") {
     const trimmed = body.text.trim();
