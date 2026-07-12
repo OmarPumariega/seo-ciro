@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import "leaflet/dist/leaflet.css";
 import type { MapsTopItem } from "@/lib/geogrid/maps";
 
@@ -59,6 +59,10 @@ export default function GeogridMap({
   const layerGroupRef = useRef<any>(null);
   const onSelectRef = useRef(onSelectPoint);
   onSelectRef.current = onSelectPoint;
+  // Flag que avisa al segundo effect de que el mapa ya está montado.
+  // Sin esto, si los puntos llegan antes de que import("leaflet") termine,
+  // el segundo effect sale por el guard `!mapRef.current` y nunca redibuja.
+  const [mapReady, setMapReady] = useState(false);
 
   // Monta el mapa una vez. No depende de centerLat/centerLng para no
   // reinicializar Leaflet (error "Map container is already initialized")
@@ -79,12 +83,14 @@ export default function GeogridMap({
       }).addTo(map);
       mapRef.current = map;
       layerGroupRef.current = L.layerGroup().addTo(map);
+      setMapReady(true);
       // Fuerza un recalculo del tamaño tras el primer paint (el contenedor
       // puede medir 0 si el mapa se monta dentro de una pestaña oculta).
       setTimeout(() => map.invalidateSize(), 100);
     });
     return () => {
       cancelled = true;
+      setMapReady(false);
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -158,7 +164,7 @@ export default function GeogridMap({
         map.fitBounds(bounds, { padding: [32, 32] });
       }
     });
-  }, [centerLat, centerLng, radiusKm, points, keyword, selected]);
+   }, [centerLat, centerLng, radiusKm, points, keyword, selected, mapReady]);
 
   return <div ref={containerRef} className="h-[420px] w-full rounded-lg overflow-hidden border border-gray-100" />;
 }
