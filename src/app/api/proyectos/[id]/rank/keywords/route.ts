@@ -85,7 +85,7 @@ export async function POST(
   const frequency =
     typeof body.frequency === "string" && (FREQUENCIES as readonly string[]).includes(body.frequency)
       ? body.frequency
-      : "weekly";
+      : "monthly"; // default: análisis mensual (estándar de la agencia)
   const languageCode =
     typeof body.languageCode === "string" && /^[a-z]{2}$/i.test(body.languageCode)
       ? body.languageCode.toLowerCase()
@@ -99,7 +99,7 @@ export async function POST(
       ? body.locationName.trim().slice(0, 160)
       : null;
   const rawDepth = Number(body.depth);
-  const depth = (ALLOWED_DEPTHS as readonly number[]).includes(rawDepth) ? rawDepth : 10;
+  const depth = (ALLOWED_DEPTHS as readonly number[]).includes(rawDepth) ? rawDepth : 30; // default: top-30
   const group = typeof body.group === "string" && body.group.trim() ? body.group.trim().slice(0, 60) : null;
 
   // Acepta dos formas de body:

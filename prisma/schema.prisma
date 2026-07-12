@@ -65,6 +65,7 @@ model Project {
   // si está puesto, las llamadas de este proyecto se bloquean al superarlo (suma
   // de su ApiUsageLog del mes). Se suma al tope global (DATAFORSEO_MONTHLY_LIMIT_USD).
   spendLimitUsd Float?
+  reportConfig Json? // { sections: { audit: bool, rank: bool, ... } } — config del informe por proyecto
 
   // Reparto justo del cron de Rank Tracking (Módulo 5): marca cuándo se le
   // sirvió turno por última vez, independientemente de si se vació todo su
@@ -172,6 +173,7 @@ model ContentGeneration {
   keyword   String?
   targetUrl String?
   content   String // texto plano con jerarquía de encabezados en Markdown (#, ##...)
+  internalLinks String? // enlaces internos usados en el prompt (para persistir entre versiones)
   wordCount Int
   model     String
   createdAt DateTime @default(now())
@@ -253,6 +255,7 @@ model KeywordStudy {
   locationCode   Int       @default(2724) // España
   structure      Json? // { pages: [{ slug, h1, headings, navLabel, keywords }] }
   structureModel String? // modelo de OpenRouter usado; null hasta que se genera
+  notes          String? // notas/descripción interna de la agencia sobre el estudio
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   keywords       Keyword[]
@@ -399,6 +402,12 @@ model TodoItem {
   dueDate     DateTime?
   createdAt   DateTime  @default(now())
   completedAt DateTime?
+
+  // Título y detalle separados (para tareas manuales con campos claros).
+  // Las auto-generadas usan issueType/affectedUrls; las manuales title/detail.
+  title        String?
+  detail       String?
+  priority     String   @default("media") // "baja" | "media" | "alta"
 
   // Presentes solo en tareas auto-generadas desde hallazgos de auditoría
   // (Módulo 8) — permiten renderizarlas como tarjeta colapsable con título +

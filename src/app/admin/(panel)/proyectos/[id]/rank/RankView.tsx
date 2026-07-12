@@ -192,8 +192,8 @@ export default function RankView({ projectId }: { projectId: string }) {
 
   const [newKeyword, setNewKeyword] = useState("");
   const [newDevice, setNewDevice] = useState("desktop");
-  const [newFrequency, setNewFrequency] = useState("weekly");
-  const [newDepth, setNewDepth] = useState("10");
+  const [newFrequency, setNewFrequency] = useState("monthly");
+  const [newDepth, setNewDepth] = useState("30");
   const [newGroup, setNewGroup] = useState("");
   const [newLocation, setNewLocation] = useState<LocationValue>(null);
   const [adding, setAdding] = useState(false);

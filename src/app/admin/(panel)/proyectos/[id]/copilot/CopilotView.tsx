@@ -207,6 +207,10 @@ export default function CopilotView({ projectId }: { projectId: string }) {
 
       {/* Panel de mensajes */}
       <section className="bg-white rounded-xl border border-gray-100 flex flex-col overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-100">
+          <h2 className="text-sm font-semibold text-gray-900">Copilot SEO</h2>
+          <p className="text-xs text-gray-400">Asistente de IA con los datos reales del proyecto (auditoría, keywords, posicionamiento y costes).</p>
+        </div>
         <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4">
           {loadingMessages ? (
             <div className="flex justify-center py-10">

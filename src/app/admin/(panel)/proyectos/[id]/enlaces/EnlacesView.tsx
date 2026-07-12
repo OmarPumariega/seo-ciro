@@ -79,8 +79,10 @@ export default function EnlacesView({ projectId }: { projectId: string }) {
       <div>
         <h2 className="text-lg font-semibold text-gray-900">Enlazado interno</h2>
         <p className="text-sm text-gray-500 mt-1">
-          {all.length} URLs analizadas · PageRank, enlaces entrantes/salientes y páginas huérfanas ·{" "}
-          auditoría del {new Date(data.auditDate).toLocaleDateString("es-ES")}
+          PageRank interno calculado sobre el grafo de enlaces de la última auditoría — identifica qué URLs reciben más fuerza, cuáles están huérfanas y cuáles son hubs distribuidores.
+        </p>
+        <p className="text-xs text-gray-400 mt-1">
+          {all.length} URLs analizadas · auditoría del {new Date(data.auditDate).toLocaleDateString("es-ES")}
         </p>
       </div>
 
