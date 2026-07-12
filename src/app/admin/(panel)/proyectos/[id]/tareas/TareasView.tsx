@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Plus, Trash2, ChevronDown, Calendar } from "lucide-react";
+import { Loader2, Plus, Trash2, ChevronDown, ChevronUp, Calendar, AlertCircle, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConfirmDialog from "@/components/admin/ConfirmDialog";
+import UrlLink from "@/components/admin/UrlLink";
+import { ISSUE_META } from "@/lib/audit/issue-meta";
 
 type Todo = {
   id: string;
@@ -12,12 +14,108 @@ type Todo = {
   dueDate: string | null;
   completedAt: string | null;
   createdAt: string;
+  issueType: string | null;
+  affectedUrls: string[];
 };
 
 function startOfToday(): Date {
   const d = new Date();
   d.setHours(0, 0, 0, 0);
   return d;
+}
+
+// Tarea auto-generada desde un hallazgo de auditoría (issueType no null) —
+// misma idea visual que "Problemas a corregir" en Auditoría: título +
+// contador, colapsable, con el "cómo arreglarlo" y la lista de páginas
+// completas y clicables (nunca texto plano recortado a 5 ejemplos).
+function AutoTaskCard({
+  todo,
+  busy,
+  onToggleDone,
+  onDelete,
+}: {
+  todo: Todo;
+  busy: boolean;
+  onToggleDone: () => void;
+  onDelete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const meta = todo.issueType ? ISSUE_META[todo.issueType] : undefined;
+  if (!meta) return null;
+
+  return (
+    <div className="border border-gray-100 rounded-lg overflow-hidden">
+      <div className="flex items-center gap-3 px-4 py-3">
+        <input
+          type="checkbox"
+          checked={todo.done}
+          onChange={onToggleDone}
+          disabled={busy}
+          title={todo.done ? "Marcar como pendiente" : "Marcar como resuelta"}
+          className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-400 shrink-0"
+        />
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex items-center gap-3 flex-1 min-w-0 text-left"
+        >
+          <span
+            className={cn(
+              "flex items-center justify-center h-6 w-6 rounded-full shrink-0",
+              todo.done ? "bg-emerald-100 text-emerald-600" : "bg-orange-100 text-orange-600"
+            )}
+          >
+            {todo.done ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
+          </span>
+          <span className={cn("text-sm font-medium truncate", todo.done ? "text-gray-400 line-through" : "text-gray-900")}>
+            {meta.label}
+          </span>
+          <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 shrink-0">
+            {todo.affectedUrls.length} {todo.affectedUrls.length === 1 ? "página" : "páginas"}
+          </span>
+          <span className="flex-1" />
+          {open ? (
+            <ChevronUp className="h-4 w-4 text-gray-400 shrink-0" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
+          )}
+        </button>
+        <button
+          onClick={onDelete}
+          disabled={busy}
+          className="p-1 text-gray-300 hover:text-red-600 disabled:opacity-50 shrink-0"
+          title="Eliminar tarea"
+        >
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+        </button>
+      </div>
+
+      {open && (
+        <div className="px-4 pb-4 border-t border-gray-100 pt-3 space-y-3">
+          <p className="text-sm text-gray-600">{meta.description}</p>
+          <div className="bg-blue-50 text-blue-900 text-sm px-3 py-2 rounded-lg">
+            <span className="font-medium">Cómo arreglarlo: </span>
+            {meta.fix}
+          </div>
+          {todo.affectedUrls.length > 0 && (
+            <ul className="space-y-1">
+              {todo.affectedUrls.map((u) => (
+                <li key={u}>
+                  <UrlLink url={u} className="text-xs" />
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="text-[11px] text-gray-400">
+            Detectado el {new Date(todo.createdAt).toLocaleDateString("es-ES")}
+            {todo.done && todo.completedAt
+              ? ` · resuelta o superada por una auditoría más reciente el ${new Date(todo.completedAt).toLocaleDateString("es-ES")}`
+              : ""}
+          </p>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function TareasView({ projectId }: { projectId: string }) {
@@ -90,14 +188,16 @@ export default function TareasView({ projectId }: { projectId: string }) {
   }
 
   const today = startOfToday();
+  const autoTodos = todos.filter((t) => t.issueType !== null);
+  const manualTodos = todos.filter((t) => t.issueType === null);
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold text-gray-900">Tareas</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Lista de seguimiento del proyecto. Marca, completa o elimina tareas para
-          tener siempre a la vista lo pendiente.
+          Lista de seguimiento del proyecto — manuales y auto-generadas desde hallazgos de
+          auditoría. Marca, completa o elimina para tener siempre a la vista lo pendiente.
         </p>
       </div>
 
@@ -156,63 +256,92 @@ export default function TareasView({ projectId }: { projectId: string }) {
         {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
       </form>
 
-      <div className="bg-white rounded-xl border border-gray-100 p-5">
-        {loading ? (
-          <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-        ) : todos.length === 0 ? (
-          <p className="text-sm text-gray-500">Todavía no hay tareas para este proyecto.</p>
-        ) : (
-          <ul className="divide-y divide-gray-50">
-            {todos.map((todo) => {
-              const overdue =
-                !todo.done && todo.dueDate !== null && new Date(todo.dueDate) < today;
-              return (
-                <li key={todo.id} className="flex items-center gap-3 py-2.5">
-                  <input
-                    type="checkbox"
-                    checked={todo.done}
-                    onChange={() => toggleDone(todo)}
-                    disabled={busyId === todo.id}
-                    className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-400"
+      {loading ? (
+        <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+      ) : (
+        <>
+          {autoTodos.length > 0 && (
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold text-gray-900">
+                Hallazgos de auditoría ({autoTodos.length})
+              </h3>
+              <div className="space-y-2">
+                {autoTodos.map((todo) => (
+                  <AutoTaskCard
+                    key={todo.id}
+                    todo={todo}
+                    busy={busyId === todo.id}
+                    onToggleDone={() => toggleDone(todo)}
+                    onDelete={() => setConfirmDeleteId(todo.id)}
                   />
-                  <div className="flex-1 min-w-0">
-                    <p
-                      className={cn(
-                        "text-sm whitespace-pre-line",
-                        todo.done ? "line-through text-gray-400" : "text-gray-900"
-                      )}
-                    >
-                      {todo.text}
-                    </p>
-                    {todo.dueDate && (
-                      <p
-                        className={cn(
-                          "text-xs mt-0.5",
-                          overdue ? "text-red-600 font-medium" : "text-gray-500"
-                        )}
-                      >
-                        Vence: {new Date(todo.dueDate).toLocaleDateString("es-ES")}
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => setConfirmDeleteId(todo.id)}
-                    disabled={busyId === todo.id}
-                    className="p-1 text-gray-300 hover:text-red-600 disabled:opacity-50"
-                    title="Eliminar tarea"
-                  >
-                    {busyId === todo.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {autoTodos.length > 0 && <h3 className="text-sm font-semibold text-gray-900">Tareas manuales</h3>}
+            <div className="bg-white rounded-xl border border-gray-100 p-5">
+              {manualTodos.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  {autoTodos.length > 0
+                    ? "Sin tareas manuales todavía."
+                    : "Todavía no hay tareas para este proyecto."}
+                </p>
+              ) : (
+                <ul className="divide-y divide-gray-50">
+                  {manualTodos.map((todo) => {
+                    const overdue = !todo.done && todo.dueDate !== null && new Date(todo.dueDate) < today;
+                    return (
+                      <li key={todo.id} className="flex items-center gap-3 py-2.5">
+                        <input
+                          type="checkbox"
+                          checked={todo.done}
+                          onChange={() => toggleDone(todo)}
+                          disabled={busyId === todo.id}
+                          className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-400"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p
+                            className={cn(
+                              "text-sm whitespace-pre-line",
+                              todo.done ? "line-through text-gray-400" : "text-gray-900"
+                            )}
+                          >
+                            {todo.text}
+                          </p>
+                          {todo.dueDate && (
+                            <p
+                              className={cn(
+                                "text-xs mt-0.5",
+                                overdue ? "text-red-600 font-medium" : "text-gray-500"
+                              )}
+                            >
+                              Vence: {new Date(todo.dueDate).toLocaleDateString("es-ES")}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => setConfirmDeleteId(todo.id)}
+                          disabled={busyId === todo.id}
+                          className="p-1 text-gray-300 hover:text-red-600 disabled:opacity-50"
+                          title="Eliminar tarea"
+                        >
+                          {busyId === todo.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       <ConfirmDialog
         open={confirmDeleteId !== null}

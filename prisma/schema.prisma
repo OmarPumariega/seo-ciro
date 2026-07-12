@@ -399,6 +399,14 @@ model TodoItem {
   createdAt   DateTime  @default(now())
   completedAt DateTime?
 
+  // Presentes solo en tareas auto-generadas desde hallazgos de auditoría
+  // (Módulo 8) — permiten renderizarlas como tarjeta colapsable con título +
+  // detalle, igual que "Problemas a corregir" en Auditoría, reutilizando
+  // ISSUE_META por código en vez de reparsear el texto libre. Las tareas
+  // manuales dejan estos campos null.
+  issueType    String? // código de ISSUE_META (src/lib/audit/issue-meta.ts)
+  affectedUrls String[] @default([]) // URLs completas afectadas, sin recortar a 5
+
   @@index([projectId])
 }
 

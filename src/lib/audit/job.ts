@@ -251,15 +251,6 @@ export async function runAuditJob(): Promise<{ processed: number }> {
 
 // --- Generación de tareas desde hallazgos de auditoría ---
 
-function urlToPath(url: string): string {
-  try {
-    const u = new URL(url);
-    return u.pathname + (u.search || "") || "/";
-  } catch {
-    return url;
-  }
-}
-
 async function generateAuditTasks(
   projectId: string,
   pages: CrawledPage[],
@@ -268,8 +259,9 @@ async function generateAuditTasks(
   titleCounts: Map<string, number>,
   metaCounts: Map<string, number>
 ): Promise<void> {
-  // Agrega incidencias por tipo → lista de paths afectados.
-  const issuePages = new Map<string, string[]>();
+  // Agrega incidencias por tipo → lista de URLs completas afectadas (no solo
+  // el path: TareasView las renderiza con UrlLink, clicables).
+  const issueUrls = new Map<string, string[]>();
   for (const page of pages) {
     const inSearchConsole = gscChecked ? impressedUrls?.has(page.url) ?? false : null;
     const issues = buildIssues(page, inSearchConsole);
@@ -283,29 +275,37 @@ async function generateAuditTasks(
       // Solo incidencias accionables (fix !== null) generan tarea — noindex y
       // "sin impresiones GSC" son señales informativas, pueden ser intencionales.
       if (!ISSUE_META[issue]?.fix) continue;
-      const path = urlToPath(page.url);
-      const arr = issuePages.get(issue) ?? [];
-      arr.push(path);
-      issuePages.set(issue, arr);
+      const arr = issueUrls.get(issue) ?? [];
+      arr.push(page.url);
+      issueUrls.set(issue, arr);
     }
   }
 
-  if (issuePages.size === 0) return; // auditoría limpia → sin tareas
+  if (issueUrls.size === 0) return; // auditoría limpia → sin tareas
 
-  // Marca las tareas de auditorías anteriores como hechas (superadas).
+  // Marca las tareas de auditorías anteriores como hechas (superadas) —
+  // issueType no-null identifica de forma fiable una tarea auto-generada,
+  // ya no hace falta el prefijo de texto para distinguirlas.
   await prisma.todoItem.updateMany({
-    where: { projectId, done: false, text: { startsWith: "🔍" } },
+    where: { projectId, done: false, issueType: { not: null } },
     data: { done: true, completedAt: new Date() },
   });
 
-  // Crea una tarea detallada por tipo de incidencia.
+  // Crea una tarea por tipo de incidencia. El texto es solo un título corto
+  // (para notificaciones/exportaciones); la descripción, el "cómo arreglar" y
+  // la lista de páginas se resuelven en la UI a partir de issueType +
+  // affectedUrls (ver ISSUE_META y AuditIssuesList — mismo patrón).
   const dateStr = new Date().toLocaleDateString("es-ES");
-  for (const [issue, paths] of issuePages) {
+  for (const [issue, urls] of issueUrls) {
     const meta = ISSUE_META[issue];
     if (!meta?.fix) continue;
-    const shown = paths.slice(0, 5);
-    const more = paths.length > 5 ? ` …y ${paths.length - 5} más` : "";
-    const text = `🔍 [Auditoría ${dateStr}] ${paths.length} página(s) — ${meta.label}:\n${shown.map((p) => `• ${p}`).join("  ")}${more}\n→ ${meta.fix}`.slice(0, 500);
-    await prisma.todoItem.create({ data: { projectId, text } });
+    await prisma.todoItem.create({
+      data: {
+        projectId,
+        text: `🔍 [Auditoría ${dateStr}] ${urls.length} página(s) — ${meta.label}`,
+        issueType: issue,
+        affectedUrls: urls,
+      },
+    });
   }
 }
