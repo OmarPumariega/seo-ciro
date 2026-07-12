@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { geogridCostUsd } from "@/lib/dataforseo/pricing";
 import GeogridMap from "@/components/admin/GeogridMap";
 import UrlLink from "@/components/admin/UrlLink";
+import GbpPicker, { type GbpCandidate } from "@/components/admin/GbpPicker";
 import type { MapsTopItem } from "@/lib/geogrid/maps";
 
 type GridPoint = {
@@ -157,15 +158,29 @@ const GRID_OPTIONS = [3, 5, 7];
 
 export default function GeogridView({
   projectId,
-  centerLat,
-  centerLng,
-  businessName,
+  centerLat: initialLat,
+  centerLng: initialLng,
+  businessName: initialBusinessName,
+  gbpName: initialGbpName,
+  gbpPlaceId: initialGbpPlaceId,
 }: {
   projectId: string;
   centerLat: number | null;
   centerLng: number | null;
   businessName: string | null;
+  gbpName: string | null;
+  gbpPlaceId: string | null;
 }) {
+  // Estado local (no solo props): al elegir una ficha de Google con
+  // GbpPicker, el centro del mapa y el nombre deben actualizarse al
+  // instante sin recargar la página — la fuente inicial es el proyecto,
+  // pero a partir de ahí manda lo que el usuario elija en esta sesión.
+  const [centerLat, setCenterLat] = useState(initialLat);
+  const [centerLng, setCenterLng] = useState(initialLng);
+  const [businessName, setBusinessName] = useState(initialBusinessName);
+  const [gbpName, setGbpName] = useState(initialGbpName);
+  const [gbpPlaceId, setGbpPlaceId] = useState(initialGbpPlaceId);
+
   const [keyword, setKeyword] = useState("");
   const [gridSize, setGridSize] = useState(5);
   const [radiusKm, setRadiusKm] = useState(3);
@@ -237,6 +252,14 @@ export default function GeogridView({
   async function loadDetail(runId: string) {
     const res = await fetch(`/api/proyectos/${projectId}/geogrid/${runId}`);
     if (res.ok) setCurrent(await res.json());
+  }
+
+  function handleGbpApplied(c: GbpCandidate) {
+    setGbpPlaceId(c.placeId);
+    setGbpName(c.title);
+    if (c.lat !== null) setCenterLat(c.lat);
+    if (c.lng !== null) setCenterLng(c.lng);
+    if (!businessName) setBusinessName(c.title);
   }
 
   async function handleTrigger(e: React.FormEvent) {
@@ -379,6 +402,13 @@ export default function GeogridView({
       </div>
 
       <form onSubmit={handleTrigger} className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+        <GbpPicker
+          projectId={projectId}
+          currentGbpName={gbpName}
+          currentPlaceId={gbpPlaceId}
+          onApplied={handleGbpApplied}
+        />
+
         <div className="space-y-1">
           <label className="block text-sm font-medium text-gray-700">Keyword</label>
           <input

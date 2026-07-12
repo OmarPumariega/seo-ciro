@@ -10,7 +10,7 @@ export default async function GeogridPage({
   const { id } = await params;
   const project = await prisma.project.findUnique({
     where: { id },
-    select: { id: true, lat: true, lng: true, businessName: true },
+    select: { id: true, lat: true, lng: true, businessName: true, gbpName: true, gbpPlaceId: true },
   });
   if (!project) notFound();
 
@@ -20,6 +20,8 @@ export default async function GeogridPage({
       centerLat={project.lat}
       centerLng={project.lng}
       businessName={project.businessName}
+      gbpName={project.gbpName}
+      gbpPlaceId={project.gbpPlaceId}
     />
   );
 }
