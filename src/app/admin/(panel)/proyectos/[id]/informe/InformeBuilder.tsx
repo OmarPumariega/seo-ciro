@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, FileText, Gauge, Target, Search, MapPin, Wallet, ClipboardCheck, Network } from "lucide-react";
+import GeogridMap from "@/components/admin/GeogridMap";
 import PrintButton from "./PrintButton";
 import { splitManualTask } from "@/lib/tasks";
 import { ISSUE_META } from "@/lib/audit/issue-meta";
@@ -482,69 +483,60 @@ export default function InformeBuilder({ projectId, data, initialConfig }: Props
             {!data.geogrid || data.geogrid.foundCount == null ? (
               <p className="text-sm text-gray-500">Sin geogrids completados hasta este mes.</p>
             ) : (
-              <>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  <Stat
-                    label="Visibilidad"
-                    value={`${data.geogrid.foundCount}/${data.geogrid.gridSize * data.geogrid.gridSize}`}
-                    sub="puntos donde aparece"
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Columna izquierda: mapa real con puntos */}
+                <div className="space-y-2">
+                  <GeogridMap
+                    centerLat={data.geogrid.centerLat}
+                    centerLng={data.geogrid.centerLng}
+                    radiusKm={data.geogrid.radiusKm}
+                    points={(data.geogrid.points ?? []).map((p) => ({
+                      row: p.row,
+                      col: p.col,
+                      lat: p.lat,
+                      lng: p.lng,
+                      position: p.position,
+                      title: null,
+                    }))}
+                    keyword={data.geogrid.keyword}
                   />
-                  <Stat
-                    label="Posición media"
-                    value={
-                      data.geogrid.averagePosition != null
-                        ? data.geogrid.averagePosition.toFixed(1)
-                        : "—"
-                    }
-                  />
-                  <Stat
-                    label="Rejilla"
-                    value={`${data.geogrid.gridSize}×${data.geogrid.gridSize}`}
-                  />
+                  <div className="flex flex-wrap items-center gap-2 text-[10px] text-gray-400">
+                    <span className="flex items-center gap-0.5"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500" /> Top 3</span>
+                    <span className="flex items-center gap-0.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-500" /> 4–10</span>
+                    <span className="flex items-center gap-0.5"><span className="h-2.5 w-2.5 rounded-full bg-orange-400" /> 11–20</span>
+                    <span className="flex items-center gap-0.5"><span className="h-2.5 w-2.5 rounded-full bg-red-500" /> +20</span>
+                    <span className="flex items-center gap-0.5"><span className="h-2.5 w-2.5 rounded-full bg-gray-400" /> No aparece</span>
+                  </div>
                 </div>
 
-                {/* Heatmap visual del geogrid */}
-                {data.geogrid.points && data.geogrid.points.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-xs text-gray-500">Mapa de calor</p>
-                    <div
-                      className="grid gap-1 max-w-xs"
-                      style={{ gridTemplateColumns: `repeat(${data.geogrid.gridSize}, minmax(0, 1fr))` }}
-                    >
-                      {[...data.geogrid.points]
-                        .sort((a, b) => a.row - b.row || a.col - b.col)
-                        .map((p, i) => {
-                          const pos = p.position;
-                          const bg = pos === null ? "bg-gray-200 text-gray-400"
-                            : pos <= 3 ? "bg-emerald-500 text-white"
-                            : pos <= 10 ? "bg-amber-400 text-amber-950"
-                            : pos <= 20 ? "bg-orange-400 text-white"
-                            : "bg-red-500 text-white";
-                          return (
-                            <div
-                              key={i}
-                              className={`aspect-square rounded flex items-center justify-center text-[10px] font-semibold ${bg}`}
-                            >
-                              {pos === null ? "—" : `#${pos}`}
-                            </div>
-                          );
-                        })}
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 text-[10px] text-gray-400">
-                      <span className="flex items-center gap-0.5"><span className="h-2.5 w-2.5 rounded bg-emerald-500" /> Top 3</span>
-                      <span className="flex items-center gap-0.5"><span className="h-2.5 w-2.5 rounded bg-amber-400" /> 4–10</span>
-                      <span className="flex items-center gap-0.5"><span className="h-2.5 w-2.5 rounded bg-orange-400" /> 11–20</span>
-                      <span className="flex items-center gap-0.5"><span className="h-2.5 w-2.5 rounded bg-red-500" /> +20</span>
-                      <span className="flex items-center gap-0.5"><span className="h-2.5 w-2.5 rounded bg-gray-200" /> No aparece</span>
-                    </div>
+                {/* Columna derecha: estadísticas */}
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-3">
+                    <Stat
+                      label="Visibilidad"
+                      value={`${data.geogrid.foundCount}/${data.geogrid.gridSize * data.geogrid.gridSize}`}
+                      sub="puntos donde aparece el negocio"
+                    />
+                    <Stat
+                      label="Posición media"
+                      value={
+                        data.geogrid.averagePosition != null
+                          ? data.geogrid.averagePosition.toFixed(1)
+                          : "—"
+                      }
+                    />
+                    <Stat
+                      label="Rejilla"
+                      value={`${data.geogrid.gridSize}×${data.geogrid.gridSize}`}
+                      sub={`radio ${data.geogrid.radiusKm} km`}
+                    />
                   </div>
-                )}
-
-                <p className="text-xs text-gray-400">
-                  «{data.geogrid.keyword}» · Radio {data.geogrid.radiusKm} km · Geogrid completado el{" "}
-                  {fmtDate(data.geogrid.completedAt)}
-                </p>
-              </>
+                  <p className="text-xs text-gray-400">
+                    «{data.geogrid.keyword}» · Geogrid completado el{" "}
+                    {fmtDate(data.geogrid.completedAt)}
+                  </p>
+                </div>
+              </div>
             )}
           </section>
         )}
