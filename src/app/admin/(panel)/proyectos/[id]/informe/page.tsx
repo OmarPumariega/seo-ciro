@@ -127,8 +127,12 @@ export default async function InformePage({
         select: {
           keyword: true,
           gridSize: true,
+          radiusKm: true,
+          centerLat: true,
+          centerLng: true,
           foundCount: true,
           averagePosition: true,
+          points: true,
           completedAt: true,
         },
       }),
@@ -319,8 +323,12 @@ export default async function InformePage({
       ? {
           keyword: latestGeogrid.keyword,
           gridSize: latestGeogrid.gridSize,
+          radiusKm: latestGeogrid.radiusKm,
+          centerLat: latestGeogrid.centerLat,
+          centerLng: latestGeogrid.centerLng,
           foundCount: latestGeogrid.foundCount,
           averagePosition: latestGeogrid.averagePosition,
+          points: latestGeogrid.points as { row: number; col: number; lat: number; lng: number; position: number | null }[] | null,
           completedAt: latestGeogrid.completedAt,
         }
       : null,
