@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { downloadCsv } from "@/lib/csv";
+import LocationPicker, { type LocationValue } from "@/components/admin/LocationPicker";
 
 type TfidfTerm = {
   term: string;
@@ -29,7 +30,7 @@ type AnalyzeResponse = {
 export default function TfidfView({ projectId }: { projectId: string }) {
   const [keyword, setKeyword] = useState("");
   const [languageCode, setLanguageCode] = useState("es");
-  const [locationCode, setLocationCode] = useState("2724");
+  const [location, setLocation] = useState<LocationValue>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [loading, setLoading] = useState(false);
@@ -52,7 +53,7 @@ export default function TfidfView({ projectId }: { projectId: string }) {
       body: JSON.stringify({
         keyword,
         languageCode: languageCode || undefined,
-        locationCode: locationCode ? Number(locationCode) : undefined,
+        locationCode: location?.code,
       }),
     });
     const data = await res.json();
@@ -90,17 +91,29 @@ export default function TfidfView({ projectId }: { projectId: string }) {
         onSubmit={handleSubmit}
         className="bg-white rounded-xl border border-gray-100 p-5 space-y-4"
       >
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-gray-700">Keyword</label>
-          <input
-            type="text"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            placeholder="ej. reformas cocina valencia"
-            required
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
-          />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">Keyword</label>
+            <input
+              type="text"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              placeholder="ej. reformas cocina valencia"
+              required
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-medium text-gray-700">
+              Ubicación <span className="text-gray-400 font-normal">(opcional)</span>
+            </label>
+            <LocationPicker value={location} onChange={setLocation} />
+          </div>
         </div>
+        <p className="text-xs text-gray-400 -mt-2">
+          El top-10 orgánico se busca simulando la búsqueda desde ese punto — clave si el negocio es
+          local. Sin elegir nada, se usa España (nacional).
+        </p>
 
         <div>
           <button
@@ -129,21 +142,8 @@ export default function TfidfView({ projectId }: { projectId: string }) {
                   className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
                 />
               </div>
-              <div className="space-y-1">
-                <label className="block text-xs font-medium text-gray-600">
-                  Ubicación (código)
-                </label>
-                <input
-                  type="text"
-                  value={locationCode}
-                  onChange={(e) => setLocationCode(e.target.value)}
-                  placeholder="2724"
-                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
-                />
-              </div>
               <p className="col-span-2 text-xs text-gray-400">
-                Defaults: es (español) y 2724 (España). El código de ubicación es el de
-                DataForSEO (ej. 2840 = Alemania, 2826 = UK).
+                Default: es (español).
               </p>
             </div>
           )}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Sparkles, Plus, Trash2, Target, TrendingUp, AlertTriangle } from "lucide-react";
 import ConfirmDialog from "@/components/admin/ConfirmDialog";
+import LocationPicker, { type LocationValue } from "@/components/admin/LocationPicker";
 
 type TopKeyword = { keyword: string; position: number | null; volume: number | null };
 
@@ -82,6 +83,10 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
   const [trend, setTrend] = useState<number[]>([]);
+  // Ubicación usada por TODOS los análisis (propio + competidores) y el
+  // content gap de esta sesión — DataForSEO Labs también resuelve tráfico y
+  // keywords por punto geográfico, no solo a nivel país.
+  const [location, setLocation] = useState<LocationValue>(null);
 
   function load() {
     return fetch(`/api/proyectos/${projectId}/competidores`)
@@ -125,7 +130,7 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
     const res = await fetch(`/api/proyectos/${projectId}/competidores/analizar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ domain }),
+      body: JSON.stringify({ domain, locationCode: location?.code }),
     });
     const d = await res.json();
     setAnalyzingDomain(null);
@@ -147,7 +152,7 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
     const res = await fetch(`/api/proyectos/${projectId}/competidores/${competitorId}/content-gap`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ locationCode: location?.code }),
     });
     const d = await res.json();
     setGapId(null);
@@ -175,6 +180,22 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
         <p className="text-sm text-gray-500 mt-1">
           Espía el tráfico orgánico estimado y las keywords de cualquier dominio (DataForSEO Labs), y
           descubre el content gap: keywords por las que ranquean y tú no.
+        </p>
+      </div>
+
+      {/* Ubicación de todos los análisis de esta sesión (propio dominio,
+          competidores y content gap) — un negocio local no compite igual a
+          nivel nacional que en su ciudad. */}
+      <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-1.5">
+        <label className="block text-sm font-medium text-gray-700">
+          Ubicación de análisis <span className="text-gray-400 font-normal">(opcional)</span>
+        </label>
+        <div className="max-w-sm">
+          <LocationPicker value={location} onChange={setLocation} />
+        </div>
+        <p className="text-xs text-gray-400">
+          Se aplica a &laquo;Analizar&raquo; y &laquo;Gap&raquo; de abajo. Sin elegir nada, España
+          (nacional).
         </p>
       </div>
 
