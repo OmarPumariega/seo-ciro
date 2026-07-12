@@ -59,18 +59,25 @@ export default function LocationPicker({
   const results = useMemo(() => {
     const q = stripAccents(query.trim().toLowerCase());
     if (!q) return [];
-    const starts: LocationOption[] = [];
-    const includes: LocationOption[] = [];
+    // 3 tiers de relevancia:
+    // 1) El nombre propio (antes de la 1ª coma) empieza por la búsqueda.
+    //    Ej: buscar "asturias" → "Asturias,Spain" (tier 1) va por delante de
+    //    "Oviedo,Oviedo,Asturias,Spain" (tier 3, Asturias aparece como región).
+    // 2) El nombre propio contiene la búsqueda.
+    // 3) La búsqueda aparece en cualquier parte del nombre completo.
+    const tier1: LocationOption[] = [];
+    const tier2: LocationOption[] = [];
+    const tier3: LocationOption[] = [];
     for (const loc of ALL) {
-      const name = stripAccents(loc.name.toLowerCase());
-      if (name.startsWith(q)) starts.push(loc);
-      else if (name.includes(q)) includes.push(loc);
-      if (starts.length >= 8) break;
+      const fullName = stripAccents(loc.name.toLowerCase());
+      const firstName = fullName.split(",")[0];
+      if (firstName.startsWith(q)) tier1.push(loc);
+      else if (firstName.includes(q)) tier2.push(loc);
+      else if (fullName.includes(q)) tier3.push(loc);
     }
     const rank = (a: LocationOption) => TYPE_ORDER[a.type] ?? 9;
-    return [...starts, ...includes]
-      .sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name))
-      .slice(0, 8);
+    const sortFn = (a: LocationOption, b: LocationOption) => rank(a) - rank(b) || a.name.localeCompare(b.name);
+    return [...tier1.sort(sortFn), ...tier2.sort(sortFn), ...tier3.sort(sortFn)].slice(0, 10);
   }, [query]);
 
   return (
