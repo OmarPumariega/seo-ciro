@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import * as Select from "@radix-ui/react-select";
 import { Loader2, ChevronDown, Check } from "lucide-react";
+import GscPanel from "@/components/admin/GscPanel";
 
 type GscSite = { siteUrl: string; permissionLevel: string };
 type Ga4Property = { propertyId: string; displayName: string; accountName: string };
@@ -39,6 +40,10 @@ export default function GoogleView({
 
   const [gscSiteUrl, setGscSiteUrl] = useState(initialGscSiteUrl ?? "");
   const [ga4PropertyId, setGa4PropertyId] = useState(initialGa4PropertyId ?? "");
+  // Propiedad de GSC ya persistida: el panel detallado de Search Console se
+  // monta sobre el valor guardado (no sobre la selección sin guardar) y se
+  // refresca al guardar una nueva.
+  const [savedGsc, setSavedGsc] = useState(initialGscSiteUrl);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
@@ -89,6 +94,8 @@ export default function GoogleView({
       setSaveError(data.error ?? "Error al guardar");
       return;
     }
+    setSaveError("");
+    setSavedGsc(gscSiteUrl || null);
     setLoadingDashboard(true);
     fetch(`/api/proyectos/${projectId}/google/dashboard`)
       .then((r) => r.json())
@@ -215,9 +222,12 @@ export default function GoogleView({
       {loadingDashboard && <Loader2 className="h-4 w-4 animate-spin text-gray-400" />}
 
       {dashboard && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        // grid-cols-2 fijo (no sm:grid-cols-4): el nº de tiles es dinámico
+        // (2 si solo hay GSC o GA4, 4 si hay ambos, + banners de error a ancho
+        // completo). Así nunca quedan celdas vacías sea cual sea la combinación.
+        <div className="grid grid-cols-2 gap-4">
           {dashboard.gsc && "error" in dashboard.gsc ? (
-            <div className="col-span-2 sm:col-span-4 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+            <div className="col-span-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
               Search Console: {dashboard.gsc.error}
             </div>
           ) : dashboard.gsc ? (
@@ -228,7 +238,7 @@ export default function GoogleView({
           ) : null}
 
           {dashboard.ga4 && "error" in dashboard.ga4 ? (
-            <div className="col-span-2 sm:col-span-4 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+            <div className="col-span-2 text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">
               Google Analytics: {dashboard.ga4.error}
             </div>
           ) : dashboard.ga4 ? (
@@ -239,6 +249,8 @@ export default function GoogleView({
           ) : null}
         </div>
       )}
+
+      {savedGsc && <GscPanel key={savedGsc} projectId={projectId} />}
     </div>
   );
 }

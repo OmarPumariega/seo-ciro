@@ -50,3 +50,32 @@ export function geogridCostUsd(gridSize: number): number {
 export function suggestionsCostUsd(limit: number): number {
   return Math.round(limit * SUGGESTION_COST_PER_RESULT * 100) / 100;
 }
+
+// DataForSEO Labs (competidores). Precio real publicado por DataForSEO para
+// estos endpoints: 0,012$ por tarea (fijo, cada llamada) + 0,00012$ por ítem
+// devuelto (dataforseo.com/pricing/dataforseo-labs/dataforseo-google-api).
+// Verificado contra los 3 costes reales ya registrados en ApiUsageLog: coinciden
+// exactamente con esta fórmula (antes se asumía 0,01$/resultado, ~83x el precio
+// real, lo que inflaba la estimación mostrada al usuario muy por encima del
+// coste real). El coste REAL sigue siendo el que devuelve la API
+// (registrado en ApiUsageLog); esto es solo orientativo, para que el usuario
+// sepa cuánto cuesta ANTES de lanzar el análisis o el content gap.
+const LABS_TASK_COST_USD = 0.012;
+const LABS_ITEM_COST_USD = 0.00012;
+// DataForSEO cobra por ítem REALMENTE devuelto, no por el `limit` pedido — así
+// que pedir el máximo (1000, el techo real de ranked_keywords/domain_intersection)
+// no encarece el caso normal (un dominio con 15 keywords sigue costando lo de 15),
+// solo evita que un dominio grande se quede corto en la lista.
+export const COMPETITORS_ANALYZE_DEFAULT_LIMIT = 1000;
+export const COMPETITORS_GAP_DEFAULT_LIMIT = 1000;
+
+// "Analizar" = domain_rank_overview (1 tarea + 1 ítem) + ranked_keywords (1 tarea + limit ítems).
+export function competitorAnalysisCostUsd(limit = COMPETITORS_ANALYZE_DEFAULT_LIMIT): number {
+  const overview = LABS_TASK_COST_USD + LABS_ITEM_COST_USD;
+  const ranked = LABS_TASK_COST_USD + limit * LABS_ITEM_COST_USD;
+  return Math.round((overview + ranked) * 1000) / 1000;
+}
+// "Content gap" = domain_intersection (1 tarea + limit ítems).
+export function contentGapCostUsd(limit = COMPETITORS_GAP_DEFAULT_LIMIT): number {
+  return Math.round((LABS_TASK_COST_USD + limit * LABS_ITEM_COST_USD) * 1000) / 1000;
+}

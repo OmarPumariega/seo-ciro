@@ -11,12 +11,16 @@ type PageRow = {
   pagerank: number;
   incoming: number;
   outgoing: number;
+  externalLinks: number;
+  externalDomains: string[];
 };
 
 type EnlacesData = {
   pages: PageRow[];
   orphans: string[];
   topHubs: string[];
+  topExternalDomains: { domain: string; pages: number }[];
+  totalExternalLinks: number;
   auditDate: string;
 };
 
@@ -82,7 +86,7 @@ export default function EnlacesView({ projectId }: { projectId: string }) {
           PageRank interno calculado sobre el grafo de enlaces de la última auditoría — identifica qué URLs reciben más fuerza, cuáles están huérfanas y cuáles son hubs distribuidores.
         </p>
         <p className="text-xs text-gray-400 mt-1">
-          {all.length} URLs analizadas · auditoría del {new Date(data.auditDate).toLocaleDateString("es-ES")}
+          {all.length} URLs analizadas · {data.totalExternalLinks} enlaces externos · auditoría del {new Date(data.auditDate).toLocaleDateString("es-ES")}
         </p>
       </div>
 
@@ -95,12 +99,12 @@ export default function EnlacesView({ projectId }: { projectId: string }) {
               PageRank por URL ({all.length})
             </h3>
           </div>
-          <button
+              <button
             onClick={() =>
               downloadCsv(
                 `pagerank-${projectId}-${new Date().toISOString().slice(0, 10)}.csv`,
-                ["URL", "PageRank (%)", "Entrantes", "Salientes"],
-                all.map((p) => [p.url, (p.pagerank * 100).toFixed(2), p.incoming, p.outgoing])
+                ["URL", "PageRank (%)", "Entrantes", "Salientes", "Externos"],
+                all.map((p) => [p.url, (p.pagerank * 100).toFixed(2), p.incoming, p.outgoing, p.externalLinks])
               )
             }
             className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50"
@@ -118,6 +122,7 @@ export default function EnlacesView({ projectId }: { projectId: string }) {
                 <th className="font-medium py-2 px-2 text-right">PageRank</th>
                 <th className="font-medium py-2 px-2 text-right">Entrantes</th>
                 <th className="font-medium py-2 px-2 text-right">Salientes</th>
+                <th className="font-medium py-2 px-2 text-right">Externos</th>
                 <th className="font-medium py-2 pl-2 w-32">Fuerza</th>
               </tr>
             </thead>
@@ -137,6 +142,13 @@ export default function EnlacesView({ projectId }: { projectId: string }) {
                     </td>
                     <td className="py-1.5 px-2 text-right text-gray-500 tabular-nums">
                       {page.outgoing}
+                    </td>
+                    <td className="py-1.5 px-2 text-right tabular-nums" title={page.externalDomains.join(", ")}>
+                      {page.externalLinks > 0 ? (
+                        <span className="text-gray-600">{page.externalLinks}</span>
+                      ) : (
+                        <span className="text-gray-300">0</span>
+                      )}
                     </td>
                     <td className="py-1.5 pl-2">
                       <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
@@ -207,6 +219,33 @@ export default function EnlacesView({ projectId }: { projectId: string }) {
           </p>
         </div>
       </div>
+
+      {/* Dominios externos más enlazados */}
+      {data.topExternalDomains.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-100 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Link2 className="h-4 w-4 text-gray-500" />
+            <h3 className="text-sm font-semibold text-gray-900">
+              Dominios externos más enlazados ({data.topExternalDomains.length})
+            </h3>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {data.topExternalDomains.map((d) => (
+              <span
+                key={d.domain}
+                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-gray-100 text-gray-700"
+                title={`${d.pages} página(s) enlazan este dominio`}
+              >
+                {d.domain}
+                <span className="text-gray-400 tabular-nums">· {d.pages}</span>
+              </span>
+            ))}
+          </div>
+          <p className="text-xs text-gray-400 mt-3">
+            Dominios a los que tu sitio enlaza (según el rastreo). El número indica en cuántas páginas aparecen.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

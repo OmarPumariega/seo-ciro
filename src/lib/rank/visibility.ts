@@ -33,6 +33,11 @@ export type VisibilityPoint = {
   date: string; // ISO, medianoche del día del chequeo
   index: number; // 0-100
   keywordsWithData: number;
+  top3: number; // nº keywords en posición ≤ 3
+  top10: number; // ≤ 10
+  top20: number; // ≤ 20
+  top30: number; // ≤ 30
+  avgPosition: number | null; // posición media (null si ninguna con dato)
 };
 
 // Serie temporal del índice, opcionalmente acotada a un grupo. Cada punto es
@@ -97,15 +102,30 @@ export async function computeVisibilitySeries(
   for (const [day, posMap] of byDay) {
     let weighted = 0;
     let maxForDay = 0;
+    let top3 = 0, top10 = 0, top20 = 0, top30 = 0;
+    let posSum = 0, posCount = 0;
     for (const [kwId, pos] of posMap) {
       const vol = volByKwId.get(kwId) ?? 0;
       maxForDay += vol * CTR_TABLE[1];
-      if (pos !== null) weighted += ctrForPosition(pos) * vol;
+      if (pos !== null) {
+        weighted += ctrForPosition(pos) * vol;
+        if (pos <= 3) top3++;
+        if (pos <= 10) top10++;
+        if (pos <= 20) top20++;
+        if (pos <= 30) top30++;
+        posSum += pos;
+        posCount++;
+      }
     }
     series.push({
       date: new Date(day).toISOString(),
       index: maxForDay > 0 ? Math.round((weighted / maxForDay) * 10000) / 100 : 0,
       keywordsWithData: posMap.size,
+      top3,
+      top10,
+      top20,
+      top30,
+      avgPosition: posCount > 0 ? Math.round((posSum / posCount) * 10) / 10 : null,
     });
   }
 

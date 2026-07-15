@@ -2,8 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, Sparkles, Plus, Trash2, Target, TrendingUp, AlertTriangle } from "lucide-react";
+import { cn } from "@/lib/utils";
 import ConfirmDialog from "@/components/admin/ConfirmDialog";
 import LocationPicker, { type LocationValue } from "@/components/admin/LocationPicker";
+import {
+  competitorAnalysisCostUsd,
+  contentGapCostUsd,
+} from "@/lib/dataforseo/pricing";
 
 type TopKeyword = { keyword: string; position: number | null; volume: number | null };
 
@@ -30,6 +35,10 @@ type Data = {
   competitors: Competitor[];
 };
 
+// Estimaciones orientativas (como en geogrid/rank tracking).
+const analyzeCost = competitorAnalysisCostUsd();
+const gapCost = contentGapCostUsd();
+
 function fmtTraffic(v: number | null): string {
   if (v === null) return "—";
   if (v >= 1000) return `${(v / 1000).toFixed(1)}k`;
@@ -53,22 +62,76 @@ function TrafficSparkline({ points }: { points: number[] }) {
   );
 }
 
+// Buscador client-side + lista con scroll acotado — los datos ya están todos en
+// memoria tras "Analizar"/"Gap" (hasta 1000 filas), así que filtrar no gasta nada.
+function KeywordChips({ keywords, colorClass }: { keywords: TopKeyword[]; colorClass: string }) {
+  return (
+    <div className="max-h-64 overflow-y-auto flex flex-wrap content-start gap-1.5">
+      {keywords.map((k, i) => (
+        <span key={i} className={cn("inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded", colorClass)}>
+          {k.keyword}
+          {k.volume !== null && <span className="opacity-70">· {k.volume.toLocaleString("es-ES")}</span>}
+          {k.position !== null && <span className="opacity-70">· #{k.position}</span>}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function TopKeywords({ keywords, title }: { keywords: TopKeyword[] | null; title: string }) {
+  const [search, setSearch] = useState("");
   if (!keywords || keywords.length === 0) {
     return <p className="text-xs text-gray-400">{title}: sin datos aún.</p>;
   }
+  const q = search.trim().toLowerCase();
+  const filtered = q ? keywords.filter((k) => k.keyword.toLowerCase().includes(q)) : keywords;
   return (
-    <div className="space-y-1">
-      <p className="text-xs text-gray-500">{title}</p>
-      <div className="flex flex-wrap gap-1.5">
-        {keywords.slice(0, 12).map((k, i) => (
-          <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-gray-50 text-gray-600">
-            {k.keyword}
-            {k.volume !== null && <span className="text-gray-400">· {k.volume.toLocaleString("es-ES")}</span>}
-            {k.position !== null && <span className="text-gray-400">· #{k.position}</span>}
-          </span>
-        ))}
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-xs text-gray-500">
+          {title} ({keywords.length})
+        </p>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar keyword..."
+          className="px-2 py-1 border border-gray-200 rounded text-[11px] outline-none focus:border-gray-400 w-36"
+        />
       </div>
+      {filtered.length === 0 ? (
+        <p className="text-xs text-gray-400">Sin resultados para &laquo;{search}&raquo;.</p>
+      ) : (
+        <KeywordChips keywords={filtered} colorClass="bg-gray-50 text-gray-600" />
+      )}
+    </div>
+  );
+}
+
+function ContentGapList({ items, contentGapAt }: { items: TopKeyword[]; contentGapAt: string | null }) {
+  const [search, setSearch] = useState("");
+  const q = search.trim().toLowerCase();
+  const filtered = q ? items.filter((k) => k.keyword.toLowerCase().includes(q)) : items;
+  return (
+    <div className="pt-2 border-t border-gray-100 space-y-1.5">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-xs text-gray-500">
+          Content gap ({items.length}) — ranquea por estas y tú no
+          {contentGapAt ? ` · ${new Date(contentGapAt).toLocaleDateString("es-ES")}` : ""}
+        </p>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar keyword..."
+          className="px-2 py-1 border border-gray-200 rounded text-[11px] outline-none focus:border-gray-400 w-36"
+        />
+      </div>
+      {filtered.length === 0 ? (
+        <p className="text-xs text-gray-400">Sin resultados para &laquo;{search}&raquo;.</p>
+      ) : (
+        <KeywordChips keywords={filtered} colorClass="bg-emerald-50 text-emerald-700" />
+      )}
     </div>
   );
 }
@@ -201,6 +264,13 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
 
       {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
 
+      {/* Aviso de coste estimado por acción (como en geogrid/rank tracking) */}
+      <div className="bg-white rounded-xl border border-gray-100 p-4 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-gray-600">
+        <span>Coste estimado por acción:</span>
+        <span className="inline-flex items-center gap-1"><Target className="h-3.5 w-3.5 text-gray-400" /> Analizar visibilidad <strong className="text-gray-900">~${analyzeCost.toFixed(2)}</strong></span>
+        <span className="inline-flex items-center gap-1"><Target className="h-3.5 w-3.5 text-gray-400" /> Content gap <strong className="text-gray-900">~${gapCost.toFixed(2)}</strong></span>
+      </div>
+
       {/* Visibilidad del propio dominio */}
       <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
         <div className="flex items-center justify-between">
@@ -209,9 +279,10 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
             onClick={() => data?.projectDomain && handleAnalyze(data.projectDomain)}
             disabled={!data?.projectDomain || analyzingDomain === data?.projectDomain}
             className="flex items-center gap-2 px-3 py-1.5 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50"
+            title={`Coste estimado ~$${analyzeCost.toFixed(2)}`}
           >
             {analyzingDomain === data?.projectDomain ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-            Analizar
+            Analizar <span className="text-gray-300 font-normal">~${analyzeCost.toFixed(2)}</span>
           </button>
         </div>
         {!data?.projectDomain ? (
@@ -284,19 +355,19 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
                   onClick={() => handleAnalyze(c.domain)}
                   disabled={analyzingDomain === c.domain}
                   className="flex items-center gap-1 px-2.5 py-1.5 border border-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                  title="Analizar visibilidad"
+                  title={`Analizar visibilidad · coste estimado ~$${analyzeCost.toFixed(2)}`}
                 >
                   {analyzingDomain === c.domain ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                  Analizar
+                  Analizar <span className="text-gray-400 font-normal">~${analyzeCost.toFixed(2)}</span>
                 </button>
                 <button
                   onClick={() => handleGap(c.id)}
                   disabled={gapId === c.id}
                   className="flex items-center gap-1 px-2.5 py-1.5 border border-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                  title="Content gap"
+                  title={`Content gap · coste estimado ~$${gapCost.toFixed(2)}`}
                 >
                   {gapId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Target className="h-3.5 w-3.5" />}
-                  Gap
+                  Gap <span className="text-gray-400 font-normal">~${gapCost.toFixed(2)}</span>
                 </button>
                 <button onClick={() => setConfirmRemoveId(c.id)} className="p-1.5 text-gray-300 hover:text-red-600" title="Eliminar">
                   <Trash2 className="h-4 w-4" />
@@ -305,20 +376,7 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
             </div>
             {c.snapshot?.topKeywords && <TopKeywords keywords={c.snapshot.topKeywords} title="Sus top keywords" />}
             {c.contentGap && c.contentGap.length > 0 && (
-              <div className="pt-2 border-t border-gray-100">
-                <p className="text-xs text-gray-500 mb-1.5">
-                  Content gap ({c.contentGap.length}) — ranquea por estas y tú no {c.contentGapAt ? `· {new Date(c.contentGapAt).toLocaleDateString("es-ES")}` : ""}
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {c.contentGap.slice(0, 20).map((k, i) => (
-                    <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">
-                      {k.keyword}
-                      {k.volume !== null && <span className="text-emerald-500">· {k.volume.toLocaleString("es-ES")}</span>}
-                      {k.position !== null && <span className="text-emerald-500">· #{k.position}</span>}
-                    </span>
-                  ))}
-                </div>
-              </div>
+              <ContentGapList items={c.contentGap} contentGapAt={c.contentGapAt} />
             )}
           </div>
         ))}

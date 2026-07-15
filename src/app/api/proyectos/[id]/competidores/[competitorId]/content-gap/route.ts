@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { DataForSeoError } from "@/lib/dataforseo/client";
 import { DataForSeoSpendLimitError, assertWithinSpendLimit } from "@/lib/dataforseo/spend";
 import { fetchContentGap, normalizeDomain } from "@/lib/competitors/dataforseo";
+import { COMPETITORS_GAP_DEFAULT_LIMIT } from "@/lib/dataforseo/pricing";
 
 // Content gap de un competidor: keywords por las que rankea y el proyecto NO.
 // PAGA (domain_intersection). Se guarda en el competidor (contentGap) para verlo
@@ -42,7 +43,10 @@ export async function POST(
   const rawLocation = Number(body.locationCode);
   const locationCode = Number.isInteger(rawLocation) && rawLocation > 0 ? rawLocation : 2724;
   const rawLimit = Number(body.limit);
-  const limit = Number.isInteger(rawLimit) && rawLimit > 0 && rawLimit <= 1000 ? rawLimit : 50;
+  const limit =
+    Number.isInteger(rawLimit) && rawLimit > 0 && rawLimit <= 1000
+      ? rawLimit
+      : COMPETITORS_GAP_DEFAULT_LIMIT;
 
   try {
     await assertWithinSpendLimit(id);

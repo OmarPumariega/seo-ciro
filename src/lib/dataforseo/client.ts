@@ -68,6 +68,22 @@ export function extractTask(json: unknown, endpoint: string): TaskEnvelope {
   return task;
 }
 
+// Traduce los códigos HTTP más comunes de DataForSEO a un mensaje claro con la
+// causa y la acción a seguir — el "error HTTP 402" críptico era incomprensible
+// para el usuario (significa saldo agotado, no un fallo de la herramienta).
+function httpErrorMessage(endpoint: string, status: number): string {
+  switch (status) {
+    case 401:
+      return `DataForSEO ${endpoint}: credenciales no válidas (HTTP 401). Revisa DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD en Configuración.`;
+    case 402:
+      return `DataForSEO ${endpoint}: saldo insuficiente (HTTP 402). Recarga créditos en tu cuenta de DataForSEO (dataforseo.com → Balance) e inténtalo de nuevo.`;
+    case 429:
+      return `DataForSEO ${endpoint}: has superado el límite de peticiones (HTTP 429). Inténtalo de nuevo en unos minutos.`;
+    default:
+      return `DataForSEO ${endpoint}: error HTTP ${status}`;
+  }
+}
+
 // POST de una tarea a un endpoint Live de DataForSEO. Devuelve la task ya
 // validada (status_code 20000 en ambos niveles). El coste real queda en
 // `task.cost` para que el llamador lo registre en ApiUsageLog.
@@ -97,7 +113,7 @@ export async function postTask(
   }
 
   if (!res.ok) {
-    throw new DataForSeoError(`DataForSEO ${endpoint}: error HTTP ${res.status}`);
+    throw new DataForSeoError(httpErrorMessage(endpoint, res.status));
   }
 
   const json = await res.json();

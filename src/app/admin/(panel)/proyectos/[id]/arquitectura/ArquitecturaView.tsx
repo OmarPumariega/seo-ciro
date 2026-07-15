@@ -6,7 +6,7 @@ import { Loader2, ChevronDown, Sparkles, GitFork, RefreshCw } from "lucide-react
 import { normalizeKeyword } from "@/lib/keywords/normalize";
 import { buildStructureTree, type StructureTreeNode } from "@/lib/keywords/structure-tree";
 import type { StructureProposal } from "@/lib/keywords/structure";
-import StructureFanTree from "@/components/admin/StructureFanTree";
+import StructureTreeView from "@/components/admin/StructureTreeView";
 
 type StudyListItem = {
   id: string;
@@ -37,7 +37,8 @@ export default function ArquitecturaView({
   const [loadingStudies, setLoadingStudies] = useState(true);
   const [studyId, setStudyId] = useState("");
   const [study, setStudy] = useState<StudyDetail | null>(null);
-  const [loadingStudy, setLoadingStudy] = useState(false);
+  const [loadedStudyId, setLoadedStudyId] = useState<string | null>(null);
+  const loadingStudy = studyId !== "" && loadedStudyId !== studyId;
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
 
@@ -56,19 +57,24 @@ export default function ArquitecturaView({
       .finally(() => setLoadingStudies(false));
   }, [projectId]);
 
-  useEffect(() => {
-    if (!studyId) {
-      setStudy(null);
-      return;
-    }
-    setLoadingStudy(true);
+  // Reset del estudio cargado y del error al cambiar/vaciar la selección —
+  // ajuste de estado durante el render (no dentro de un effect), como
+  // recomienda https://react.dev/learn/you-might-not-need-an-effect#adjusting-state-based-on-a-prop-change
+  const [studyIdForStudy, setStudyIdForStudy] = useState(studyId);
+  if (studyId !== studyIdForStudy) {
+    setStudyIdForStudy(studyId);
     setError("");
+    if (!studyId) setStudy(null);
+  }
+
+  useEffect(() => {
+    if (!studyId) return;
     fetch(`/api/proyectos/${projectId}/keywords/estudios/${studyId}`)
       .then((r) => r.json())
       .then((d: StudyDetail) => {
         if (d && d.id) setStudy(d);
       })
-      .finally(() => setLoadingStudy(false));
+      .finally(() => setLoadedStudyId(studyId));
   }, [projectId, studyId]);
 
   async function handleGenerate() {
@@ -200,10 +206,11 @@ export default function ArquitecturaView({
             </p>
           </div>
           <p className="text-xs text-gray-400">
-            Haz clic en el icono de cada rama para desplegar las páginas hijas. El orden dentro de
-            cada rama es por volumen de búsqueda real, de mayor a menor.
+            Despliega cada rama para ver sus páginas. Cada tarjeta muestra el H1, la URL, los
+            encabezados (H2/H3) y las keywords que cubre. El orden dentro de cada rama es por
+            volumen de búsqueda real, de mayor a menor.
           </p>
-          <StructureFanTree root={tree} domain={domain} />
+          <StructureTreeView root={tree} domain={domain} />
         </div>
       ) : study && !study.structure ? (
         <div className="bg-white rounded-xl border border-gray-100 p-6 text-center space-y-2">

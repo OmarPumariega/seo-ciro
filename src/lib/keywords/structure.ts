@@ -40,11 +40,12 @@ Devuelves ÚNICAMENTE un objeto JSON (sin markdown, sin explicaciones) con esta 
 {"pages": [{"slug": "ruta/relativa", "h1": "Título H1", "headings": ["Subtítulo H2", "Otro H2"], "navLabel": "Etiqueta de menú", "keywords": ["keyword 1", "keyword 2"]}]}
 
 Reglas estrictas:
-- Agrupa las keywords en páginas coherentes temáticamente. Una keyword puede aparecer en una sola página.
-- "slug" es una ruta relativa sin dominio ni barra inicial. Usa subcarpetas para agrupar (ej. "servicios/...", "blog/..."). Refleja una jerarquía real.
-- "h1": el título principal de la página, orientado a la keyword principal de esa página. No inventes páginas que no se relacionen con ninguna keyword de la lista.
+- Crea un número razonable de páginas (entre 5 y 15), agrupando las keywords por tema. No fragmentes en exceso: si dos keywords son variantes de la misma intención, van en la misma página.
+- Profundidad máxima de 2 niveles de carpeta (ej. "servicios/abogado-familia"). No crees rutas de 3 o más segmentos.
+- "slug" es una ruta relativa sin dominio ni barra inicial. Usa subcarpetas para agrupar (ej. "servicios/...", "blog/..."). Refleja una jerarquía real y poco profunda.
+- "h1": el título principal de la página, orientado a la keyword principal de esa página, en lenguaje natural (máx ~70 caracteres). No inventes páginas que no se relacionen con ninguna keyword de la lista.
 - "headings": de 1 a 5 subtítulos (H2/H3) reales para esa página, derivados de las keywords secundarias que agrupe. Nunca genéricos ("Introducción", "Conclusión") salvo que aporten.
-- "navLabel": etiqueta corta (1-3 palabras) para el menú de navegación.
+- "navLabel": etiqueta MUY corta (1-3 palabras, idealmente 1-2) para el menú de navegación.
 - "keywords": lista (puede ser vacía) de las keywords de la entrada que cette página cubre, copiadas literalmente.
 - Vincula la intención de búsqueda con el tipo de página: las keywords transaccionales van a páginas de servicio/producto; las informacionales a blog/guía; las mixtas a comparativa/categoría.
 - Basa TODO en los datos reales (volumen/intención/prioridad) de la lista. No inventes topics ajenos a la lista.

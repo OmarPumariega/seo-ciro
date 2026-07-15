@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Plus, Trash2, ChevronDown, ChevronUp, Calendar, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Loader2, Plus, Trash2, ChevronDown, ChevronUp, Calendar, AlertCircle, CheckCircle2, ListChecks } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConfirmDialog from "@/components/admin/ConfirmDialog";
 import UrlLink from "@/components/admin/UrlLink";
+import TodoTemplatesCard from "@/components/admin/TodoTemplatesCard";
 import { ISSUE_META } from "@/lib/audit/issue-meta";
 import { splitManualTask } from "@/lib/tasks";
 
@@ -225,6 +226,61 @@ export default function TareasView({ projectId }: { projectId: string }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [tab, setTab] = useState<"pendientes" | "completadas">("pendientes");
 
+  // Aplicador de plantillas (catálogo global de tareas preestablecidas).
+  const [tplOpen, setTplOpen] = useState(false);
+  const [templates, setTemplates] = useState<TemplateItem[]>([]);
+  const [tplLoading, setTplLoading] = useState(false);
+  const [selectedTpls, setSelectedTpls] = useState<Set<string>>(new Set());
+  const [applying, setApplying] = useState(false);
+  // Gestión del catálogo (crear/editar/borrar plantillas) — dentro del módulo
+  // de Tareas, ya no en Configuración.
+  const [manageOpen, setManageOpen] = useState(false);
+
+  type TemplateItem = { id: string; title: string; detail: string | null; priority: string; category: string | null };
+
+  function loadTemplates() {
+    setTplLoading(true);
+    fetch("/api/tareas-plantillas")
+      .then((r) => r.json())
+      .then((d: TemplateItem[]) => {
+        if (Array.isArray(d)) setTemplates(d);
+      })
+      .finally(() => setTplLoading(false));
+  }
+
+  function openTemplates() {
+    setTplOpen((v) => {
+      const next = !v;
+      if (next && templates.length === 0) loadTemplates();
+      return next;
+    });
+  }
+
+  function toggleTpl(id: string) {
+    setSelectedTpls((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function applyTemplates() {
+    if (selectedTpls.size === 0) return;
+    setApplying(true);
+    const res = await fetch(`/api/proyectos/${projectId}/todos/from-template`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ templateIds: Array.from(selectedTpls) }),
+    });
+    setApplying(false);
+    if (res.ok) {
+      setSelectedTpls(new Set());
+      setTplOpen(false);
+      loadTodos();
+    }
+  }
+
   function loadTodos() {
     return fetch(`/api/proyectos/${projectId}/todos`)
       .then((r) => r.json())
@@ -312,6 +368,81 @@ export default function TareasView({ projectId }: { projectId: string }) {
           Lista de seguimiento del proyecto — manuales y auto-generadas desde hallazgos de
           auditoría. Marca, completa o elimina para tener siempre a la vista lo pendiente.
         </p>
+      </div>
+
+      {/* Aplicar tareas preestablecidas desde el catálogo (Configuración) */}
+      <div className="bg-white rounded-xl border border-gray-100 p-4">
+        <button
+          type="button"
+          onClick={openTemplates}
+          className="flex items-center gap-2 text-sm font-medium text-gray-900"
+        >
+          <ListChecks className="h-4 w-4 text-gray-500" />
+          Aplicar tareas preestablecidas
+          <ChevronDown className={cn("h-4 w-4 text-gray-400 transition-transform", tplOpen ? "rotate-180" : "")} />
+        </button>
+        {tplOpen && (
+          <div className="mt-3 space-y-3">
+            <p className="text-xs text-gray-500">
+              Selecciona tareas del catálogo para añadirlas a este proyecto. Puedes crear y editar el
+              catálogo más abajo, en &ldquo;Gestionar catálogo de plantillas&rdquo;.
+            </p>
+            {tplLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+            ) : templates.length === 0 ? (
+              <p className="text-sm text-gray-500">No hay plantillas creadas todavía.</p>
+            ) : (
+              <ul className="space-y-1.5">
+                {templates.map((t) => (
+                  <li key={t.id}>
+                    <label className="flex items-start gap-2 text-sm cursor-pointer p-2 rounded-lg hover:bg-gray-50">
+                      <input
+                        type="checkbox"
+                        checked={selectedTpls.has(t.id)}
+                        onChange={() => toggleTpl(t.id)}
+                        className="h-4 w-4 mt-0.5"
+                      />
+                      <span className="min-w-0">
+                        <span className="text-gray-900 font-medium">{t.title}</span>
+                        {t.category && <span className="text-xs text-gray-400 ml-1">· {t.category}</span>}
+                        {t.detail && <span className="block text-xs text-gray-500">{t.detail}</span>}
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {templates.length > 0 && (
+              <button
+                type="button"
+                onClick={applyTemplates}
+                disabled={applying || selectedTpls.size === 0}
+                className="inline-flex items-center gap-1.5 px-3 py-2 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50"
+              >
+                {applying && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                Añadir {selectedTpls.size > 0 ? `(${selectedTpls.size})` : ""}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Gestión del catálogo de plantillas (crear/editar/borrar) */}
+      <div className="bg-white rounded-xl border border-gray-100 p-4">
+        <button
+          type="button"
+          onClick={() => setManageOpen((v) => !v)}
+          className="flex items-center gap-2 text-sm font-medium text-gray-900"
+        >
+          <ListChecks className="h-4 w-4 text-gray-500" />
+          Gestionar catálogo de plantillas
+          <ChevronDown className={cn("h-4 w-4 text-gray-400 transition-transform", manageOpen ? "rotate-180" : "")} />
+        </button>
+        {manageOpen && (
+          <div className="mt-4">
+            <TodoTemplatesCard />
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleCreate} className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { CheckCircle2, Circle, Loader2, KeyRound, X } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { SETTINGS_CATALOG, type SettingKey } from "@/lib/settings-catalog";
 
 type Status = { configured: boolean; source: "db" | "env" | "none" };
@@ -17,6 +16,7 @@ function SettingField({
   label,
   placeholder,
   helpText,
+  multiline,
   status,
   onSaved,
 }: {
@@ -24,6 +24,7 @@ function SettingField({
   label: string;
   placeholder?: string;
   helpText?: string;
+  multiline?: boolean;
   status: Status;
   onSaved: () => void;
 }) {
@@ -81,14 +82,25 @@ function SettingField({
         )}
       </div>
       <div className="flex gap-2">
-        <input
-          type="password"
-          autoComplete="off"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder={status.configured ? "•••••••••••• (déjalo vacío para no cambiarlo)" : placeholder}
-          className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 font-mono"
-        />
+        {multiline ? (
+          <textarea
+            autoComplete="off"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={status.configured ? "Configurado (escribe para sustituirlo)" : placeholder}
+            rows={3}
+            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 resize-y"
+          />
+        ) : (
+          <input
+            type="password"
+            autoComplete="off"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder={status.configured ? "•••••••••••• (déjalo vacío para no cambiarlo)" : placeholder}
+            className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 font-mono"
+          />
+        )}
         <button
           type="button"
           onClick={handleSave}
@@ -151,10 +163,15 @@ export default function ApiSettingsCard() {
       {loading || !status ? (
         <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
       ) : (
-        <div className={cn("grid gap-6", "sm:grid-cols-2")}>
+        // Flujo continuo en 2 columnas (CSS columns) en vez de grid por grupo:
+        // cada grupo es indivisible (break-inside-avoid) pero las columnas se
+        // rellenan sin dejar celdas vacías ni filas desiguales por altura.
+        <div className="columns-1 sm:columns-2 gap-x-8">
           {groups.map((group) => (
-            <div key={group} className="space-y-3">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">{group}</h3>
+            <div key={group} className="mb-5 break-inside-avoid">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">
+                {group}
+              </h3>
               <div className="space-y-3">
                 {SETTINGS_CATALOG.filter((s) => s.group === group).map((s) => (
                   <SettingField
@@ -163,6 +180,7 @@ export default function ApiSettingsCard() {
                     label={s.label}
                     placeholder={s.placeholder}
                     helpText={s.helpText}
+                    multiline={s.multiline}
                     status={status[s.key]}
                     onSaved={load}
                   />

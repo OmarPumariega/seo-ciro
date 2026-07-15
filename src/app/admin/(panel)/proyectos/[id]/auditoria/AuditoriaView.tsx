@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Sparkles, AlertTriangle, XCircle } from "lucide-react";
+import Link from "next/link";
+import { Loader2, Sparkles, AlertTriangle, XCircle, Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 import AuditTrendChart from "@/components/admin/AuditTrendChart";
 import AuditIssuesTrendChart from "@/components/admin/AuditIssuesTrendChart";
@@ -91,6 +92,159 @@ function KpiTile({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+// Core Web Vitals (PageSpeed Insights). detail viene de scoring.ts:
+// { performanceScorePct, lcpMs, clsX1000, inpMs } (-1 = sin dato).
+const CWV_TONE: Record<string, string> = { good: "text-emerald-600", warn: "text-amber-600", bad: "text-red-600" };
+const CWV_DOT: Record<string, string> = { good: "bg-emerald-500", warn: "bg-amber-500", bad: "bg-red-500" };
+const CWV_LABEL: Record<string, string> = { good: "Bueno", warn: "Mejorable", bad: "Lento" };
+
+function CwvTile({ label, value, status }: { label: string; value: string; status: string | null }) {
+  return (
+    <div className="bg-gray-50 rounded-lg p-3">
+      <div className="text-xs text-gray-500">{label}</div>
+      <div className={cn("text-xl font-semibold tabular-nums", status ? CWV_TONE[status] : "text-gray-400")}>
+        {value}
+      </div>
+      {status && (
+        <div className="flex items-center gap-1 mt-0.5 text-[11px] text-gray-500">
+          <span className={cn("h-1.5 w-1.5 rounded-full", CWV_DOT[status])} />
+          {CWV_LABEL[status]}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CwvPanel({ detail }: { detail: Record<string, number> }) {
+  const perf = detail.performanceScorePct;
+  const lcp = detail.lcpMs;
+  const clsX = detail.clsX1000;
+  const inp = detail.inpMs;
+  const perfStatus = perf >= 90 ? "good" : perf >= 50 ? "warn" : "bad";
+  const lcpStatus = lcp < 0 ? null : lcp <= 2500 ? "good" : lcp <= 4000 ? "warn" : "bad";
+  const clsStatus = clsX < 0 ? null : clsX <= 100 ? "good" : clsX <= 250 ? "warn" : "bad";
+  const inpStatus = inp < 0 ? null : inp <= 200 ? "good" : inp <= 500 ? "warn" : "bad";
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-5">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-sm font-semibold text-gray-900">Core Web Vitals (PageSpeed)</h3>
+        <span className="text-[10px] uppercase tracking-wide text-gray-400">Home · móvil</span>
+      </div>
+      <p className="text-xs text-gray-400 mb-4">Medido con Google PageSpeed Insights sobre la página de inicio.</p>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <CwvTile label="Performance" value={perf >= 0 ? String(perf) : "—"} status={String(perfStatus)} />
+        <CwvTile label="LCP" value={lcp >= 0 ? `${(lcp / 1000).toFixed(1)}s` : "—"} status={lcpStatus} />
+        <CwvTile label="CLS" value={clsX >= 0 ? (clsX / 1000).toFixed(2) : "—"} status={clsStatus} />
+        <CwvTile label="INP" value={inp >= 0 ? `${inp}ms` : "—"} status={inpStatus} />
+      </div>
+    </div>
+  );
+}
+
+function fmtTraffic(v: number | null): string {
+  if (v === null) return "—";
+  if (v >= 1000) return `${(v / 1000).toFixed(1)}k`;
+  return Math.round(v).toLocaleString("es-ES");
+}
+
+// Visibilidad del dominio en Google según Search Console (gratis, real). Es la
+// alternativa sin coste a una métrica de "autoridad" de pago (Moz/Ahrefs/DataForSEO).
+function VisibilityPanel({
+  visibility,
+  projectId,
+}: {
+  visibility: { impressions: number; clicks: number; queries: number; position: number; month: string } | null;
+  projectId: string;
+}) {
+  const hasData = visibility && (visibility.impressions > 0 || visibility.queries > 0);
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-5">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Globe className="h-4 w-4 text-gray-400" />
+          <h3 className="text-sm font-semibold text-gray-900">Visibilidad en Google</h3>
+        </div>
+        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+          {hasData ? `Search Console · ${visibility!.month}` : "Search Console"}
+        </span>
+      </div>
+      {!hasData ? (
+        <p className="text-sm text-gray-500">
+          Sin datos de Search Console todavía.{" "}
+          <Link href={`/admin/proyectos/${projectId}/google`} className="text-brand font-medium underline">
+            Conéctalo en el módulo Google →
+          </Link>
+        </p>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <KpiTile label="Impresiones (mes)" value={fmtTraffic(visibility!.impressions)} />
+          <KpiTile label="Clics (mes)" value={fmtTraffic(visibility!.clicks)} />
+          <KpiTile label="Queries con datos" value={visibility!.queries.toLocaleString("es-ES")} />
+          <KpiTile label="Posición media" value={visibility!.position.toFixed(1)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+type TopKeyword = { keyword: string; position: number | null; volume: number | null };
+
+// Visibilidad orgánica estimada (DataForSEO Labs) del propio dominio, mismo dato
+// que el módulo Competidores — leer el último análisis es gratis, no dispara
+// ninguna llamada nueva. Complementa la visibilidad de Search Console (real,
+// pero solo cubre lo que Google ya te enseña) con una estimación de mercado que
+// también compara contra los competidores trackeados.
+function LabsVisibilityPanel({
+  snapshot,
+  projectId,
+}: {
+  snapshot: { organicTraffic: number | null; organicKeywords: number | null; topKeywords: TopKeyword[] | null; fetchedAt: string } | null;
+  projectId: string;
+}) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-5">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-gray-400" />
+          <h3 className="text-sm font-semibold text-gray-900">Visibilidad orgánica estimada</h3>
+        </div>
+        <span className="text-[10px] uppercase tracking-wide text-gray-400">
+          {snapshot ? `DataForSEO Labs · ${new Date(snapshot.fetchedAt).toLocaleDateString("es-ES")}` : "DataForSEO Labs"}
+        </span>
+      </div>
+      {!snapshot ? (
+        <p className="text-sm text-gray-500">
+          Sin análisis todavía.{" "}
+          <Link href={`/admin/proyectos/${projectId}/competidores`} className="text-brand font-medium underline">
+            Analiza tu dominio en Competidores →
+          </Link>
+        </p>
+      ) : (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <KpiTile label="Tráfico orgánico (est. mensual)" value={fmtTraffic(snapshot.organicTraffic)} />
+            <KpiTile label="Keywords orgánicas" value={snapshot.organicKeywords?.toLocaleString("es-ES") ?? "—"} />
+          </div>
+          {snapshot.topKeywords && snapshot.topKeywords.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {snapshot.topKeywords.slice(0, 10).map((k, i) => (
+                <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-gray-50 text-gray-600">
+                  {k.keyword}
+                  {k.position !== null && <span className="text-gray-400">· #{k.position}</span>}
+                </span>
+              ))}
+            </div>
+          )}
+          <Link href={`/admin/proyectos/${projectId}/competidores`} className="text-xs text-brand font-medium underline">
+            Ver todas las keywords y competidores →
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AuditoriaView({ projectId }: { projectId: string }) {
   const [history, setHistory] = useState<AuditRun[]>([]);
   const [current, setCurrent] = useState<AuditRun | null>(null);
@@ -100,6 +254,23 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
   const [auditFrequency, setAuditFrequency] = useState("manual");
   const [scheduleBusy, setScheduleBusy] = useState(false);
   const [tab, setTab] = useState<Tab>("resumen");
+  // Visibilidad del dominio en Google (Search Console). Gratis: lee el último
+  // snapshot persistido por el panel de GSC, sin llamar a la API ni gastar.
+  const [visibility, setVisibility] = useState<{
+    impressions: number;
+    clicks: number;
+    queries: number;
+    position: number;
+    month: string;
+  } | null>(null);
+  // Visibilidad orgánica estimada (DataForSEO Labs, módulo Competidores).
+  // Gratis: lee el último VisibilitySnapshot del dominio del proyecto.
+  const [labsSnapshot, setLabsSnapshot] = useState<{
+    organicTraffic: number | null;
+    organicKeywords: number | null;
+    topKeywords: TopKeyword[] | null;
+    fetchedAt: string;
+  } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   function stopPolling() {
@@ -149,6 +320,39 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
       .then((r) => r.json())
       .then((p) => {
         if (p && typeof p.auditFrequency === "string") setAuditFrequency(p.auditFrequency);
+      })
+      .catch(() => {});
+
+    // Visibilidad del dominio (Search Console): lee el último snapshot
+    // persistido. Gratis, sin llamadas a la API.
+    fetch(`/api/proyectos/${projectId}/google/gsc-snapshot`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.snapshot) {
+          setVisibility({
+            impressions: d.snapshot.impressions ?? 0,
+            clicks: d.snapshot.clicks ?? 0,
+            queries: d.snapshot.queries ?? 0,
+            position: d.snapshot.position ?? 0,
+            month: d.snapshot.month ?? "",
+          });
+        }
+      })
+      .catch(() => {});
+
+    // Visibilidad orgánica estimada (DataForSEO Labs): mismo endpoint que lee
+    // el módulo Competidores, gratis (solo lee el último snapshot guardado).
+    fetch(`/api/proyectos/${projectId}/competidores`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.projectSnapshot) {
+          setLabsSnapshot({
+            organicTraffic: d.projectSnapshot.organicTraffic ?? null,
+            organicKeywords: d.projectSnapshot.organicKeywords ?? null,
+            topKeywords: d.projectSnapshot.topKeywords ?? null,
+            fetchedAt: d.projectSnapshot.fetchedAt,
+          });
+        }
       })
       .catch(() => {});
 
@@ -354,10 +558,22 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
                   : " · sin cruce con Search Console (proyecto sin propiedad GSC o sin conexión de agencia)"}
               </p>
 
+              {/* Core Web Vitals (PageSpeed Insights) — los datos ya los captura el
+                  crawl en categoryScores.rendimiento.detail; aquí se muestran. */}
+              {current.categoryScores?.rendimiento?.detail && (
+                <CwvPanel detail={current.categoryScores.rendimiento.detail} />
+              )}
+
               <div className="grid md:grid-cols-2 gap-4">
                 <AuditTrendChart projectId={projectId} />
                 <AuditIssuesTrendChart runs={history} />
               </div>
+
+              {/* Visibilidad en Google (Search Console) + visibilidad orgánica
+                  estimada (DataForSEO Labs, módulo Competidores) — real vs.
+                  estimación de mercado, ambas gratis de ver aquí. */}
+              <VisibilityPanel visibility={visibility} projectId={projectId} />
+              <LabsVisibilityPanel snapshot={labsSnapshot} projectId={projectId} />
             </div>
           )}
 

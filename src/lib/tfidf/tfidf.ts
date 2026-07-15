@@ -23,9 +23,21 @@ export type TfidfTerm = {
   docs: number; // nº de documentos del corpus en los que aparece
 };
 
+export type HeadingByPage = { url: string; headings: string[] };
+export type HeadingTerm = { term: string; count: number };
+
 export type TfidfResult = {
   terms: TfidfTerm[];
+  topics: TopicGap[]; // H2/H3 del top-10 agrupados por cobertura
+  headingsByPage: HeadingByPage[]; // encabezados completos por página
+  headingTerms: HeadingTerm[]; // palabras más frecuentes en los encabezados
   sources: string[]; // URLs que se pudieron scrapear (corpus real usado)
+};
+
+export type TopicGap = {
+  text: string; // texto del encabezado tal cual aparece
+  coverage: number; // nº de páginas del corpus que lo tienen
+  urls: string[]; // qué URLs lo cubren
 };
 
 // Normaliza el texto a tokens: minúsculas, sin acentos ni signos, split por
@@ -69,31 +81,43 @@ export async function computeTfidf(top: SerpTopResult[]): Promise<TfidfResult> {
   const sources: string[] = [];
   const docs: Map<string, number>[] = []; // tf por documento: term → count
   const docFreq = new Map<string, number>(); // nº de docs que contienen el term
+  // Headings por página (para el análisis de cobertura de temas).
+  const headingsByUrl = new Map<string, Set<string>>();
 
   for (const { url } of top) {
-    let bodyText: string;
+    let page;
     try {
-      const page = await scrapePage(url);
-      bodyText = page.bodyText;
+      page = await scrapePage(url);
     } catch (error) {
-      // Una página que no se pueda scrapear (timeout, JS, 403...) no tira el
-      // análisis: se omite y se sigue con el resto del corpus.
       if (error instanceof ScrapeError) continue;
       continue;
     }
-    if (!bodyText.trim()) continue;
+    if (!page.bodyText.trim() && page.headings.length === 0) continue;
 
+    // --- TF-IDF (bodyText) ---
+    const bodyText = page.bodyText;
     const tf = new Map<string, number>();
-    for (const gram of ngrams(tokenize(bodyText))) {
-      tf.set(gram, (tf.get(gram) ?? 0) + 1);
+    if (bodyText.trim()) {
+      for (const gram of ngrams(tokenize(bodyText))) {
+        tf.set(gram, (tf.get(gram) ?? 0) + 1);
+      }
     }
-    if (tf.size === 0) continue;
+    if (tf.size > 0) {
+      docs.push(tf);
+      for (const term of tf.keys()) {
+        docFreq.set(term, (docFreq.get(term) ?? 0) + 1);
+      }
+    }
 
-    docs.push(tf);
     sources.push(url);
-    for (const term of tf.keys()) {
-      docFreq.set(term, (docFreq.get(term) ?? 0) + 1);
+
+    // --- Cobertura de temas (H2/H3) ---
+    const pageHeadings = new Set<string>();
+    for (const h of page.headings) {
+      const norm = h.text.trim();
+      if (norm.length >= 3) pageHeadings.add(norm);
     }
+    headingsByUrl.set(url, pageHeadings);
   }
 
   const n = docs.length;
@@ -121,5 +145,42 @@ export async function computeTfidf(top: SerpTopResult[]): Promise<TfidfResult> {
     .sort((a, b) => b.tfidf - a.tfidf)
     .slice(0, 20);
 
-  return { terms, sources };
+  // --- Fase 3: Cobertura de temas (H2/H3 del top-10) ---
+  // Cada heading distinto → cuántas páginas lo cubren. Los que aparecen en
+  // más páginas son los temas más comunes entre quienes ya posicionan.
+  const topicMap = new Map<string, Set<string>>();
+  for (const [url, headings] of headingsByUrl) {
+    for (const h of headings) {
+      if (!topicMap.has(h)) topicMap.set(h, new Set());
+      topicMap.get(h)!.add(url);
+    }
+  }
+  const topics: TopicGap[] = Array.from(topicMap.entries())
+    .map(([text, urls]) => ({ text, coverage: urls.size, urls: [...urls] }))
+    .sort((a, b) => b.coverage - a.coverage || a.text.localeCompare(b.text));
+
+  // --- Fase 3: Encabezados completos por página + frecuencia de palabras ---
+  const headingsByPage: HeadingByPage[] = Array.from(headingsByUrl.entries()).map(([url, hs]) => ({
+    url,
+    headings: [...hs],
+  }));
+
+  // Frecuencia de palabras en todos los encabezados (sin stop-words, 2+ car).
+  const headingWordFreq = new Map<string, number>();
+  for (const headings of headingsByUrl.values()) {
+    for (const h of headings) {
+      for (const tok of tokenize(h)) {
+        if (isContentToken(tok)) {
+          headingWordFreq.set(tok, (headingWordFreq.get(tok) ?? 0) + 1);
+        }
+      }
+    }
+  }
+  const headingTerms: HeadingTerm[] = Array.from(headingWordFreq.entries())
+    .map(([term, count]) => ({ term, count }))
+    .filter((t) => t.count >= 2) // al menos 2 ocurrencias para ser relevante
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 30);
+
+  return { terms, topics, headingsByPage, headingTerms, sources };
 }

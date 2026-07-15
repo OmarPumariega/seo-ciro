@@ -9,6 +9,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   sin_refresh_token:
     "Google no ha devuelto un token permanente (ya habías dado acceso antes). Revoca el acceso en myaccount.google.com/permissions y vuelve a conectar.",
   sin_email: "No se ha podido obtener el email de la cuenta conectada.",
+  configuracion_incompleta:
+    "Faltan las credenciales de Google (Client ID, Client Secret o URI de redirección). Completa los campos de la tarjeta 'Google (Search Console + GA4)' de abajo y vuelve a pulsar Conectar.",
 };
 
 export default async function ConfiguracionPage({

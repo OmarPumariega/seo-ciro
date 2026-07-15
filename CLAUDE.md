@@ -94,7 +94,7 @@ coste mínimo de terceros, ver `docs/01-vision-general.md`.
 ## Esquema de base de datos (Prisma)
 
 Ver [`docs/04-modelo-de-datos.md`](./docs/04-modelo-de-datos.md) para el detalle
-completo (21 modelos). Resumen: `User` (login agencia), `Project` (cliente/dominio, con
+completo (22 modelos). Resumen: `User` (login agencia), `Project` (cliente/dominio, con
 NAP, perfil de marca, propiedad de Google seleccionada y tope de gasto opcional),
 `TitleMetaGeneration` y `SchemaGeneration` (historial de los Módulos 3 y 4),
 `ApiUsageLog` (coste por llamada a OpenRouter/DataForSEO, base del control de gasto),
@@ -145,16 +145,17 @@ devuelve la API y se registra en `ApiUsageLog`.
 Proyectos. Dos bloques:
 
 - **Claves de API** (`src/lib/settings.ts`, modelo `AppSetting`): las claves de
-  DataForSEO, OpenRouter, PageSpeed Insights y SMTP/avisos por email se pueden
-  guardar aquí en vez de (o además de) el `.env` — cifradas en reposo con el mismo
-  AES-256-CBC de `src/lib/crypto.ts`. `getSetting(key)` resuelve en cascada: fila en
-  `AppSetting` (si se guardó desde la UI) → variable de entorno del mismo nombre →
-  sin configurar. El valor real nunca vuelve al cliente una vez guardado — la UI solo
-  sabe si está "configurado" y desde dónde (BD o `.env`); cambiarlo no requiere tocar
-  el servidor ni reiniciar nada (caché en memoria de 30s, invalidada al guardar).
-  `GOOGLE_CLIENT_ID/SECRET`, `DATABASE_URL`, `NEXTAUTH_SECRET` y `ENCRYPTION_KEY`
-  quedan fuera a propósito — son necesarias para arrancar la app o abrir la propia
-  base de datos, no pueden vivir dentro de ella.
+  DataForSEO, OpenRouter, PageSpeed Insights, **Google OAuth (Client ID/Secret/
+  Redirect URI)** y SMTP/avisos por email se pueden guardar aquí en vez de (o
+  además de) el `.env` — cifradas en reposo con el mismo AES-256-CBC de
+  `src/lib/crypto.ts`. `getSetting(key)` resuelve en cascada: fila en `AppSetting`
+  (si se guardó desde la UI) → variable de entorno del mismo nombre → sin
+  configurar. El valor real nunca vuelve al cliente una vez guardado — la UI solo
+  sabe si está "configurado" y desde dónde (BD o `.env`); cambiarlo no requiere
+  tocar el servidor ni reiniciar nada (caché en memoria de 30s, invalidada al
+  guardar). `DATABASE_URL`, `NEXTAUTH_SECRET` y `ENCRYPTION_KEY` quedan fuera a
+  propósito — son necesarias para arrancar la app o abrir la propia base de
+  datos, no pueden vivir dentro de ella.
 - **Conexión con Google** (Módulo 6): OAuth2 de la agencia. Conectar/desconectar, ver
   email y scopes concedidos. La *selección de propiedad* por proyecto vive en la
   ficha de cada proyecto, no aquí — la conexión es una, las propiedades son por
@@ -193,9 +194,13 @@ Google, Contenido, TF-IDF, Auditoría, Enlaces, Canibalizaciones, Competidores, 
   descripción vía OpenRouter, siguiendo [`docs/seo-rules.md`](./docs/seo-rules.md).
   Keyword objetivo manual opcional (puede venir del Módulo 1 cuando exista estudio).
 - **Schema** (Módulo 4): URL → analizar (heurística, sin LLM) → confirmar/cambiar tipo
-  (LocalBusiness / Article / FAQPage) → generar JSON-LD. `LocalBusiness` es determinista
-  (mapeo directo del NAP del proyecto, sin coste de LLM); `Article`/`FAQPage` usan
-  OpenRouter y quedan registrados en `ApiUsageLog`.
+  en un catálogo data-driven de ~20 tipos de schema.org (combobox buscador agrupado
+  por categoría) → generar JSON-LD. Catálogo + builder/validador genéricos en
+  `src/lib/seo/schema/`. `LocalBusiness`, `Organization`, `WebSite` y `BreadcrumbList`
+  son deterministas (derivados del proyecto/página, sin coste de LLM); el resto usan
+  un ÚNICO prompt LLM genérico parametrizado por las propiedades reales del tipo en
+  schema.org y quedan registrados en `ApiUsageLog`. Añadir un tipo = añadir una
+  entrada al catálogo, sin tocar builders ni validadores.
 - **Rank Tracking** (Módulo 5): keywords seguidas por proyecto (desacopladas de los
   estudios) → "comprobar ahora" síncrono vía DataForSEO SERP o frecuencias
   programadas (diaria/semanal/mensual) que procesa el cron. `depth` configurable
@@ -210,7 +215,17 @@ Google, Contenido, TF-IDF, Auditoría, Enlaces, Canibalizaciones, Competidores, 
   hay, selectores de propiedad de Search Console y GA4 (Business Profile deshabilitado,
   pendiente de aprobación de Google) + dashboard de últimos 28 días (clics/impresiones
   de GSC, sesiones/conversiones de GA4). Cada fuente se degrada de forma independiente
-  si falla — un token revocado o una propiedad borrada no tumba la otra fuente.
+  si falla — un token revocado o una propiedad borrada no tumba la otra fuente. Además,
+  cuando hay GSC seleccionado, un **panel de Search Console** (`src/components/admin/GscPanel.tsx`,
+  ruta `/api/proyectos/[id]/google/search-console`) explota a fondo `searchanalytics.query`:
+  KPIs (clics/impresiones/CTR/posición), top queries reales y top páginas (con tendencia
+  vs. periodo anterior; hasta 250 cada una con "ver más"), desglose por dispositivo y país,
+  evolución mensual (12 meses) y botón para importar las queries reales como semilla de un
+  estudio del Módulo 1. Periodo configurable (28 días / 3 / 6 / 12 meses). Sin nueva
+  conexión ni coste: misma API. Cada apertura persiste un **`GscSnapshot`** (dedupe por
+  proyecto+mes) con totales, top queries/páginas y desgloses — lo lee el Copilot
+  (`src/lib/copilot/context.ts`) y queda disponible para cruzar con otros módulos sin
+  volver a llamar a la API.
 - **Contenido** (Módulo 7): tema + tipo (Blog/Página/Producto/Novedad GBP) + longitud
   objetivo → texto vía OpenRouter con encabezados en Markdown, usando el tono de marca
   del proyecto (`Project.toneOfVoice`). Keyword objetivo y enlaces internos a incluir

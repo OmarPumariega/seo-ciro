@@ -123,3 +123,131 @@ export async function listCannibalizations(
   });
   return result;
 }
+
+// --- Panel de Search Console (Módulo 6 ampliado) -----------------------------
+// Top queries reales (las palabras clave por las que la página aparece en
+// Google) con clicks/impresiones/CTR/posición. Datos reales de SERP, no
+// estimados — la fuente más fiable de por qué tráfico llega.
+export type GscQueryRow = { query: string; clicks: number; impressions: number; ctr: number; position: number };
+
+export async function listTopQueries(
+  auth: GoogleOAuthClient,
+  siteUrl: string,
+  range: { startDate: string; endDate: string },
+  rowLimit = 50
+): Promise<GscQueryRow[]> {
+  const searchconsole = google.searchconsole({ version: "v1", auth });
+  const { data } = await searchconsole.searchanalytics.query({
+    siteUrl,
+    requestBody: {
+      startDate: range.startDate,
+      endDate: range.endDate,
+      dimensions: ["query"],
+      rowLimit,
+    },
+  });
+
+  return (data.rows ?? []).map((row) => ({
+    query: row.keys?.[0] ?? "",
+    clicks: row.clicks ?? 0,
+    impressions: row.impressions ?? 0,
+    ctr: row.ctr ?? 0,
+    position: row.position ?? 0,
+  }));
+}
+
+// Top páginas (URLs) por clicks/impresiones. Útil para ver qué contenido tira
+// del tráfico y cruzarlo con la auditoría (¿esas páginas están optimizadas?).
+export type GscPageRow = { page: string; clicks: number; impressions: number; ctr: number; position: number };
+
+export async function listTopPages(
+  auth: GoogleOAuthClient,
+  siteUrl: string,
+  range: { startDate: string; endDate: string },
+  rowLimit = 50
+): Promise<GscPageRow[]> {
+  const searchconsole = google.searchconsole({ version: "v1", auth });
+  const { data } = await searchconsole.searchanalytics.query({
+    siteUrl,
+    requestBody: {
+      startDate: range.startDate,
+      endDate: range.endDate,
+      dimensions: ["page"],
+      rowLimit,
+    },
+  });
+
+  return (data.rows ?? []).map((row) => ({
+    page: row.keys?.[0] ?? "",
+    clicks: row.clicks ?? 0,
+    impressions: row.impressions ?? 0,
+    ctr: row.ctr ?? 0,
+    position: row.position ?? 0,
+  }));
+}
+
+// Desglose por dimensión secundaria (device, country, etc.). Permite ver, p.ej.,
+// cuánto tráfico llega desde móvil vs. escritorio o por país. Mismos métricos
+// que el resto de la API.
+export type GscBreakdownRow = {
+  key: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+};
+
+export async function listByDimension(
+  auth: GoogleOAuthClient,
+  siteUrl: string,
+  range: { startDate: string; endDate: string },
+  dimension: "device" | "country",
+  rowLimit = 50
+): Promise<GscBreakdownRow[]> {
+  const searchconsole = google.searchconsole({ version: "v1", auth });
+  const { data } = await searchconsole.searchanalytics.query({
+    siteUrl,
+    requestBody: {
+      startDate: range.startDate,
+      endDate: range.endDate,
+      dimensions: [dimension],
+      rowLimit,
+    },
+  });
+
+  return (data.rows ?? []).map((row) => ({
+    key: row.keys?.[0] ?? "",
+    clicks: row.clicks ?? 0,
+    impressions: row.impressions ?? 0,
+    ctr: row.ctr ?? 0,
+    position: row.position ?? 0,
+  }));
+}
+
+// Serie diaria (clicks + impresiones) para pintar la evolución temporal. GSC
+// guarda hasta ~16 meses; aquí se pide un rango y se devuelve por día — la ruta
+// agrega a meses para reducir el nº de puntos del gráfico.
+export type GscDailyPoint = { date: string; clicks: number; impressions: number };
+
+export async function listDailySeries(
+  auth: GoogleOAuthClient,
+  siteUrl: string,
+  range: { startDate: string; endDate: string }
+): Promise<GscDailyPoint[]> {
+  const searchconsole = google.searchconsole({ version: "v1", auth });
+  const { data } = await searchconsole.searchanalytics.query({
+    siteUrl,
+    requestBody: {
+      startDate: range.startDate,
+      endDate: range.endDate,
+      dimensions: ["date"],
+      rowLimit: 5000,
+    },
+  });
+
+  return (data.rows ?? []).map((row) => ({
+    date: row.keys?.[0] ?? "",
+    clicks: row.clicks ?? 0,
+    impressions: row.impressions ?? 0,
+  }));
+}

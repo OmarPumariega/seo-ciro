@@ -32,9 +32,10 @@ export async function fetchTopOrganic(params: {
   keyword: string;
   locationCode: number;
   languageCode: string;
+  device?: string; // default "desktop"; si viene del rank tracking, usa el mismo para reutilizar caché
 }): Promise<SerpTopOutcome> {
   const { keyword, locationCode, languageCode } = params;
-  const device = "desktop"; // TF-IDF no distingue device; usa desktop como el rank por defecto
+  const device = params.device ?? "desktop";
 
   // 1) ¿Está en caché? (rank tracking ya pagó este SERP)
   const cached = await getCachedSerp({ keyword, locationCode, languageCode, device });

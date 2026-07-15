@@ -29,11 +29,15 @@ const ENDPOINT_LABELS: Record<string, string> = {
   "modulo1.keywords.intencion": "M1 · Intención de keywords",
   "modulo1.estructura": "M1 · Estructura de URLs (IA)",
   "modulo3.titulos-meta": "M3 · Títulos y meta (IA)",
-  "modulo4.schema.article": "M4 · Schema Article (IA)",
-  "modulo4.schema.faq": "M4 · Schema FAQ (IA)",
+  "modulo4.schema.article": "M4 · Schema (IA)",
+  "modulo4.schema.faq": "M4 · Schema (IA)",
   "modulo7.contenido": "M7 · Contenido (IA)",
   "modulo5.rankcheck": "M5 · Rank tracking",
   "modulo9.geogrid": "M9 · Geogrid",
+  "modulo9.geogrid.buscar-ficha": "M9 · Buscar ficha GBP",
+  "competidores.visibilidad": "Competidores · Visibilidad",
+  "competidores.ranked": "Competidores · Keywords que ranquea",
+  "competidores.contentgap": "Competidores · Content gap",
 };
 
 // toLocaleDateString con month:"long" da "julio de 2026"; la clase Tailwind
@@ -55,11 +59,17 @@ const now = new Date();
 
 export default function CostesPage() {
   const [data, setData] = useState<CostData | null>(null);
-  const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1); // 1-12
+
+  // "loading" se deriva comparando la clave pedida contra la última cargada,
+  // en vez de un setState síncrono al inicio del effect (evita un render de
+  // más y el aviso de react-hooks/set-state-in-effect).
+  const requestKey = `${selectedProjectId ?? ""}-${year}-${month}`;
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const loading = loadedKey !== requestKey;
 
   useEffect(() => {
     fetch("/api/proyectos")
@@ -71,16 +81,15 @@ export default function CostesPage() {
   }, []);
 
   useEffect(() => {
-    setLoading(true);
     const params = new URLSearchParams({ year: String(year), month: String(month) });
     if (selectedProjectId) params.set("projectId", selectedProjectId);
     fetch(`/api/costes?${params}`)
       .then((r) => r.json())
       .then((d) => {
         if (d && typeof d.totalUsd === "number") setData(d);
-        setLoading(false);
+        setLoadedKey(requestKey);
       });
-  }, [selectedProjectId, year, month]);
+  }, [requestKey, selectedProjectId, year, month]);
 
   // No se puede navegar a meses futuros — no hay datos que mostrar.
   const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1;

@@ -81,13 +81,39 @@ export async function GET(
 
   const ranks = computePageRank(graph);
 
+  // Enlaces externos: el crawler ya los cuenta por página en AuditPage
+  // (externalLinksCount + externalDomains, hasta 10 dominios). Se unen por URL
+  // al grafo interno para mostrar "cuántos y cuáles" salen fuera del sitio.
+  const auditPages = await prisma.auditPage.findMany({
+    where: { auditRunId: run.id },
+    select: { url: true, externalLinksCount: true, externalDomains: true },
+  });
+  const extByPage = new Map<string, { count: number; domains: string[] }>();
+  const domainPageCount = new Map<string, number>(); // dominio -> nº de páginas que lo enlazan
+  for (const ap of auditPages) {
+    const domains = Array.isArray(ap.externalDomains)
+      ? ap.externalDomains.filter((d): d is string => typeof d === "string")
+      : [];
+    extByPage.set(ap.url, { count: ap.externalLinksCount, domains });
+    for (const d of domains) domainPageCount.set(d, (domainPageCount.get(d) ?? 0) + 1);
+  }
+  const topExternalDomains = Array.from(domainPageCount.entries())
+    .map(([domain, pages]) => ({ domain, pages }))
+    .sort((a, b) => b.pages - a.pages)
+    .slice(0, 25);
+
   const pages = graph
-    .map((entry) => ({
-      url: entry.url,
-      pagerank: ranks.get(entry.url) ?? 0,
-      incoming: incomingCount.get(entry.url) ?? 0,
-      outgoing: outAdjacency.get(entry.url)?.size ?? 0,
-    }))
+    .map((entry) => {
+      const ext = extByPage.get(entry.url) ?? { count: 0, domains: [] as string[] };
+      return {
+        url: entry.url,
+        pagerank: ranks.get(entry.url) ?? 0,
+        incoming: incomingCount.get(entry.url) ?? 0,
+        outgoing: outAdjacency.get(entry.url)?.size ?? 0,
+        externalLinks: ext.count,
+        externalDomains: ext.domains,
+      };
+    })
     .sort((a, b) => b.pagerank - a.pagerank);
 
   const orphans = pages
@@ -100,10 +126,14 @@ export async function GET(
     .slice(0, 5)
     .map((p) => p.url);
 
+  const totalExternalLinks = pages.reduce((sum, p) => sum + p.externalLinks, 0);
+
   return NextResponse.json({
     pages,
     orphans,
     topHubs,
+    topExternalDomains,
+    totalExternalLinks,
     auditDate: run.completedAt ?? run.triggeredAt,
   });
 }

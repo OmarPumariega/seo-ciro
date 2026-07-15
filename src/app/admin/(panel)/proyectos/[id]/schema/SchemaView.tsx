@@ -1,16 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import * as Select from "@radix-ui/react-select";
-import { Loader2, Copy, Check, Sparkles, ChevronDown, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2, Copy, Check, Sparkles, CheckCircle2, XCircle, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import UrlLink from "@/components/admin/UrlLink";
-
-const SCHEMA_TYPE_LABELS: Record<string, string> = {
-  LocalBusiness: "LocalBusiness (negocio local)",
-  Article: "Article (artículo/blog)",
-  FAQPage: "FAQPage (preguntas frecuentes)",
-};
+import SchemaTypePicker from "@/components/admin/SchemaTypePicker";
+import {
+  getCatalogEntry,
+  type PropLevel,
+  type SchemaProp,
+} from "@/lib/seo/schema/catalog";
 
 type Generation = {
   id: string;
@@ -22,6 +21,16 @@ type Generation = {
   validationErrors: string[] | null;
   createdAt: string;
 };
+
+const LEVEL_META: Record<PropLevel, { label: string; className: string }> = {
+  required: { label: "Obligatorio", className: "bg-red-50 text-red-700" },
+  recommended: { label: "Recomendado", className: "bg-amber-50 text-amber-700" },
+  optional: { label: "Opcional", className: "bg-gray-100 text-gray-500" },
+};
+
+function typeLabel(type: string): string {
+  return getCatalogEntry(type)?.label ?? type;
+}
 
 export default function SchemaView({ projectId }: { projectId: string }) {
   const [url, setUrl] = useState("");
@@ -96,12 +105,14 @@ export default function SchemaView({ projectId }: { projectId: string }) {
     setTimeout(() => setCopied(false), 1500);
   }
 
+  const selectedEntry = getCatalogEntry(selectedType);
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold text-gray-900">Generador de Schema</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Analiza una URL, confirma el tipo de datos estructurados y genera el JSON-LD.
+          Analiza una URL, elige el tipo de datos estructurados (basado en schema.org) y genera el JSON-LD.
         </p>
       </div>
 
@@ -137,33 +148,28 @@ export default function SchemaView({ projectId }: { projectId: string }) {
               <label className="block text-sm font-medium text-gray-700">
                 Tipo de schema{" "}
                 <span className="text-gray-400 font-normal">
-                  (sugerido: {SCHEMA_TYPE_LABELS[suggestedType] ?? suggestedType})
+                  (sugerido: {typeLabel(suggestedType)})
                 </span>
               </label>
-              <Select.Root value={selectedType} onValueChange={setSelectedType}>
-                <Select.Trigger className="w-full flex items-center justify-between px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 bg-white">
-                  <Select.Value />
-                  <Select.Icon>
-                    <ChevronDown className="h-4 w-4 text-gray-400" />
-                  </Select.Icon>
-                </Select.Trigger>
-                <Select.Portal>
-                  <Select.Content className="bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50">
-                    <Select.Viewport>
-                      {Object.entries(SCHEMA_TYPE_LABELS).map(([value, label]) => (
-                        <Select.Item
-                          key={value}
-                          value={value}
-                          className="px-3 py-2 text-sm text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"
-                        >
-                          <Select.ItemText>{label}</Select.ItemText>
-                        </Select.Item>
-                      ))}
-                    </Select.Viewport>
-                  </Select.Content>
-                </Select.Portal>
-              </Select.Root>
+              <SchemaTypePicker value={selectedType} onChange={setSelectedType} />
             </div>
+
+            {selectedEntry && (
+              <div className="rounded-lg border border-gray-100 p-3 space-y-2 bg-gray-50/50">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs text-gray-600 leading-snug flex-1">{selectedEntry.description}</p>
+                  <a
+                    href={selectedEntry.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-gray-400 hover:text-gray-900 inline-flex items-center gap-1 shrink-0"
+                  >
+                    schema.org <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+                <PropList props={selectedEntry.properties} />
+              </div>
+            )}
 
             <button
               type="button"
@@ -232,9 +238,7 @@ export default function SchemaView({ projectId }: { projectId: string }) {
               >
                 <div className="flex items-center justify-between gap-2">
                   <UrlLink url={gen.url} className="text-sm" />
-                  <span className="text-xs text-gray-400 shrink-0">
-                    {SCHEMA_TYPE_LABELS[gen.selectedType] ?? gen.selectedType}
-                  </span>
+                  <span className="text-xs text-gray-400 shrink-0">{typeLabel(gen.selectedType)}</span>
                 </div>
                 <p className="text-xs text-gray-400 mt-0.5">{new Date(gen.createdAt).toLocaleString("es-ES")}</p>
               </div>
@@ -242,6 +246,35 @@ export default function SchemaView({ projectId }: { projectId: string }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function PropList({ props: list }: { props: SchemaProp[] }) {
+  return (
+    <div className="space-y-1">
+      {list.map((p) => (
+        <PropRow key={p.name} prop={p} />
+      ))}
+    </div>
+  );
+}
+
+function PropRow({ prop }: { prop: SchemaProp }) {
+  const meta = LEVEL_META[prop.level];
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <code className="text-xs text-gray-900">{prop.name}</code>
+        <span className={cn("text-[10px] px-1.5 py-0.5 rounded", meta.className)}>{meta.label}</span>
+        {prop.multiple && <span className="text-[10px] text-gray-400">lista</span>}
+      </div>
+      <p className="text-xs text-gray-400 leading-snug pl-0.5">{prop.desc}</p>
+      {prop.nested && prop.nested.length > 0 && (
+        <div className="pl-3 border-l border-gray-200 mt-1 space-y-1">
+          <PropList props={prop.nested} />
+        </div>
+      )}
     </div>
   );
 }

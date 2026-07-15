@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { DataForSeoError } from "@/lib/dataforseo/client";
 import { DataForSeoSpendLimitError, assertWithinSpendLimit } from "@/lib/dataforseo/spend";
 import { fetchDomainOverview, fetchRankedKeywords, normalizeDomain } from "@/lib/competitors/dataforseo";
+import { COMPETITORS_ANALYZE_DEFAULT_LIMIT } from "@/lib/dataforseo/pricing";
 
 // Analiza un dominio (el del proyecto o un competidor): visibilidad + top
 // keywords. PAGA (dos llamadas Labs). Crea un VisibilitySnapshot (acumula
@@ -38,7 +39,10 @@ export async function POST(
   const rawLocation = Number(body.locationCode);
   const locationCode = Number.isInteger(rawLocation) && rawLocation > 0 ? rawLocation : 2724;
   const rawLimit = Number(body.limit);
-  const limit = Number.isInteger(rawLimit) && rawLimit > 0 && rawLimit <= 1000 ? rawLimit : 20;
+  const limit =
+    Number.isInteger(rawLimit) && rawLimit > 0 && rawLimit <= 1000
+      ? rawLimit
+      : COMPETITORS_ANALYZE_DEFAULT_LIMIT;
 
   try {
     await assertWithinSpendLimit(id);

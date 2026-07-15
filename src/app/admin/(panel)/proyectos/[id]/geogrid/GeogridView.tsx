@@ -234,20 +234,23 @@ export default function GeogridView({
 
   // Selección por defecto en el mapa: el punto donde mejor posiciona el
   // negocio (o el primero si no aparece en ninguno) — así el panel lateral
-  // nunca arranca vacío al cargar un run ya completado.
-  useEffect(() => {
+  // nunca arranca vacío al cargar un run ya completado. Ajuste de estado
+  // durante el render (no dentro de un effect), como recomienda
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-state-based-on-a-prop-change
+  const [selectedPointForRunId, setSelectedPointForRunId] = useState(current?.id);
+  if (current?.id !== selectedPointForRunId) {
+    setSelectedPointForRunId(current?.id);
     if (current?.status !== "completed" || !current.points || current.points.length === 0) {
       setSelectedPoint(null);
-      return;
+    } else {
+      const points = sortPoints(current.points);
+      const withPosition = points.filter((p) => p.position !== null);
+      const best = withPosition.length > 0
+        ? withPosition.reduce((a, b) => ((a.position as number) <= (b.position as number) ? a : b))
+        : points[0];
+      setSelectedPoint({ row: best.row, col: best.col });
     }
-    const points = sortPoints(current.points);
-    const withPosition = points.filter((p) => p.position !== null);
-    const best = withPosition.length > 0
-      ? withPosition.reduce((a, b) => ((a.position as number) <= (b.position as number) ? a : b))
-      : points[0];
-    setSelectedPoint({ row: best.row, col: best.col });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id]);
+  }
 
   async function loadDetail(runId: string) {
     const res = await fetch(`/api/proyectos/${projectId}/geogrid/${runId}`);

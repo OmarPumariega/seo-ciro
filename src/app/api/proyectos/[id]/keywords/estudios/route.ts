@@ -32,6 +32,7 @@ export async function GET(
     select: {
       id: true,
       name: true,
+      notes: true,
       languageCode: true,
       locationCode: true,
       createdAt: true,

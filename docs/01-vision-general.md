@@ -17,7 +17,7 @@ Esta primera fase construye únicamente la base sobre la que colgará el resto:
   DataForSEO como fuente por ahora; Google Ads queda pendiente (requiere developer
   token aprobado). Sin expansión de keywords semilla todavía.
 - ✅ Módulo 3 — Título y Meta Descripción (vía OpenRouter, reglas en `docs/seo-rules.md`)
-- ✅ Módulo 4 — Schema (LocalBusiness determinista + Article/FAQPage vía OpenRouter)
+- ✅ Módulo 4 — Schema (catálogo data-driven de ~20 tipos de schema.org; 4 deterministas + resto vía un prompt LLM genérico parametrizado por las props del tipo)
 - ✅ Módulo 5 — Rank Tracking: seguimiento de posiciones orgánicas (top-100)
   vía DataForSEO SERP API. "Comprobar ahora" síncrono + frecuencias
   programadas (diaria/semanal/mensual) vía el cron interno. Solo orgánico

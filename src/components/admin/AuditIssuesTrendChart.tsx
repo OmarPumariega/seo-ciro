@@ -81,7 +81,7 @@ export default function AuditIssuesTrendChart({ runs }: { runs: AuditRun[] }) {
   const labelStep = Math.max(1, Math.ceil(n / 6));
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 p-5">
+    <div ref={wrapRef} className="bg-white rounded-xl border border-gray-100 p-5">
       <div className="flex items-center gap-2 mb-3">
         <AlertCircle className="h-4 w-4 text-gray-400" />
         <h3 className="text-sm font-semibold text-gray-900">Incidencias detectadas por ejecución</h3>
@@ -90,7 +90,7 @@ export default function AuditIssuesTrendChart({ runs }: { runs: AuditRun[] }) {
       {n === 0 ? (
         <p className="py-12 text-center text-sm text-gray-400">Aún no hay auditorías completadas</p>
       ) : (
-        <div ref={wrapRef} className="w-full">
+        <div className="w-full">
           <svg width={w} height={H} viewBox={`0 0 ${w} ${H}`} role="img" aria-label="Incidencias por ejecución">
             {[0, maxV].map((v) => (
               <text key={v} x={PAD_L - 6} y={y(v) + 3} textAnchor="end" className="fill-gray-400" fontSize={9}>

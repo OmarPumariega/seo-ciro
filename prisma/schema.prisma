@@ -65,7 +65,7 @@ model Project {
   // si está puesto, las llamadas de este proyecto se bloquean al superarlo (suma
   // de su ApiUsageLog del mes). Se suma al tope global (DATAFORSEO_MONTHLY_LIMIT_USD).
   spendLimitUsd Float?
-  reportConfig Json? // { sections: { audit: bool, rank: bool, ... } } — config del informe por proyecto
+  reportConfig Json? // { sections: { audit: bool, rank: bool, ... }, order: SectionKey[] } — config del informe por proyecto (ver src/lib/informe/sections.ts)
 
   // Reparto justo del cron de Rank Tracking (Módulo 5): marca cuándo se le
   // sirvió turno por última vez, independientemente de si se vació todo su
@@ -88,6 +88,8 @@ model Project {
   copilotThreads       CopilotThread[]
   competitors          Competitor[]
   visibilitySnapshots  VisibilitySnapshot[]
+  gscSnapshots         GscSnapshot[]
+  tfidfResults         TfidfResult[]
 }
 
 // Módulo 3 — un registro por generación exitosa (URL por URL, sin modo
@@ -113,12 +115,12 @@ model SchemaGeneration {
   projectId        String
   project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   url              String
-  suggestedType    String // heurística automática: LocalBusiness | Article | FAQPage
-  selectedType     String // tipo realmente usado (= suggestedType o override manual)
+  suggestedType    String // heurística automática (cualquier tipo del catálogo schema.org)
+  selectedType     String // tipo realmente usado (= suggestedType o override manual del combobox)
   jsonLd           Json
   valid            Boolean
   validationErrors Json? // string[] — null si valid = true
-  model            String? // null para LocalBusiness (mapeo determinista, sin LLM)
+  model            String? // null para tipos deterministas (LocalBusiness, Organization, WebSite, BreadcrumbList)
   createdAt        DateTime @default(now())
 
   @@index([projectId, createdAt])
@@ -417,7 +419,25 @@ model TodoItem {
   issueType    String? // código de ISSUE_META (src/lib/audit/issue-meta.ts)
   affectedUrls String[] @default([]) // URLs completas afectadas, sin recortar a 5
 
+  // Trazabilidad: si esta tarea nació de una plantilla (catálogo de tareas
+  // preestablecidas), guarda su id. Null para tareas manuales o de auditoría.
+  templateId  String?
+
   @@index([projectId])
+}
+
+// Catálogo global de tareas preestablecidas (no por proyecto). La agencia crea
+// aquí tareas recurrentes tipo "Revisar robots.txt", "Actualizar sitemap"... y
+// las aplica a cada proyecto desde la pestaña Tareas. Single-tenant: no lleva
+// projectId, es común a toda la herramienta.
+model TodoTemplate {
+  id        String   @id @default(cuid())
+  title     String
+  detail    String?
+  priority  String   @default("media") // "baja" | "media" | "alta"
+  category  String? // agrupación libre (p.ej. "Técnico", "Contenido")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // Registro de avisos por email ya enviados, para NO espamear (cada avise se
@@ -501,6 +521,48 @@ model VisibilitySnapshot {
   fetchedAt       DateTime @default(now())
 
   @@index([projectId, domain, fetchedAt])
+}
+
+// Snapshot de rendimiento de Search Console para un proyecto. Se persiste cada
+// vez que se abre el panel de GSC (dedupe por mes: un snapshot por proyecto y
+// mes, así se acumula histórico sin crecer indefinidamente). Lo leen el Copilot
+// (contexto inyectado) y otros módulos que necesiten datos reales de tráfico de
+// Google sin llamar a la API en vivo.
+model GscSnapshot {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  month       String // YYYY-MM del momento de la captura (clave de dedupe)
+  rangeDays   Int // nº de días del periodo consultado (28/90/180/365)
+  totals      Json // { clicks, impressions, ctr, position }
+  topQueries  Json? // [{ query, clicks, impressions, ctr, position }]
+  topPages    Json? // [{ page, clicks, impressions, ctr, position }]
+  byDevice    Json? // [{ device, clicks, impressions, ctr, position }]
+  byCountry   Json? // [{ country, clicks, impressions, ctr, position }]
+  monthly     Json? // [{ month, clicks, impressions }] evolución 12 meses
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([projectId, month])
+  @@index([projectId, createdAt])
+}
+
+// Resultado de análisis TF-IDF / cobertura de temas para una keyword de un
+// proyecto. Se persiste al ejecutar el análisis manualmente O automáticamente
+// tras un chequeo de Rank Tracking (que ya pagó el SERP — el scraping del
+// top-10 es gratis). Así el módulo TF-IDF tiene datos listos sin que el
+// usuario tenga que ir a ejecutarlo por separado.
+model TfidfResult {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  keyword   String // normalizada
+  result    Json // { terms, topics, headingsByPage, headingTerms, sources }
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, keyword])
+  @@index([projectId, createdAt])
 }
 
 // Ajustes editables desde Configuración (claves de API de terceros y

@@ -2,45 +2,20 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { NextRequest, NextResponse } from "next/server";
+import {
+  SECTION_KEYS,
+  normalizeReportConfig,
+  type SectionKey,
+  type ReportSections,
+} from "@/lib/informe/sections";
 
-// Secciones que el informe de un proyecto puede mostrar u ocultar. El orden de
-// las claves aquí no importa — el orden de render lo marca InformeBuilder. Si
-// algún día se añade una sección nueva, añadir aquí la clave con default true
-// mantiene los informes existentes sin romperse (la ven activada por defecto).
-const SECTION_KEYS = [
-  "audit",
-  "rank",
-  "keywords",
-  "geogrid",
-  "costs",
-  "tasks",
-  "links",
-  "competitors",
-] as const;
+// Configuración del informe por proyecto: qué secciones mostrar y en qué orden.
+// El shape guardado es { sections: Record<key,bool>, order: SectionKey[] }. La
+// lectura normaliza (back-compat con el shape viejo sin `order` y con menos
+// claves) para que el cliente reciba siempre las 14 secciones.
 
-type SectionKey = (typeof SECTION_KEYS)[number];
-
-type ReportSections = Record<SectionKey, boolean>;
-
-function defaultSections(): ReportSections {
-  const s = {} as ReportSections;
-  for (const k of SECTION_KEYS) s[k] = true;
-  return s;
-}
-
-// `reportConfig` se guarda como { sections: {...} } (ver POST). Al leer,
-// toleramos null, un objeto sin `sections` o claves ausentes — siempre se
-// rellena con los defaults para que el cliente reciba las 8 claves.
-function readSections(raw: unknown): ReportSections {
-  const base = defaultSections();
-  if (!raw || typeof raw !== "object") return base;
-  const sections = (raw as { sections?: unknown }).sections;
-  if (!sections || typeof sections !== "object") return base;
-  const s = sections as Record<string, unknown>;
-  for (const k of SECTION_KEYS) {
-    if (typeof s[k] === "boolean") base[k] = s[k];
-  }
-  return base;
+function isSectionKey(k: unknown): k is SectionKey {
+  return typeof k === "string" && (SECTION_KEYS as string[]).includes(k);
 }
 
 export async function GET(
@@ -57,7 +32,8 @@ export async function GET(
   });
   if (!project) return NextResponse.json({ error: "Proyecto no encontrado" }, { status: 404 });
 
-  return NextResponse.json({ sections: readSections(project.reportConfig) });
+  const { sections, order } = normalizeReportConfig(project.reportConfig);
+  return NextResponse.json({ sections, order });
 }
 
 export async function POST(
@@ -78,22 +54,29 @@ export async function POST(
     return NextResponse.json({ error: "Cuerpo de la petición inválido" }, { status: 400 });
   }
 
-  const sections = body.sections;
-  if (!sections || typeof sections !== "object") {
-    return NextResponse.json({ error: "Falta el objeto `sections`" }, { status: 400 });
+  // sections: limpiar a claves conocidas + booleanos.
+  const sections = { ...Object.fromEntries(SECTION_KEYS.map((k) => [k, true])) } as ReportSections;
+  const incomingSections = body.sections;
+  if (incomingSections && typeof incomingSections === "object") {
+    const inc = incomingSections as Record<string, unknown>;
+    for (const k of SECTION_KEYS) {
+      if (typeof inc[k] === "boolean") sections[k] = inc[k];
+    }
   }
 
-  // Solo persistimos las claves conocidas y como booleanos: evita que un
-  // payload malicioso o un cliente desactualizado escriba basura en el Json.
-  const clean = defaultSections();
-  const incoming = sections as Record<string, unknown>;
-  for (const k of SECTION_KEYS) {
-    if (typeof incoming[k] === "boolean") clean[k] = incoming[k];
+  // order: permutación válida de SECTION_KEYS; si no, se ignora (mantiene default).
+  let order: SectionKey[] = [...SECTION_KEYS];
+  if (Array.isArray(body.order)) {
+    const valid = body.order.filter(isSectionKey);
+    const set = new Set(valid);
+    if (valid.length === SECTION_KEYS.length && SECTION_KEYS.every((k) => set.has(k))) {
+      order = valid;
+    }
   }
 
   await prisma.project.update({
     where: { id },
-    data: { reportConfig: { sections: clean } },
+    data: { reportConfig: { sections, order } },
   });
 
   return NextResponse.json({ ok: true });

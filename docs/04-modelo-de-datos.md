@@ -1,6 +1,6 @@
 # 04 — Modelo de datos
 
-Esquema actual en [`prisma/schema.prisma`](../prisma/schema.prisma), 21 modelos.
+Esquema actual en [`prisma/schema.prisma`](../prisma/schema.prisma), 22 modelos.
 
 ## `User`
 
@@ -37,9 +37,11 @@ proyecto solo muestre resultados usables. `variants` guarda las 3 variantes
 
 Un registro por generación de schema.org (JSON-LD) validada. `suggestedType` es
 la heurística automática; `selectedType` es el tipo realmente usado (puede ser
-un override manual). `model` es `null` cuando el tipo es `LocalBusiness`, porque
-ese caso se resuelve con un mapeo determinista de los datos NAP del proyecto —
-sin llamar al LLM.
+un override manual del combobox). Ambos pueden ser cualquiera de los ~20 tipos
+del catálogo en `src/lib/seo/schema/catalog.ts`. `model` es `null` para los tipos
+deterministas (`LocalBusiness`, `Organization`, `WebSite`, `BreadcrumbList`),
+que se derivan del proyecto/página sin llamar al LLM; el resto usan un prompt
+LLM genérico y dejan el modelo aquí.
 
 ## `ApiUsageLog` (infraestructura transversal, sección 5 del spec)
 
@@ -218,6 +220,19 @@ para ambos). Cada snapshot es una llamada de pago a `domain_rank_overview` (trá
 orgánico estimado, nº de keywords) + `ranked_keywords` (top keywords, guardadas en
 `topKeywords`) — de ahí que viendo el histórico no se repita el gasto, solo al pedir un
 snapshot nuevo.
+
+## `GscSnapshot` (Módulo 6 — Search Console)
+
+Snapshot de rendimiento real de Search Console para un proyecto. Se persiste cada vez
+que se abre el panel de GSC, con **dedupe por `projectId`+`month`** (un snapshot por
+proyecto y mes, así se acumula histórico sin crecer indefinidamente). Guarda `totals`
+(clics/impresiones/CTR/posición), `topQueries`, `topPages`, desgloses `byDevice` y
+`byCountry`, y `monthly` (evolución 12 meses), más `rangeDays` del periodo consultado.
+
+Lo lee el **Copilot** (`src/lib/copilot/context.ts`) — inyecta el resumen y las top
+queries reales en el system prompt del chat — y queda disponible para que otros módulos
+crujen con datos de tráfico reales sin volver a llamar a la API. Esos datos salen de la
+misma `searchanalytics.query` que el panel, así que no añade conexión ni coste.
 
 ## Evolución prevista (no construida todavía)
 

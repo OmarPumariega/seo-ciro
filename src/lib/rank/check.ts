@@ -8,7 +8,14 @@ import { checkSerpRank, normalizeDomain } from "@/lib/rank/serp";
 // ApiUsageLog con el coste real. Una sola implementación del chequeo,
 // compartida por el botón "comprobar ahora" (síncrono, UI) y por el cron
 // (programado, job.ts) — sin duplicar lógica.
-export async function checkRankKeyword(rankKeywordId: string): Promise<{ position: number | null }> {
+export async function checkRankKeyword(rankKeywordId: string): Promise<{
+  position: number | null;
+  projectId: string;
+  keyword: string;
+  locationCode: number;
+  languageCode: string;
+  device: string;
+}> {
   const rk = await prisma.rankKeyword.findUnique({
     where: { id: rankKeywordId },
     include: { project: true },
@@ -95,5 +102,12 @@ export async function checkRankKeyword(rankKeywordId: string): Promise<{ positio
     });
   }
 
-  return { position: rank.position };
+  return {
+    position: rank.position,
+    projectId: rk.projectId,
+    keyword: rk.keyword,
+    locationCode: rk.locationCode,
+    languageCode: rk.languageCode,
+    device: rk.device,
+  };
 }

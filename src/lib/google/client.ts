@@ -19,7 +19,7 @@ export async function getGoogleClient(): Promise<GoogleOAuthClient> {
   });
   if (!connection) throw new GoogleNotConnectedError();
 
-  const client = createOAuthClient();
+  const client = await createOAuthClient();
   client.setCredentials({ refresh_token: decrypt(connection.encryptedRefreshToken) });
   return client;
 }

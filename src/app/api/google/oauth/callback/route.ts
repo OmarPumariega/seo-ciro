@@ -3,7 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { encrypt } from "@/lib/crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { exchangeCodeForTokens, getConnectedEmail } from "@/lib/google/oauth";
+import { exchangeCodeForTokens, getConnectedEmail, GoogleOAuthConfigError } from "@/lib/google/oauth";
 
 const STATE_COOKIE = "google_oauth_state";
 
@@ -34,7 +34,14 @@ export async function GET(req: NextRequest) {
   const code = searchParams.get("code");
   if (!code) return redirectWithError(req, "sin_codigo");
 
-  const { client, tokens } = await exchangeCodeForTokens(code);
+  let client;
+  let tokens;
+  try {
+    ({ client, tokens } = await exchangeCodeForTokens(code));
+  } catch (error) {
+    if (error instanceof GoogleOAuthConfigError) return redirectWithError(req, "configuracion_incompleta");
+    throw error;
+  }
 
   if (!tokens.refresh_token) {
     return redirectWithError(req, "sin_refresh_token");

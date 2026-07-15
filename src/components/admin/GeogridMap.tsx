@@ -58,7 +58,12 @@ export default function GeogridMap({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const layerGroupRef = useRef<any>(null);
   const onSelectRef = useRef(onSelectPoint);
-  onSelectRef.current = onSelectPoint;
+  // Mantiene el ref al día sin mutarlo durante el render (eso violaría las
+  // reglas de pureza de React) — se sincroniza en un effect sin deps, que
+  // corre tras cada render.
+  useEffect(() => {
+    onSelectRef.current = onSelectPoint;
+  });
   // Flag que avisa al segundo effect de que el mapa ya está montado.
   // Sin esto, si los puntos llegan antes de que import("leaflet") termine,
   // el segundo effect sale por el guard `!mapRef.current` y nunca redibuja.

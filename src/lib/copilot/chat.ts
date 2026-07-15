@@ -1,5 +1,5 @@
 import type OpenAI from "openai";
-import { getOpenRouterClient, getDefaultOpenRouterModel } from "@/lib/seo/llm";
+import { getOpenRouterClient, getCopilotModel, getCopilotSystemPrompt } from "@/lib/seo/llm";
 
 export type CopilotMessage = {
   role: "user" | "assistant";
@@ -15,13 +15,14 @@ export async function copilotReply(params: {
   messages: CopilotMessage[];
 }): Promise<{ content: string; model: string; usage: OpenAI.CompletionUsage | undefined }> {
   const client = await getOpenRouterClient();
-  const model = await getDefaultOpenRouterModel();
+  const [model, basePrompt] = await Promise.all([getCopilotModel(), getCopilotSystemPrompt()]);
 
+  // El system prompt configurable envuelve el contexto real del proyecto: así
+  // el tono/longitud se controlan desde Configuración sin tocar código.
   const systemPrompt =
-    "Eres un consultor SEO experto. Responde en español, claro y accionable. " +
-    "Tienes estos datos REALES del proyecto:\n" +
-    `${params.systemContext}\n\n` +
-    "Basa tus consejos en esos datos; si faltan, dilo.";
+    `${basePrompt}\n\n` +
+    "Datos REALES del proyecto (basa tus respuestas en ellos):\n" +
+    params.systemContext;
 
   const apiMessages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: systemPrompt },
@@ -36,7 +37,7 @@ export async function copilotReply(params: {
 
   const completion = await client.chat.completions.create({
     model,
-    temperature: 0.4,
+    temperature: 0.5,
     messages: apiMessages,
   });
 

@@ -16,12 +16,16 @@ import {
   ArrowDownToLine,
   Search,
   Download,
+  MapPin,
+  Pencil,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { rankMonthlyCostUsd } from "@/lib/dataforseo/pricing";
 import { downloadCsv } from "@/lib/csv";
 import RankVisibilityChart from "@/components/admin/RankVisibilityChart";
 import LocationPicker, { type LocationValue } from "@/components/admin/LocationPicker";
+import UrlLink from "@/components/admin/UrlLink";
 
 type RankPosition = { id: string; checkedAt: string; position: number | null; url: string | null };
 
@@ -44,7 +48,7 @@ type RankKeyword = {
   group: string | null;
 };
 
-type SortKey = "keyword" | "volume" | "position" | "best";
+type SortKey = "keyword" | "volume" | "position" | "best" | "delta" | (string & {});
 
 type StudyListItem = { id: string; name: string; _count: { keywords: number }; hasStructure: boolean };
 
@@ -75,23 +79,6 @@ function positionCell(position: number | null | undefined, checked: boolean): { 
   if (position <= 20) return { bg: "bg-amber-50", text: "text-amber-700", label: String(position) };
   if (position <= 50) return { bg: "bg-orange-50", text: "text-orange-700", label: String(position) };
   return { bg: "bg-red-50", text: "text-red-600", label: String(position) };
-}
-
-function SpendBanner({ spend }: { spend: { spentUsd: number; limitUsd: number | null; blocked: boolean } | null }) {
-  if (!spend) return null;
-  if (spend.limitUsd === null) return null; // sin tope configurado, no mostramos nada
-  const pct = Math.min(100, Math.round((spend.spentUsd / spend.limitUsd) * 100));
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-2 text-sm px-3 py-2 rounded-lg",
-        spend.blocked ? "bg-red-50 text-red-700" : pct >= 80 ? "bg-amber-50 text-amber-700" : "bg-gray-50 text-gray-600"
-      )}
-    >
-      Gasto DataForSEO este mes: {spend.spentUsd.toFixed(2)}$ / {spend.limitUsd.toFixed(2)}$
-      {spend.blocked && " — tope alcanzado, nuevas llamadas bloqueadas"}
-    </div>
-  );
 }
 
 // Sparkline SVG inline (sin librería de gráficos, mismo principio "sin
@@ -207,8 +194,6 @@ export default function RankView({ projectId }: { projectId: string }) {
   const [sortKey, setSortKey] = useState<SortKey>("volume");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
-  const [spend, setSpend] = useState<{ spentUsd: number; limitUsd: number | null; blocked: boolean } | null>(null);
-
   const [studies, setStudies] = useState<StudyListItem[]>([]);
   const [importStudyId, setImportStudyId] = useState("");
   const [importing, setImporting] = useState(false);
@@ -217,6 +202,7 @@ export default function RankView({ projectId }: { projectId: string }) {
   const [checkingAll, setCheckingAll] = useState(false);
   const [checkAllProgress, setCheckAllProgress] = useState<{ done: number; total: number } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editingLoc, setEditingLoc] = useState<string | null>(null);
   const [history, setHistory] = useState<RankPosition[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [competitors, setCompetitors] = useState<CompetitorPosition[]>([]);
@@ -230,19 +216,10 @@ export default function RankView({ projectId }: { projectId: string }) {
       });
   }
 
-  function loadSpend() {
-    return fetch(`/api/dataforseo/gasto`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (d && typeof d.spentUsd === "number") setSpend(d);
-      });
-  }
-
   useEffect(() => {
     Promise.all([
       loadKeywords(),
       fetch(`/api/proyectos/${projectId}/keywords/estudios`).then((r) => r.json()),
-      loadSpend(),
     ]).then(([, s]) => {
       if (Array.isArray(s)) setStudies(s as StudyListItem[]);
       setLoading(false);
@@ -328,7 +305,7 @@ export default function RankView({ projectId }: { projectId: string }) {
     }
     setErrorFor("add", parts.join(" · "));
     setNewKeyword("");
-    await Promise.all([loadKeywords(), loadSpend()]);
+    await loadKeywords();
   }
 
   async function handleGroup(kwId: string, group: string) {
@@ -383,7 +360,7 @@ export default function RankView({ projectId }: { projectId: string }) {
       return;
     }
     await loadKeywords();
-    loadSpend();
+    
     if (selectedId === kwId) {
       await Promise.all([loadHistory(kwId), loadCompetitors(kwId)]);
     }
@@ -432,7 +409,7 @@ export default function RankView({ projectId }: { projectId: string }) {
     setCheckingId(null);
     setCheckingAll(false);
     setCheckAllProgress(null);
-    await Promise.all([loadKeywords(), loadSpend()]);
+    await loadKeywords();
 
     const parts = [`${ok} comprobadas`];
     if (stoppedForSpend) parts.push("detenido por tope de gasto alcanzado");
@@ -462,7 +439,10 @@ export default function RankView({ projectId }: { projectId: string }) {
     const res = await fetch(`/api/proyectos/${projectId}/rank/keywords/${kwId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ locationCode: loc?.code, locationName: loc?.name }),
+      // ?? null (no solo loc?.code): si loc es null, JSON.stringify elimina
+      // claves con valor undefined y la petición llegaría vacía — el backend
+      // necesita ver la clave presente (aunque sea null) para volver a nacional.
+      body: JSON.stringify({ locationCode: loc?.code ?? null, locationName: loc?.name ?? null }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -555,7 +535,18 @@ export default function RankView({ projectId }: { projectId: string }) {
 
     const dir = sortDir === "asc" ? 1 : -1;
     const withRank = (v: number | null) => (v === null ? Infinity : v); // sin posición = siempre al final
+    // Ordenación por una columna de fecha concreta: extrae la posición que tenía
+    // la keyword ese día (o Infinity si no se chequeó).
+    const posForDate = (kw: RankKeyword, iso: string) => {
+      const date = new Date(iso);
+      const match = kw.positions.find((p) => dayKey(p.checkedAt) === date.toDateString());
+      return match?.position ?? null;
+    };
     return [...list].sort((a, b) => {
+      if (typeof sortKey === "string" && sortKey.startsWith("date:")) {
+        const iso = sortKey.slice(5);
+        return dir * (withRank(posForDate(a, iso)) - withRank(posForDate(b, iso)));
+      }
       switch (sortKey) {
         case "keyword":
           return dir * a.keyword.localeCompare(b.keyword);
@@ -563,11 +554,20 @@ export default function RankView({ projectId }: { projectId: string }) {
           return dir * ((a.searchVolume ?? -1) - (b.searchVolume ?? -1));
         case "best":
           return dir * (withRank(a.bestPosition) - withRank(b.bestPosition));
+        case "delta": {
+          const da = deltaFor(a);
+          const db = deltaFor(b);
+          return dir * ((da === null ? -999 : da) - (db === null ? -999 : db));
+        }
         case "position":
         default:
           return dir * (withRank(a.lastPosition) - withRank(b.lastPosition));
       }
     });
+    // deltaFor es una función del componente que cierra sobre dateColumns
+    // (también un useMemo derivado de keywords, ya en deps). No se lista para
+    // evitar recrear el sort en cada render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keywords, search, groupFilter, sortKey, sortDir]);
 
   function toggleSort(key: SortKey) {
@@ -575,7 +575,10 @@ export default function RankView({ projectId }: { projectId: string }) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
       setSortKey(key);
-      setSortDir(key === "keyword" ? "asc" : "desc");
+      // keyword alfabético asc; columnas de fecha asc (mejor posición primero);
+      // resto desc.
+      const isDate = typeof key === "string" && key.startsWith("date:");
+      setSortDir(key === "keyword" || isDate ? "asc" : "desc");
     }
   }
 
@@ -623,34 +626,6 @@ export default function RankView({ projectId }: { projectId: string }) {
           instantáneo; las frecuencias programadas las revisa el cron en segundo plano.
         </p>
       </div>
-
-      <SpendBanner spend={spend} />
-
-      {keywords.length > 0 && (
-        <div className="space-y-2">
-          {groups.length > 0 && (
-            <div className="flex justify-end">
-              <Select.Root value={visibilityGroup} onValueChange={setVisibilityGroup}>
-                <Select.Trigger className="flex items-center justify-between gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-gray-400 bg-white min-w-[160px]">
-                  <Select.Value />
-                  <Select.Icon><ChevronDown className="h-3.5 w-3.5 text-gray-400" /></Select.Icon>
-                </Select.Trigger>
-                <Select.Portal>
-                  <Select.Content className="bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50">
-                    <Select.Viewport>
-                      <Select.Item value="__all__" className="px-3 py-1.5 text-xs text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>Visibilidad: todo el proyecto</Select.ItemText></Select.Item>
-                      {groups.map((g) => (
-                        <Select.Item key={g} value={g} className="px-3 py-1.5 text-xs text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>Visibilidad: {g}</Select.ItemText></Select.Item>
-                      ))}
-                    </Select.Viewport>
-                  </Select.Content>
-                </Select.Portal>
-              </Select.Root>
-            </div>
-          )}
-          <RankVisibilityChart projectId={projectId} group={visibilityGroup === "__all__" ? undefined : visibilityGroup} />
-        </div>
-      )}
 
       {/* Añadir keyword */}
       <form onSubmit={handleAdd} className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
@@ -909,12 +884,19 @@ export default function RankView({ projectId }: { projectId: string }) {
                   <SortableTh label="Keyword" sortKey="keyword" active={sortKey} dir={sortDir} onClick={toggleSort} className="pl-4 pr-3 sticky left-0 bg-white" />
                   <SortableTh label="Volumen" sortKey="volume" active={sortKey} dir={sortDir} onClick={toggleSort} align="right" className="px-3" />
                   {dateColumns.map((d) => (
-                    <th key={d.toISOString()} className="py-2.5 px-2 font-medium text-center whitespace-nowrap">
-                      {d.toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
-                    </th>
+                    <SortableTh
+                      key={d.toISOString()}
+                      label={d.toLocaleDateString("es-ES", { day: "2-digit", month: "short" })}
+                      sortKey={`date:${d.toISOString()}`}
+                      active={sortKey}
+                      dir={sortDir}
+                      onClick={toggleSort}
+                      align="right"
+                      className="px-2"
+                    />
                   ))}
                   <SortableTh label="Actual" sortKey="position" active={sortKey} dir={sortDir} onClick={toggleSort} align="right" className="px-3" />
-                  <th className="py-2.5 px-3 font-medium text-right whitespace-nowrap" title="Variación entre el primer y el último chequeo visible en la tabla">Δ</th>
+                  <SortableTh label="Δ" sortKey="delta" active={sortKey} dir={sortDir} onClick={toggleSort} align="right" className="px-3" />
                   <SortableTh label="Mejor" sortKey="best" active={sortKey} dir={sortDir} onClick={toggleSort} align="right" className="px-3" />
                   <th className="py-2.5 pr-4 pl-3 font-medium text-right whitespace-nowrap">Acciones</th>
                 </tr>
@@ -922,21 +904,80 @@ export default function RankView({ projectId }: { projectId: string }) {
               <tbody>
                 {filteredKeywords.map((kw) => (
                   <Fragment key={kw.id}>
-                    <tr className="border-b border-gray-50 last:border-0 hover:bg-gray-50/60">
-                      <td className="py-2 pl-4 pr-3 sticky left-0 bg-white">
-                        <button
-                          onClick={() => selectKeyword(kw.id)}
-                          className="flex items-center gap-1.5 text-left min-w-0"
-                        >
+                    <tr
+                      onClick={() => selectKeyword(kw.id)}
+                      className={cn(
+                        "group border-b border-gray-50 last:border-0 cursor-pointer transition-colors hover:bg-gray-50/60",
+                        selectedId === kw.id && "bg-indigo-50/40 hover:bg-indigo-50/60"
+                      )}
+                    >
+                      <td
+                        className={cn(
+                          "py-2 pl-4 pr-3 sticky left-0 bg-white group-hover:bg-gray-50/60",
+                          selectedId === kw.id && "bg-indigo-50/40 group-hover:bg-indigo-50/60",
+                          // Cada <td sticky> abre su propio contexto de apilamiento — sin esto,
+                          // el desplegable (z-50) de LocationPicker queda tapado por la fila
+                          // siguiente, que gana por orden en el DOM al no haber z-index explícito.
+                          editingLoc === kw.id && "z-20"
+                        )}
+                      >
+                        <div className="flex items-center gap-1.5 text-left min-w-0">
+                          <ChevronDown
+                            className={cn(
+                              "h-3.5 w-3.5 text-gray-300 shrink-0 transition-transform",
+                              selectedId === kw.id && "rotate-180 text-gray-500"
+                            )}
+                          />
                           <TrendIcon kw={kw} />
                           <span className="text-gray-900 truncate max-w-[220px]" title={kw.keyword}>
                             {kw.keyword}
                           </span>
-                        </button>
-                        <p className="text-[11px] text-gray-400 pl-5 truncate max-w-[220px]" title={kw.locationName ?? "España (nacional)"}>
-                          {kw.device === "mobile" ? "Móvil" : "Desktop"} · Top-{kw.depth}
-                          {kw.locationName && <> · {kw.locationName}</>}
-                        </p>
+                        </div>
+                        <div className="text-[11px] text-gray-400 pl-5 flex items-center gap-1 flex-wrap">
+                          <span className="whitespace-nowrap">
+                            {kw.device === "mobile" ? "Móvil" : "Desktop"} · Top-{kw.depth}
+                          </span>
+                          {editingLoc === kw.id ? (
+                            <span
+                              className="inline-flex items-center gap-1 min-w-[180px]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <span className="flex-1">
+                                <LocationPicker
+                                  value={kw.locationName ? { code: kw.locationCode, name: kw.locationName } : null}
+                                  onChange={(loc) => {
+                                    handleLocation(kw.id, loc);
+                                    // Si loc es null es que el usuario borró la ubicación con la
+                                    // "X" — deja el editor abierto para que pueda escribir la
+                                    // nueva sin tener que volver a abrirlo. Al elegir una sí cierra.
+                                    if (loc) setEditingLoc(null);
+                                  }}
+                                  placeholder="Ubicación…"
+                                />
+                              </span>
+                              <button
+                                onClick={() => setEditingLoc(null)}
+                                className="text-gray-400 hover:text-gray-900"
+                                title="Cerrar"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingLoc(kw.id);
+                              }}
+                              className="inline-flex items-center gap-0.5 text-[11px] text-gray-500 hover:text-gray-900 underline decoration-dotted truncate max-w-[160px]"
+                              title="Cambiar la ubicación de esta keyword"
+                            >
+                              <MapPin className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{kw.locationName ?? "Nacional"}</span>
+                              <Pencil className="h-2.5 w-2.5 text-gray-300" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="py-2 px-3 text-right text-gray-600 tabular-nums whitespace-nowrap">
                         {kw.searchVolume === null ? <span className="text-gray-300">—</span> : kw.searchVolume.toLocaleString("es-ES")}
@@ -981,7 +1022,7 @@ export default function RankView({ projectId }: { projectId: string }) {
                       <td className="py-2 px-3 text-right text-gray-500 tabular-nums whitespace-nowrap">
                         {kw.bestPosition === null ? "—" : `#${kw.bestPosition}`}
                       </td>
-                      <td className="py-2 pr-4 pl-3">
+                      <td className="py-2 pr-4 pl-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => handleCheck(kw.id)}
@@ -1073,14 +1114,27 @@ export default function RankView({ projectId }: { projectId: string }) {
                             ) : (
                               <div className="space-y-2">
                                 <PositionSparkline positions={history} />
+                                {history[history.length - 1]?.url && (
+                                  <div className="flex items-center gap-1.5 text-xs">
+                                    <span className="text-gray-500 shrink-0">URL que posiciona ahora:</span>
+                                    <UrlLink url={history[history.length - 1]!.url!} className="text-xs" />
+                                  </div>
+                                )}
                                 <div className="max-h-40 overflow-y-auto">
                                   <table className="w-full text-xs">
                                     <tbody>
                                       {history.slice().reverse().map((p) => (
                                         <tr key={p.id} className="border-b border-gray-50">
-                                          <td className="py-1 text-gray-500">{new Date(p.checkedAt).toLocaleString("es-ES")}</td>
-                                          <td className="py-1 text-right text-gray-900 tabular-nums">
+                                          <td className="py-1 text-gray-500 whitespace-nowrap">{new Date(p.checkedAt).toLocaleString("es-ES")}</td>
+                                          <td className="py-1 text-right text-gray-900 tabular-nums whitespace-nowrap">
                                             {p.position === null ? <span className="text-gray-300">fuera top-{kw.depth}</span> : `#${p.position}`}
+                                          </td>
+                                          <td className="py-1 pl-2 min-w-0">
+                                            {p.url ? (
+                                              <UrlLink url={p.url} className="text-xs" showIcon={false} />
+                                            ) : (
+                                              <span className="text-gray-300">—</span>
+                                            )}
                                           </td>
                                         </tr>
                                       ))}
@@ -1143,6 +1197,32 @@ export default function RankView({ projectId }: { projectId: string }) {
           </div>
         )}
       </div>
+
+      {keywords.length > 0 && (
+        <div className="space-y-2">
+          {groups.length > 0 && (
+            <div className="flex justify-end">
+              <Select.Root value={visibilityGroup} onValueChange={setVisibilityGroup}>
+                <Select.Trigger className="flex items-center justify-between gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-xs outline-none focus:border-gray-400 bg-white min-w-[160px]">
+                  <Select.Value />
+                  <Select.Icon><ChevronDown className="h-3.5 w-3.5 text-gray-400" /></Select.Icon>
+                </Select.Trigger>
+                <Select.Portal>
+                  <Select.Content className="bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50">
+                    <Select.Viewport>
+                      <Select.Item value="__all__" className="px-3 py-1.5 text-xs text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>Visibilidad: todo el proyecto</Select.ItemText></Select.Item>
+                      {groups.map((g) => (
+                        <Select.Item key={g} value={g} className="px-3 py-1.5 text-xs text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>Visibilidad: {g}</Select.ItemText></Select.Item>
+                      ))}
+                    </Select.Viewport>
+                  </Select.Content>
+                </Select.Portal>
+              </Select.Root>
+            </div>
+          )}
+          <RankVisibilityChart projectId={projectId} group={visibilityGroup === "__all__" ? undefined : visibilityGroup} />
+        </div>
+      )}
     </div>
   );
 }

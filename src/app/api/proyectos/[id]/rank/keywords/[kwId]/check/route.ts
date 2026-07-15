@@ -25,6 +25,24 @@ export async function POST(
   try {
     const result = await checkRankKeyword(kwId);
     const updated = await prisma.rankKeyword.findUnique({ where: { id: kwId } });
+
+    // Fire-and-forget: aprovecha el SERP ya pagado para alimentar el TF-IDF
+    // automáticamente (scraping del top-10 + cálculo + persistencia). No
+    // bloquea la respuesta — corre en background.
+    if (result.projectId) {
+      import("@/lib/tfidf/auto")
+        .then(({ autoRunTfidf }) =>
+          autoRunTfidf({
+            projectId: result.projectId,
+            keyword: result.keyword,
+            locationCode: result.locationCode,
+            languageCode: result.languageCode,
+            device: result.device,
+          })
+        )
+        .catch((e) => console.error("[tfidf-auto] fire-and-forget:", e));
+    }
+
     return NextResponse.json({ position: result.position, keyword: updated });
   } catch (error) {
     if (error instanceof DataForSeoSpendLimitError) {

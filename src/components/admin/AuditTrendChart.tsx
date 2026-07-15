@@ -142,10 +142,11 @@ export default function AuditTrendChart({ projectId }: { projectId: string }) {
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 p-5">
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-1">
         <TrendingUp className="h-4 w-4 text-gray-400" />
-        <h3 className="text-sm font-semibold text-gray-900">Evolución de la auditoría</h3>
+        <h3 className="text-sm font-semibold text-gray-900">Evolución de la puntuación global</h3>
       </div>
+      <p className="text-xs text-gray-400 mb-3">Puntuación global 0-100 por auditoría completada. Las líneas finas son las 5 categorías.</p>
 
       {loading ? (
         <div className="flex items-center justify-center py-12 text-gray-400">
@@ -248,7 +249,7 @@ export default function AuditTrendChart({ projectId }: { projectId: string }) {
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-gray-500">
             <span className="inline-flex items-center gap-1.5">
               <span className="inline-block h-0.5 w-4 rounded-full" style={{ background: OVERALL_COLOR }} />
-              <span className="font-medium text-gray-700">Global</span>
+              <span className="font-medium text-gray-700">Global (0-100)</span>
             </span>
             {CATEGORIES.map((c) => (
               <span key={c.key} className="inline-flex items-center gap-1.5">

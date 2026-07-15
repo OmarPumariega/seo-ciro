@@ -18,6 +18,26 @@ export async function getDefaultOpenRouterModel(): Promise<string> {
   return (await getSetting("OPENROUTER_MODEL")) || "openai/gpt-4o-mini";
 }
 
+// Modelo del Copilot: cae al modelo general de la herramienta si no se fijó
+// uno propio desde Configuración. Permite usar un modelo más conversacional
+// solo para el chat sin afectar a Título/Meta/Schema/Contenido.
+export async function getCopilotModel(): Promise<string> {
+  return (await getSetting("COPILOT_MODEL")) || getDefaultOpenRouterModel();
+}
+
+// Instrucciones del Copilot: por defecto conversacional, conciso y SIN
+// markdown (la UI pinta texto plano, los ##/* se verían literalmente).
+export const DEFAULT_COPILOT_SYSTEM_PROMPT =
+  "Eres el asistente SEO interno de la agencia para el proyecto que se indica. " +
+  "Responde en español, en tono conversacional y cercano, como un colega experto que resuelve dudas y da consejos accionables. " +
+  "Sé conciso: respuestas cortas (3-5 frases) salvo que te pidan detalle. " +
+  "NUNCA uses markdown (sin *, #, -, **, ni listas con guion): escribe en texto plano, con frases naturales. " +
+  "Usa datos reales del proyecto cuando sean relevantes. Si faltan datos o no estás seguro, dilo y sugiere cómo conseguirlos.";
+
+export async function getCopilotSystemPrompt(): Promise<string> {
+  return (await getSetting("COPILOT_SYSTEM_PROMPT")) || DEFAULT_COPILOT_SYSTEM_PROMPT;
+}
+
 // Traduce errores del SDK de OpenAI/OpenRouter a un mensaje que un usuario no
 // técnico pueda entender y actuar — antes se devolvía error.message tal cual
 // (p.ej. "401 Missing Authentication header"), que parecía "la función está

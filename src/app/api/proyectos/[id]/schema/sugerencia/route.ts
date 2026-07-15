@@ -3,7 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { scrapePage, ScrapeError } from "@/lib/seo/scrape";
-import { suggestSchemaType } from "@/lib/seo/schema";
+import { suggestSchemaType } from "@/lib/seo/schema/catalog";
 
 export async function POST(
   req: NextRequest,

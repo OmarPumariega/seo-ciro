@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MapPin, X } from "lucide-react";
-import { cn } from "@/lib/utils";
 import locations from "@/lib/rank/locations-es.json";
 
 // Selector de ubicación real para simular la búsqueda desde un punto concreto

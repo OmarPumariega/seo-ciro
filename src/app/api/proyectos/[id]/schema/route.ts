@@ -5,13 +5,12 @@ import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { scrapePage, ScrapeError } from "@/lib/seo/scrape";
 import {
-  SCHEMA_TYPES,
-  buildArticleOrFaqJsonLd,
-  buildLocalBusinessJsonLd,
+  getCatalogEntry,
+  isValidSchemaType,
   suggestSchemaType,
   validateJsonLd,
-  type SchemaType,
-} from "@/lib/seo/schema";
+} from "@/lib/seo/schema/catalog";
+import { buildDeterministic, buildLlmJsonLd } from "@/lib/seo/schema/generators";
 import { logApiUsage } from "@/lib/seo/usage-log";
 import { friendlyLlmErrorMessage } from "@/lib/seo/llm";
 
@@ -57,10 +56,11 @@ export async function POST(
     return NextResponse.json({ error: "URL inválida" }, { status: 400 });
   }
 
-  const type = body.type as SchemaType;
-  if (!SCHEMA_TYPES.includes(type)) {
+  const type = typeof body.type === "string" ? body.type.trim() : "";
+  if (!isValidSchemaType(type)) {
     return NextResponse.json({ error: "Tipo de schema inválido" }, { status: 400 });
   }
+  const entry = getCatalogEntry(type)!;
 
   let scraped;
   try {
@@ -77,21 +77,17 @@ export async function POST(
   let jsonLd: Record<string, unknown>;
   let model: string | null = null;
 
-  if (type === "LocalBusiness") {
-    if (!project.isLocalBusiness || !project.businessName) {
-      return NextResponse.json(
-        {
-          error:
-            "Este proyecto no tiene datos NAP configurados. Complétalos en la ficha del proyecto antes de generar un schema LocalBusiness.",
-        },
-        { status: 422 }
-      );
+  if (entry.generator === "deterministic") {
+    try {
+      jsonLd = buildDeterministic(type, { project, scraped, url });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Error al generar el schema";
+      return NextResponse.json({ error: message }, { status: 422 });
     }
-    jsonLd = buildLocalBusinessJsonLd(project, scraped, url);
   } else {
     let result;
     try {
-      result = await buildArticleOrFaqJsonLd(type, scraped, url);
+      result = await buildLlmJsonLd(entry, scraped, url);
     } catch (error) {
       return NextResponse.json({ error: friendlyLlmErrorMessage(error) }, { status: 502 });
     }
@@ -100,7 +96,7 @@ export async function POST(
 
     await logApiUsage({
       projectId: id,
-      endpoint: `modulo4.schema.${type === "Article" ? "article" : "faq"}`,
+      endpoint: `modulo4.schema.${type.toLowerCase()}`,
       model: result.model,
       usage: result.usage,
     });

@@ -10,6 +10,11 @@ export type SettingKey =
   | "DATAFORSEO_PASSWORD"
   | "DATAFORSEO_MONTHLY_LIMIT_USD"
   | "PAGESPEED_API_KEY"
+  | "GOOGLE_CLIENT_ID"
+  | "GOOGLE_CLIENT_SECRET"
+  | "GOOGLE_REDIRECT_URI"
+  | "COPILOT_MODEL"
+  | "COPILOT_SYSTEM_PROMPT"
   | "SMTP_HOST"
   | "SMTP_PORT"
   | "SMTP_USER"
@@ -23,6 +28,7 @@ export type SettingMeta = {
   group: string;
   placeholder?: string;
   helpText?: string;
+  multiline?: boolean; // textarea (para prompts largos)
 };
 
 // Orden = orden de aparición en la UI, agrupado por tarjeta.
@@ -39,6 +45,21 @@ export const SETTINGS_CATALOG: SettingMeta[] = [
     group: "OpenRouter (IA)",
     placeholder: "openai/gpt-4o-mini",
   },
+  {
+    key: "COPILOT_MODEL",
+    label: "Modelo del Copilot",
+    group: "Copilot",
+    placeholder: "openai/gpt-4o-mini",
+    helpText: "Vacío = usa el modelo por defecto de la herramienta. Puedes poner uno más conversacional (p.ej. anthropic/claude-3.5-haiku).",
+  },
+  {
+    key: "COPILOT_SYSTEM_PROMPT",
+    label: "Instrucciones del Copilot (system prompt)",
+    group: "Copilot",
+    multiline: true,
+    helpText:
+      "Vacío = usa unas instrucciones por defecto (respuestas cortas, conversacionales, sin markdown). Personaliza el tono y el enfoque del asistente.",
+  },
   { key: "DATAFORSEO_LOGIN", label: "Usuario (login)", group: "DataForSEO" },
   { key: "DATAFORSEO_PASSWORD", label: "Contraseña", group: "DataForSEO" },
   {
@@ -53,6 +74,26 @@ export const SETTINGS_CATALOG: SettingMeta[] = [
     label: "API Key",
     group: "Google PageSpeed Insights",
     helpText: "Usada solo sobre la home del proyecto en cada Auditoría técnica.",
+  },
+  {
+    key: "GOOGLE_CLIENT_ID",
+    label: "Client ID (OAuth2)",
+    group: "Google (Search Console + GA4)",
+    helpText: "Crea el ID de cliente OAuth en Google Cloud Console → Credenciales (aplicación web).",
+  },
+  {
+    key: "GOOGLE_CLIENT_SECRET",
+    label: "Client Secret (OAuth2)",
+    group: "Google (Search Console + GA4)",
+    helpText: "Secreto asociado al Client ID. Se guarda cifrado, como el resto de claves.",
+  },
+  {
+    key: "GOOGLE_REDIRECT_URI",
+    label: "URI de redirección",
+    group: "Google (Search Console + GA4)",
+    placeholder: "http://localhost:3000/api/google/oauth/callback",
+    helpText:
+      "Debe coincidir exactamente con el configurado en Google Cloud. En producción, usa https://tudominio.com/api/google/oauth/callback.",
   },
   { key: "SMTP_HOST", label: "Host SMTP", group: "Avisos por email" },
   { key: "SMTP_PORT", label: "Puerto", group: "Avisos por email", placeholder: "587" },
