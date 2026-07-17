@@ -6,9 +6,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { normalizeKeyword } from "@/lib/keywords/normalize";
 import { ALLOWED_DEPTHS } from "@/lib/rank/serp";
 import { checkRankKeyword } from "@/lib/rank/check";
+import { RANK_FREQUENCIES } from "@/lib/rank/constants";
 
 const DEVICES = ["desktop", "mobile"] as const;
-const FREQUENCIES = ["manual", "daily", "weekly", "monthly"] as const;
 
 export async function GET(
   _req: NextRequest,
@@ -83,7 +83,7 @@ export async function POST(
 
   const device = typeof body.device === "string" && (DEVICES as readonly string[]).includes(body.device) ? body.device : "desktop";
   const frequency =
-    typeof body.frequency === "string" && (FREQUENCIES as readonly string[]).includes(body.frequency)
+    typeof body.frequency === "string" && (RANK_FREQUENCIES as readonly string[]).includes(body.frequency)
       ? body.frequency
       : "monthly"; // default: análisis mensual (estándar de la agencia)
   const languageCode =

@@ -3,9 +3,9 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { ALLOWED_DEPTHS } from "@/lib/rank/serp";
+import { RANK_FREQUENCIES } from "@/lib/rank/constants";
 
 const DEVICES = ["desktop", "mobile"] as const;
-const FREQUENCIES = ["manual", "daily", "weekly", "monthly"] as const;
 
 // Importa las keywords de un estudio del Módulo 1 como keywords de
 // seguimiento. Reutiliza el idioma/ubicación del estudio (tiene sentido
@@ -47,7 +47,7 @@ export async function POST(
 
   const device = typeof body.device === "string" && (DEVICES as readonly string[]).includes(body.device) ? body.device : "desktop";
   const frequency =
-    typeof body.frequency === "string" && (FREQUENCIES as readonly string[]).includes(body.frequency)
+    typeof body.frequency === "string" && (RANK_FREQUENCIES as readonly string[]).includes(body.frequency)
       ? body.frequency
       : "weekly";
   const rawDepth = Number(body.depth);

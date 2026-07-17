@@ -73,6 +73,15 @@ model Project {
   // varios ticks seguidos dejando a otros proyectos esperando indefinidamente.
   rankLastDequeuedAt DateTime?
 
+  // Programación explícita del escaneo conjunto de Rank Tracking: cuándo el
+  // usuario deja fijado "el próximo escaneo de todas las keywords programadas
+  // será tal día". Disparador ADICIONAL al criterio por keyword (lastCheckedAt
+  // + frequency) — null = sin programar, se sigue usando solo el criterio
+  // antiguo. Al procesarse, runRankJob() avanza rankNextScanAt según
+  // rankScanFrequency para el siguiente ciclo (recurrente).
+  rankScanFrequency String?   // "weekly" | "monthly" | "quarterly"
+  rankNextScanAt    DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

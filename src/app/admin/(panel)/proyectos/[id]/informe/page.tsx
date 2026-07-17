@@ -138,19 +138,16 @@ export default async function InformePage({
     prisma.titleMetaGeneration.findMany({
       where: { projectId: id },
       orderBy: { createdAt: "desc" },
-      take: 5,
       select: { url: true, variants: true, createdAt: true },
     }),
     prisma.schemaGeneration.findMany({
       where: { projectId: id },
       orderBy: { createdAt: "desc" },
-      take: 5,
       select: { url: true, selectedType: true, valid: true, createdAt: true },
     }),
     prisma.contentGeneration.findMany({
       where: { projectId: id },
       orderBy: { createdAt: "desc" },
-      take: 5,
       select: { topic: true, model: true, createdAt: true },
     }),
     prisma.gscSnapshot.findFirst({
@@ -163,14 +160,12 @@ export default async function InformePage({
   const monthCost = monthCostAgg._sum.costUsd ? Number(monthCostAgg._sum.costUsd) : 0;
   const cats = (latestAudit?.categoryScores ?? null) as CategoryScores | null;
 
-  const topRank = [...rankKeywords]
-    .sort((a, b) => {
-      if (a.bestPosition == null && b.bestPosition == null) return 0;
-      if (a.bestPosition == null) return 1;
-      if (b.bestPosition == null) return -1;
-      return a.bestPosition - b.bestPosition;
-    })
-    .slice(0, 10);
+  const topRank = [...rankKeywords].sort((a, b) => {
+    if (a.bestPosition == null && b.bestPosition == null) return 0;
+    if (a.bestPosition == null) return 1;
+    if (b.bestPosition == null) return -1;
+    return a.bestPosition - b.bestPosition;
+  });
 
   const rankedCount = rankKeywords.filter((k) => k.lastPosition != null).length;
   const generationDate = now.toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
@@ -208,7 +203,7 @@ export default async function InformePage({
         }))
         .sort((a, b) => b.pagerank - a.pagerank);
       const orphans = pages.filter((p) => p.incoming === 0).map((p) => p.url).sort();
-      const topHubs = [...pages].sort((a, b) => b.outgoing - a.outgoing).slice(0, 5).map((p) => p.url);
+      const topHubs = [...pages].sort((a, b) => b.outgoing - a.outgoing).map((p) => p.url);
       linksData = { pages, orphans, topHubs, auditDate: linksRun.completedAt ?? linksRun.triggeredAt };
     }
   }
@@ -252,6 +247,31 @@ export default async function InformePage({
     })
   );
 
+  // --- TF-IDF: todos los estudios guardados del proyecto, completos (terms,
+  // topics/H2-H3, headingTerms, sources) — ver es gratis, ya están calculados
+  // y persistidos (manual o vía el auto-TF-IDF disparado desde Rank Tracking).
+  const tfidfRows = await prisma.tfidfResult.findMany({
+    where: { projectId: id },
+    orderBy: { updatedAt: "desc" },
+    select: { keyword: true, result: true, updatedAt: true },
+  });
+  const tfidfData: ReportData["tfidf"] = tfidfRows.map((row) => {
+    const r = row.result as {
+      terms?: TopKeyword[] | { term: string; tfidf: number; docs: number }[];
+      topics?: { text: string; coverage: number; urls: string[] }[];
+      headingTerms?: { term: string; count: number }[];
+      sources?: string[];
+    };
+    return {
+      keyword: row.keyword,
+      terms: Array.isArray(r.terms) ? (r.terms as { term: string; tfidf: number; docs: number }[]) : [],
+      topics: Array.isArray(r.topics) ? r.topics : [],
+      headingTerms: Array.isArray(r.headingTerms) ? r.headingTerms : [],
+      sources: Array.isArray(r.sources) ? r.sources : [],
+      updatedAt: row.updatedAt,
+    };
+  });
+
   // --- Arquitectura de URLs ---
   type StructurePage = { slug: string; h1: string };
   let arquitectura: ReportData["arquitectura"] = null;
@@ -259,8 +279,7 @@ export default async function InformePage({
     const s = structureStudy.structure as { pages?: unknown };
     if (Array.isArray(s.pages)) {
       const pages = (s.pages as Array<Record<string, unknown>>)
-        .filter((p) => typeof p.slug === "string" || typeof p.h1 === "string")
-        .slice(0, 10) as StructurePage[];
+        .filter((p) => typeof p.slug === "string" || typeof p.h1 === "string") as StructurePage[];
       arquitectura = { pages, updatedAt: structureStudy.updatedAt };
     }
   }
@@ -277,7 +296,7 @@ export default async function InformePage({
       const items = await listCannibalizations(auth, project.gscSiteUrl, range);
       canibalizaciones = {
         count: items.length,
-        top: items.slice(0, 5).map((it) => ({
+        top: items.map((it) => ({
           query: it.query,
           urls: it.pages.length,
           clicks: it.pages.reduce((s, p) => s + p.clicks, 0),
@@ -304,7 +323,7 @@ export default async function InformePage({
       month: gscSnapshot.month,
       rangeDays: gscSnapshot.rangeDays,
       totals: totals ?? { clicks: 0, impressions: 0, ctr: 0, position: 0 },
-      topQueries: (qs ?? []).slice(0, 5),
+      topQueries: qs ?? [],
     };
   }
 
@@ -374,6 +393,7 @@ export default async function InformePage({
     costs: { monthCost },
     links: linksData,
     competitors: { own: ownVisibility, items: competitorSnapshots },
+    tfidf: tfidfData,
   };
 
   return <InformeBuilder projectId={id} data={data} initialConfig={initialConfig} initialOrder={initialOrder} />;

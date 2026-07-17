@@ -3,9 +3,9 @@ import { checkRankKeyword } from "@/lib/rank/check";
 import { notify } from "@/lib/notifications/notify";
 
 // Job de fondo del Módulo 5: procesa las keywords de seguimiento cuya
-// frecuencia programada (daily/weekly/monthly) se ha vencido. Las "manual"
-// no se tocan aquí — el usuario las dispara síncrono desde la UI. Reutiliza
-// el mismo poller que el Módulo 8 (instrumentation-node.ts), sin Redis.
+// frecuencia programada (daily/weekly/monthly/quarterly) se ha vencido. Las
+// "manual" no se tocan aquí — el usuario las dispara síncrono desde la UI.
+// Reutiliza el mismo poller que el Módulo 8 (instrumentation-node.ts), sin Redis.
 //
 // >>> REQUISITO DE NEGOCIO: TODAS las keywords programadas de un proyecto se
 // chequean el MISMO DÍA. <<<
@@ -15,6 +15,13 @@ import { notify } from "@/lib/notifications/notify";
 // lastCheckedAt → todas volverán a vencer a la vez en su próxima ventana). Si
 // lo hiciéramos por keyword suelta (como antes), cada una arrastraría su propio
 // lastCheckedAt y acabarían desfasándose según cuándo entraran en el tick.
+//
+// Además del vencimiento por keyword (lastCheckedAt + frequency), un proyecto
+// también puede tener una programación EXPLÍCITA (Project.rankNextScanAt +
+// rankScanFrequency, ver /rank/schedule): un disparador adicional para dejar
+// fijado "el próximo escaneo conjunto será tal día", que se auto-reprograma al
+// dispararse. Ninguno sustituye al otro — un proyecto sin programación
+// explícita sigue funcionando exactamente igual que antes.
 
 // Cap de keywords por tick dentro del proyecto seleccionado. Cada SERP es una
 // llamada (~3s y ~0,002$); 50/tick es un balance entre no machacar la API y
@@ -28,6 +35,7 @@ const FREQUENCY_MS: Record<string, number> = {
   daily: 24 * 60 * 60 * 1000,
   weekly: 7 * 24 * 60 * 60 * 1000,
   monthly: 30 * 24 * 60 * 60 * 1000,
+  quarterly: 91 * 24 * 60 * 60 * 1000,
 };
 
 export async function runRankJob(): Promise<{ processed: number }> {
@@ -43,16 +51,31 @@ export async function runRankJob(): Promise<{ processed: number }> {
     // tenga tanto backlog que no lo vacíe entero en este tick (ver
     // findMostOverdueProject: sin esto, un proyecto grande podía acaparar
     // varios ticks seguidos dejando a otros proyectos esperando).
-    await prisma.project.update({
+    const project = await prisma.project.update({
       where: { id: projectId },
       data: { rankLastDequeuedAt: new Date() },
+      select: { rankScanFrequency: true },
     });
+
+    // Si el proyecto tiene programación explícita, se avanza YA al siguiente
+    // ciclo (recurrente) — así el usuario no tiene que reprogramar a mano cada
+    // vez que se dispara. Si el intervalo no se reconoce (dato corrupto/valor
+    // viejo), se deja como está en vez de reventar el tick entero.
+    if (project.rankScanFrequency) {
+      const interval = FREQUENCY_MS[project.rankScanFrequency];
+      if (interval) {
+        await prisma.project.update({
+          where: { id: projectId },
+          data: { rankNextScanAt: new Date(Date.now() + interval) },
+        });
+      }
+    }
 
     // Cuando el proyecto vence, chequea TODAS sus keywords programadas a la
     // vez (no solo las vencidas): compartan timestamp → mismo día. Las
     // "manual" no entran aquí (las dispara el usuario desde la UI).
     const projectKeywords = await prisma.rankKeyword.findMany({
-      where: { projectId, frequency: { in: ["daily", "weekly", "monthly"] } },
+      where: { projectId, frequency: { in: ["daily", "weekly", "monthly", "quarterly"] } },
       orderBy: { lastCheckedAt: "asc" }, // las nunca chequeadas / más antiguas primero
       take: MAX_KEYWORDS_PER_PROJECT_TICK,
     });
@@ -109,7 +132,7 @@ const OVERDUE_SCAN_LIMIT = 1000;
 async function findMostOverdueProject(): Promise<string | null> {
   const now = Date.now();
   const candidates = await prisma.rankKeyword.findMany({
-    where: { frequency: { in: ["daily", "weekly", "monthly"] } },
+    where: { frequency: { in: ["daily", "weekly", "monthly", "quarterly"] } },
     orderBy: { lastCheckedAt: "asc" }, // null primero, luego más antiguas
     take: OVERDUE_SCAN_LIMIT,
     select: { projectId: true, frequency: true, lastCheckedAt: true },
@@ -123,6 +146,16 @@ async function findMostOverdueProject(): Promise<string | null> {
       overdueProjectIds.add(rk.projectId);
     }
   }
+
+  // Disparador adicional: programación explícita a nivel de proyecto
+  // (Project.rankNextScanAt), independiente de si alguna keyword suelta está
+  // vencida por su propio lastCheckedAt — ver comentario de cabecera.
+  const scheduledDue = await prisma.project.findMany({
+    where: { rankNextScanAt: { lte: new Date(now) } },
+    select: { id: true },
+  });
+  for (const p of scheduledDue) overdueProjectIds.add(p.id);
+
   if (overdueProjectIds.size === 0) return null;
 
   const projects = await prisma.project.findMany({

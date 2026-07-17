@@ -5,9 +5,9 @@ import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
 import { ALLOWED_DEPTHS } from "@/lib/rank/serp";
+import { RANK_FREQUENCIES } from "@/lib/rank/constants";
 
 const DEVICES = ["desktop", "mobile"] as const;
-const FREQUENCIES = ["manual", "daily", "weekly", "monthly"] as const;
 
 export async function PATCH(
   req: NextRequest,
@@ -38,7 +38,7 @@ export async function PATCH(
     locationCode?: number;
     locationName?: string | null;
   } = {};
-  if (typeof body.frequency === "string" && (FREQUENCIES as readonly string[]).includes(body.frequency)) {
+  if (typeof body.frequency === "string" && (RANK_FREQUENCIES as readonly string[]).includes(body.frequency)) {
     data.frequency = body.frequency;
   }
   if (typeof body.device === "string" && (DEVICES as readonly string[]).includes(body.device)) {

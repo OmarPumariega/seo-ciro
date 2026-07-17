@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   ChevronLeft, ChevronRight, ChevronUp, ChevronDown, FileText, Gauge, Target, Search,
-  MapPin, Wallet, ClipboardCheck, Network, Type, Code2, PenLine, Globe, GitBranch,
+  MapPin, Wallet, ClipboardCheck, Network, Type, Code2, PenLine, Globe, GitBranch, Hash,
 } from "lucide-react";
 import GeogridMap from "@/components/admin/GeogridMap";
 import PrintButton from "./PrintButton";
@@ -71,6 +71,14 @@ export type ReportData = {
       fetchedAt: Date | null;
     }[];
   };
+  tfidf: {
+    keyword: string;
+    terms: { term: string; tfidf: number; docs: number }[];
+    topics: { text: string; coverage: number; urls: string[] }[];
+    headingTerms: { term: string; count: number }[];
+    sources: string[];
+    updatedAt: Date;
+  }[];
 };
 
 const CATEGORY_LABELS: { key: keyof CategoryScores; label: string }[] = [
@@ -482,7 +490,7 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
                 <th className="py-2 pr-4 font-medium text-right">Entrantes</th><th className="py-2 pr-4 font-medium text-right">Salientes</th>
               </tr></thead>
               <tbody>
-                {data.links.pages.slice(0, 10).map((p) => (
+                {data.links.pages.map((p) => (
                   <tr key={p.url} className="border-b border-gray-100 last:border-0">
                     <td className="py-2 pr-4 text-gray-900 max-w-[320px] truncate">{p.url}</td>
                     <td className="py-2 pr-4 text-right tabular-nums text-gray-900">{(p.pagerank * 100).toFixed(2)}%</td>
@@ -492,7 +500,6 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
                 ))}
               </tbody>
             </table>
-            {data.links.pages.length > 10 && <p className="text-xs text-gray-400 mt-2">Mostrando las 10 principales de {data.links.pages.length} URLs.</p>}
           </div>
         </>
       )}
@@ -518,7 +525,7 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
           </div>
           {data.competitors.own.topKeywords && data.competitors.own.topKeywords.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
-              {data.competitors.own.topKeywords.slice(0, 15).map((k, i) => (
+              {data.competitors.own.topKeywords.map((k, i) => (
                 <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-gray-50 text-gray-600">
                   {k.keyword}
                   {k.position !== null && <span className="text-gray-400">· #{k.position}</span>}
@@ -552,24 +559,118 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
             </table>
           </div>
 
-          {data.competitors.items.map((c) =>
-            c.contentGap && c.contentGap.length > 0 ? (
-              <div key={c.domain} className="break-inside-avoid">
-                <p className="text-xs text-gray-500 mb-1.5">
-                  Content gap con {c.domain} ({c.contentGap.length}) — ranquea por estas y tú no
-                  {c.contentGapAt ? ` · ${fmtDate(c.contentGapAt)}` : ""}
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {c.contentGap.slice(0, 15).map((k, i) => (
-                    <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">
-                      {k.keyword}
-                      {k.volume !== null && <span className="text-emerald-500">· {k.volume.toLocaleString("es-ES")}</span>}
-                    </span>
-                  ))}
+          {data.competitors.items.map((c) => (
+            <div key={c.domain} className="space-y-3 break-inside-avoid">
+              {c.topKeywords && c.topKeywords.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1.5">
+                    Top keywords de {c.domain} ({c.topKeywords.length})
+                    {c.fetchedAt ? ` · ${fmtDate(c.fetchedAt)}` : ""}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {c.topKeywords.map((k, i) => (
+                      <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-gray-50 text-gray-600">
+                        {k.keyword}
+                        {k.position !== null && <span className="text-gray-400">· #{k.position}</span>}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ) : null
-          )}
+              )}
+              {c.contentGap && c.contentGap.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1.5">
+                    Content gap con {c.domain} ({c.contentGap.length}) — ranquea por estas y tú no
+                    {c.contentGapAt ? ` · ${fmtDate(c.contentGapAt)}` : ""}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {c.contentGap.map((k, i) => (
+                      <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">
+                        {k.keyword}
+                        {k.volume !== null && <span className="text-emerald-500">· {k.volume.toLocaleString("es-ES")}</span>}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+
+  const renderTfidf = () => (
+    <section className="space-y-4">
+      <SectionTitle icon={<Hash className="h-4 w-4" />}>TF-IDF <span className="text-gray-400 font-normal text-sm">(términos, temas y encabezados del top-10 orgánico)</span></SectionTitle>
+      {data.tfidf.length === 0 ? (
+        <p className="text-sm text-gray-500">Sin estudios TF-IDF todavía.</p>
+      ) : (
+        <div className="space-y-6">
+          {data.tfidf.map((t) => (
+            <div key={t.keyword} className="space-y-3 break-inside-avoid">
+              <p className="text-sm font-medium text-gray-700">
+                «{t.keyword}» <span className="text-gray-400 font-normal">· {fmtDate(t.updatedAt)}</span>
+              </p>
+
+              {t.terms.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1.5">Términos TF-IDF ({t.terms.length})</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {t.terms.map((term, i) => (
+                      <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-gray-50 text-gray-600">
+                        {term.term} <span className="text-gray-400">· {term.tfidf.toFixed(2)}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {t.headingTerms.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1.5">Palabras más frecuentes en encabezados ({t.headingTerms.length})</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {t.headingTerms.map((h, i) => (
+                      <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-indigo-50 text-indigo-700">
+                        {h.term} <span className="text-indigo-400">· {h.count}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {t.topics.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1.5">Temas (H2/H3) del top-10 ({t.topics.length})</p>
+                  <table className="w-full text-sm">
+                    <thead><tr className="text-left text-gray-400 border-b border-gray-200">
+                      <th className="py-1.5 pr-4 font-medium">Encabezado</th>
+                      <th className="py-1.5 pr-4 font-medium text-right">Páginas que lo cubren</th>
+                    </tr></thead>
+                    <tbody>
+                      {t.topics.map((topic, i) => (
+                        <tr key={i} className="border-b border-gray-100 last:border-0">
+                          <td className="py-1.5 pr-4 text-gray-900">{topic.text}</td>
+                          <td className="py-1.5 pr-4 text-right tabular-nums text-gray-500">{topic.coverage}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {t.sources.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1.5">URLs analizadas ({t.sources.length})</p>
+                  <ul className="text-xs text-gray-500 space-y-0.5">
+                    {t.sources.map((url) => (
+                      <li key={url} className="truncate">{url}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </section>
@@ -598,6 +699,7 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
     geogrid: renderGeogrid,
     links: renderLinks,
     competitors: renderCompetitors,
+    tfidf: renderTfidf,
     costs: renderCosts,
   };
 

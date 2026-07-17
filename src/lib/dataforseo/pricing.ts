@@ -27,6 +27,7 @@ export const FREQUENCY_PER_MONTH: Record<string, number> = {
   daily: 30,
   weekly: 4.33,
   monthly: 1,
+  quarterly: 0.33,
 };
 
 // Coste de UN chequeo de rank tracking según el depth pedido.

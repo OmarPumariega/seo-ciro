@@ -16,6 +16,7 @@ export type SectionKey =
   | "geogrid"
   | "links"
   | "competitors"
+  | "tfidf"
   | "costs";
 
 // Orden por defecto = orden de render si el proyecto no ha reordenado.
@@ -33,6 +34,7 @@ export const SECTION_KEYS: SectionKey[] = [
   "geogrid",
   "links",
   "competitors",
+  "tfidf",
   "costs",
 ];
 
@@ -50,6 +52,7 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
   geogrid: "SEO Local (geogrid)",
   links: "Enlaces internos",
   competitors: "Competidores",
+  tfidf: "TF-IDF",
   costs: "Costes",
 };
 

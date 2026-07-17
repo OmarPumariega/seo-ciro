@@ -19,6 +19,7 @@ import {
   MapPin,
   Pencil,
   X,
+  Calendar,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { rankMonthlyCostUsd } from "@/lib/dataforseo/pricing";
@@ -26,6 +27,7 @@ import { downloadCsv } from "@/lib/csv";
 import RankVisibilityChart from "@/components/admin/RankVisibilityChart";
 import LocationPicker, { type LocationValue } from "@/components/admin/LocationPicker";
 import UrlLink from "@/components/admin/UrlLink";
+import { RANK_FREQUENCY_LABELS, RANK_SCAN_FREQUENCIES } from "@/lib/rank/constants";
 
 type RankPosition = { id: string; checkedAt: string; position: number | null; url: string | null };
 
@@ -53,13 +55,6 @@ type SortKey = "keyword" | "volume" | "position" | "best" | "delta" | (string & 
 type StudyListItem = { id: string; name: string; _count: { keywords: number }; hasStructure: boolean };
 
 type CompetitorPosition = { domain: string; position: number | null; url: string | null; checkedAt: string };
-
-const FREQUENCY_LABELS: Record<string, string> = {
-  manual: "Manual",
-  daily: "Diaria",
-  weekly: "Semanal",
-  monthly: "Mensual",
-};
 
 const DEPTHS = [10, 30, 50, 100];
 const MAX_DATE_COLUMNS = 8;
@@ -208,6 +203,15 @@ export default function RankView({ projectId }: { projectId: string }) {
   const [competitors, setCompetitors] = useState<CompetitorPosition[]>([]);
   const [loadingCompetitors, setLoadingCompetitors] = useState(false);
 
+  // Programación explícita del escaneo conjunto (Project.rankScanFrequency /
+  // rankNextScanAt) — unificada con el selector "Frecuencia" de arriba (mismo
+  // <Select> de newFrequency, sin duplicar el control): al guardar se usa la
+  // frecuencia elegida ahí. scheduleDate en formato "YYYY-MM-DD" (lo que
+  // da/espera <input type="date">).
+  const [scheduleDate, setScheduleDate] = useState<string>("");
+  const [savedSchedule, setSavedSchedule] = useState<{ frequency: string; date: string } | null>(null);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+
   function loadKeywords() {
     return fetch(`/api/proyectos/${projectId}/rank/keywords`)
       .then((r) => r.json())
@@ -220,12 +224,54 @@ export default function RankView({ projectId }: { projectId: string }) {
     Promise.all([
       loadKeywords(),
       fetch(`/api/proyectos/${projectId}/keywords/estudios`).then((r) => r.json()),
-    ]).then(([, s]) => {
+      fetch(`/api/proyectos/${projectId}`).then((r) => r.json()),
+    ]).then(([, s, p]) => {
       if (Array.isArray(s)) setStudies(s as StudyListItem[]);
+      if (p && p.rankScanFrequency && p.rankNextScanAt) {
+        const date = String(p.rankNextScanAt).slice(0, 10);
+        setScheduleDate(date);
+        setSavedSchedule({ frequency: p.rankScanFrequency, date });
+      }
       setLoading(false);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  async function handleSaveSchedule() {
+    if (!scheduleDate) return;
+    setError("");
+    setScheduleSaving(true);
+    const res = await fetch(`/api/proyectos/${projectId}/rank/schedule`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ frequency: newFrequency, nextScanAt: scheduleDate }),
+    });
+    const data = await res.json();
+    setScheduleSaving(false);
+    if (!res.ok) {
+      setError(data.error ?? "Error al guardar la programación");
+      return;
+    }
+    setSavedSchedule({ frequency: newFrequency, date: scheduleDate });
+  }
+
+  async function handleClearSchedule() {
+    setError("");
+    setScheduleSaving(true);
+    const res = await fetch(`/api/proyectos/${projectId}/rank/schedule`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ frequency: null }),
+    });
+    setScheduleSaving(false);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setError(data.error ?? "Error al quitar la programación");
+      return;
+    }
+    setScheduleDate("");
+    setSavedSchedule(null);
+  }
 
   // Carga el histórico de una keyword. Se invoca desde el click de selección
   // (no desde un effect) para evitar el patrón setState-dentro-de-effect.
@@ -611,7 +657,7 @@ export default function RankView({ projectId }: { projectId: string }) {
         kw.lastPosition ?? "",
         kw.bestPosition ?? "",
         kw.device === "mobile" ? "Móvil" : "Desktop",
-        FREQUENCY_LABELS[kw.frequency] ?? kw.frequency,
+        RANK_FREQUENCY_LABELS[kw.frequency] ?? kw.frequency,
         kw.lastCheckedAt ? new Date(kw.lastCheckedAt).toLocaleDateString("es-ES") : "",
       ])
     );
@@ -681,7 +727,7 @@ export default function RankView({ projectId }: { projectId: string }) {
                 <Select.Portal>
                   <Select.Content className="bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50">
                     <Select.Viewport>
-                      {Object.entries(FREQUENCY_LABELS).map(([v, l]) => (
+                      {Object.entries(RANK_FREQUENCY_LABELS).map(([v, l]) => (
                         <Select.Item key={v} value={v} className="px-3 py-2 text-sm text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>{l}</Select.ItemText></Select.Item>
                       ))}
                     </Select.Viewport>
@@ -719,6 +765,55 @@ export default function RankView({ projectId }: { projectId: string }) {
             más fiable para negocios locales. Sin elegir nada, se usa España (nacional).
           </p>
         </div>
+
+        {/* Programación del escaneo conjunto — usa la misma Frecuencia de
+            arriba (sin duplicar el selector); solo aplica a semanal/mensual/
+            trimestral. Disparador adicional al criterio por keyword, ver
+            src/lib/rank/job.ts — se auto-reprograma solo tras cada escaneo. */}
+        {(RANK_SCAN_FREQUENCIES as readonly string[]).includes(newFrequency) && (
+          <div className="pt-3 border-t border-gray-100 space-y-2">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-gray-400" />
+              <label className="text-sm font-medium text-gray-700">
+                Próximo escaneo programado
+                <span className="text-gray-400 font-normal"> (todas las keywords {RANK_FREQUENCY_LABELS[newFrequency].toLowerCase()}es del proyecto)</span>
+              </label>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                type="date"
+                value={scheduleDate}
+                onChange={(e) => setScheduleDate(e.target.value)}
+                className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+              />
+              <button
+                type="button"
+                onClick={handleSaveSchedule}
+                disabled={scheduleSaving || !scheduleDate}
+                className="px-3 py-1.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                {scheduleSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Guardar programación"}
+              </button>
+              {savedSchedule && (
+                <button
+                  type="button"
+                  onClick={handleClearSchedule}
+                  disabled={scheduleSaving}
+                  className="text-gray-500 text-sm hover:text-red-600 disabled:opacity-50"
+                >
+                  Quitar
+                </button>
+              )}
+            </div>
+            {savedSchedule && (
+              <p className="text-xs text-emerald-600">
+                Próximo escaneo programado: {new Date(savedSchedule.date).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" })}
+                {" "}· cada {RANK_FREQUENCY_LABELS[savedSchedule.frequency].toLowerCase()}
+              </p>
+            )}
+          </div>
+        )}
+
         {error && <p className="text-sm text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg">{error}</p>}
         <button
           type="submit"
@@ -730,8 +825,8 @@ export default function RankView({ projectId }: { projectId: string }) {
         </button>
         <p className="text-xs text-gray-400">
           {newKeywordCount > 0
-            ? <>Estas {newKeywordCount} keyword(s) costarán <strong className="text-gray-600">~${newKeywordMonthlyCost.toFixed(2)}/mes</strong> (Top-{newDepth}, {FREQUENCY_LABELS[newFrequency].toLowerCase()}).</>
-            : <>Coste por keyword: <strong className="text-gray-600">~${rankMonthlyCostUsd(1, Number(newDepth), newFrequency).toFixed(2)}/mes</strong> (Top-{newDepth}, {FREQUENCY_LABELS[newFrequency].toLowerCase()}).</>}
+            ? <>Estas {newKeywordCount} keyword(s) costarán <strong className="text-gray-600">~${newKeywordMonthlyCost.toFixed(2)}/mes</strong> (Top-{newDepth}, {RANK_FREQUENCY_LABELS[newFrequency].toLowerCase()}).</>
+            : <>Coste por keyword: <strong className="text-gray-600">~${rankMonthlyCostUsd(1, Number(newDepth), newFrequency).toFixed(2)}/mes</strong> (Top-{newDepth}, {RANK_FREQUENCY_LABELS[newFrequency].toLowerCase()}).</>}
           {" "}Total del proyecto al añadirlas: ~${(projectMonthlyCost + newKeywordMonthlyCost).toFixed(2)}/mes.
         </p>
       </form>
@@ -774,11 +869,12 @@ export default function RankView({ projectId }: { projectId: string }) {
           {importStudy && (
             <p className="text-xs text-gray-400">
               Importar {importStudy._count.keywords} keywords costará{" "}
-              <strong className="text-gray-600">~${importBatchMonthly.toFixed(2)}/mes</strong> (Top-{newDepth}, {FREQUENCY_LABELS[newFrequency].toLowerCase()}).
+              <strong className="text-gray-600">~${importBatchMonthly.toFixed(2)}/mes</strong> (Top-{newDepth}, {RANK_FREQUENCY_LABELS[newFrequency].toLowerCase()}).
             </p>
           )}
         </div>
       )}
+
 
       {/* Tabla tipo calendario */}
       <div className="space-y-3">
@@ -1070,7 +1166,7 @@ export default function RankView({ projectId }: { projectId: string }) {
                                   <Select.Portal>
                                     <Select.Content className="bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50">
                                       <Select.Viewport>
-                                        {Object.entries(FREQUENCY_LABELS).map(([v, l]) => (
+                                        {Object.entries(RANK_FREQUENCY_LABELS).map(([v, l]) => (
                                           <Select.Item key={v} value={v} className="px-3 py-1.5 text-xs text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>{l}</Select.ItemText></Select.Item>
                                         ))}
                                       </Select.Viewport>
