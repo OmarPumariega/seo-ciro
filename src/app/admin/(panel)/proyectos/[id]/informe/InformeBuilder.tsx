@@ -706,13 +706,26 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
   const visibleSections = order.filter((k) => config[k]);
 
   return (
-    <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[19rem_1fr] gap-6 items-start">
+    <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[19rem_1fr] gap-6 items-start print:block print:max-w-none">
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
           @page { margin: 1.5cm; }
           html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
+
+          /* AdminShell envuelve toda la app en flex + h-screen + overflow-hidden,
+             y el <main> en overflow-y-auto. Al imprimir, esas propiedades fijan
+             la altura a la del viewport y cortan el informe a la primera página.
+             Reseteamos TODOS los overflow y las alturas fijas para que el
+             navegador pueda paginar el documento completo. */
+          body * { overflow: visible !important; }
+          .h-screen, .overflow-hidden, .overflow-y-auto, .overflow-x-auto {
+            height: auto !important;
+            max-height: none !important;
+            min-height: 0 !important;
+          }
+
           aside, header, nav { display: none !important; }
-          main { overflow: visible !important; height: auto !important; padding: 0 !important; }
+          main { padding: 0 !important; }
           section { break-inside: avoid; }
           tr { break-inside: avoid; }
         }
