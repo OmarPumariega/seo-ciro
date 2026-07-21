@@ -35,7 +35,9 @@ export async function GET(_req: NextRequest) {
   });
 
   // Para cada proyecto, cuenta cuántas keywords nunca se han chequeado y su
-  // distribución por frecuencia.
+  // distribución por frecuencia y por locationCode (para detectar keywords
+  // que se crearon con ubicación equivocada — p.ej. España nacional cuando
+  // el estudio es Oviedo).
   const enriched = await Promise.all(
     projects.map(async (p) => {
       const freqs = await prisma.rankKeyword.groupBy({
@@ -43,8 +45,16 @@ export async function GET(_req: NextRequest) {
         where: { projectId: p.id },
         _count: true,
       });
+      const byLocation = await prisma.rankKeyword.groupBy({
+        by: ["locationCode", "locationName"],
+        where: { projectId: p.id },
+        _count: true,
+      });
       const never = await prisma.rankKeyword.count({
         where: { projectId: p.id, lastCheckedAt: null },
+      });
+      const withPosition = await prisma.rankKeyword.count({
+        where: { projectId: p.id, lastPosition: { not: null } },
       });
       return {
         id: p.id,
@@ -54,7 +64,9 @@ export async function GET(_req: NextRequest) {
         competitorsCount: p._count.competitors,
         snapshotsCount: p._count.visibilitySnapshots,
         keywordsByFrequency: freqs,
+        keywordsByLocation: byLocation,
         keywordsNeverChecked: never,
+        keywordsWithPosition,
       };
     })
   );
