@@ -239,11 +239,19 @@ export default function ProjectWizard() {
   }
 
   async function finish() {
-    if (runAudit && projectId) {
-      await fetch(`/api/proyectos/${projectId}/auditorias`, { method: "POST" }).catch(() => {});
+    if (projectId) {
+      // Lanzamiento completo en background: importa las keywords del estudio
+      // al rank tracking y las chequea (lo que dispara TF-IDF gratis), y
+      // analiza visibilidad + content gap de cada competidor. Fire-and-forget
+      // igual que la auditoría: no bloquea la navegación a la ficha.
+      await fetch(`/api/proyectos/${projectId}/bootstrap`, { method: "POST" }).catch(() => {});
+      if (runAudit) {
+        await fetch(`/api/proyectos/${projectId}/auditorias`, { method: "POST" }).catch(() => {});
+      }
+      router.push(`/admin/proyectos/${projectId}`);
+    } else {
+      router.push("/admin/proyectos");
     }
-    if (projectId) router.push(`/admin/proyectos/${projectId}`);
-    else router.push("/admin/proyectos");
   }
 
   function addCompetitor() {
@@ -519,6 +527,11 @@ export default function ProjectWizard() {
                 Si dejas vacío, se crea un estudio en blanco (gratis) que rellenarás después. Con
                 semillas se resuelve volumen e intención vía DataForSEO.
               </p>
+              <p className="text-xs text-gray-500">
+                Al lanzar el proyecto, estas keywords se importarán automáticamente al Rank Tracking
+                y se chequeará su posición real en Google (lo que también alimentará el módulo
+                TF-IDF sin coste adicional).
+              </p>
             </div>
             <div className="space-y-1">
               <label className={LABEL}>Ubicación de la búsqueda (opcional)</label>
@@ -531,8 +544,8 @@ export default function ProjectWizard() {
         {step === 4 && (
           <div className="space-y-4">
             <p className="text-sm text-gray-500">
-              Añade los dominios competidores. Solo se guardan (gratis); el análisis de visibilidad y
-              content-gap lo lanzarás después desde el módulo Competidores.
+              Añade los dominios competidores. Al lanzar el proyecto se analizarán automáticamente
+              (visibilidad real + top keywords + content gap frente a tu dominio).
             </p>
             <div className="flex gap-2">
               <input
@@ -590,6 +603,18 @@ export default function ProjectWizard() {
                 ))}
               </ul>
             </div>
+            <div className="text-xs text-gray-600 bg-gray-50 border border-gray-100 rounded-lg p-3 space-y-1">
+              <p className="font-medium text-gray-700">Al pulsar “Crear y lanzar” se ejecutará en segundo plano:</p>
+              <ul className="list-disc pl-4 space-y-0.5">
+                <li>Importar las keywords del estudio al Rank Tracking y comprobar su posición.</li>
+                <li>Generar el análisis TF-IDF de cada keyword (gratis, reutiliza el SERP ya pagado).</li>
+                <li>Analizar cada competidor (visibilidad + content gap).</li>
+              </ul>
+              <p className="text-gray-500">
+                El coste real se registra en el panel de Costes. Puedes ver el progreso al entrar en
+                la ficha del proyecto.
+              </p>
+            </div>
             <label className="flex items-start gap-2 cursor-pointer p-3 rounded-lg border border-gray-100 hover:bg-gray-50">
               <input
                 type="checkbox"
@@ -598,10 +623,9 @@ export default function ProjectWizard() {
                 className="h-4 w-4 mt-0.5"
               />
               <span>
-                <span className="text-sm font-medium text-gray-900">Ejecutar auditoría ahora</span>
+                <span className="text-sm font-medium text-gray-900">Ejecutar auditoría técnica ahora</span>
                 <span className="block text-xs text-gray-500">
-                  Lanza el rastreo del sitio en segundo plano. Lo verás en curso en la ficha del
-                  proyecto. Requiere dominio configurado.
+                  Rastrea el sitio (enlaces rotos, HTTPS, canonicals, on-page…). Requiere dominio.
                 </span>
               </span>
             </label>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Trash2, AlertTriangle } from "lucide-react";
 import ProjectForm, { type ProjectFormValues } from "@/components/admin/ProjectForm";
+import BootstrapPanel from "@/components/admin/BootstrapPanel";
 
 type ProjectRecord = ProjectFormValues & { id: string };
 
@@ -47,6 +48,8 @@ export default function ProjectEditView({ project }: { project: ProjectRecord })
           Eliminar proyecto
         </button>
       </div>
+
+      <BootstrapPanel projectId={project.id} />
 
       <ProjectForm
         initial={project}

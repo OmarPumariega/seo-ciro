@@ -1,0 +1,380 @@
+import { prisma } from "@/lib/db/prisma";
+import { Prisma } from "@prisma/client";
+import {
+  DataForSeoError,
+} from "@/lib/dataforseo/client";
+import {
+  DataForSeoSpendLimitError,
+  assertWithinSpendLimit,
+} from "@/lib/dataforseo/spend";
+import {
+  fetchDomainOverview,
+  fetchRankedKeywords,
+  fetchContentGap,
+  normalizeDomain,
+} from "@/lib/competitors/dataforseo";
+import { checkRankKeyword } from "@/lib/rank/check";
+import { autoRunTfidf } from "@/lib/tfidf/auto";
+import {
+  COMPETITORS_ANALYZE_DEFAULT_LIMIT,
+  COMPETITORS_GAP_DEFAULT_LIMIT,
+  competitorAnalysisCostUsd,
+  contentGapCostUsd,
+  rankCheckCostUsd,
+} from "@/lib/dataforseo/pricing";
+
+// Orquestador del "lanzamiento completo" de un proyecto. Vincula las piezas
+// que el wizard de alta creó por separado (estudio de keywords, competidores)
+// con los módulos que consumen de verdad esa información (Rank Tracking,
+// TF-IDF, análisis de visibilidad + content gap).
+//
+// El wizard actual solo persiste el estudio (Módulo 1) y los dominios
+// competidores, pero NO los procesa: el rank tracking queda vacío, el TF-IDF
+// nunca se dispara y los competidores se quedan sin snapshot. Esta función
+// cierra esa brecha — se llama desde el paso "Lanzar" del wizard y desde el
+// botón "Re-procesar proyecto" de la ficha.
+//
+// Es parcialmente idempotente: si se cae a mitad por tope de gasto o error,
+// lo hecho queda hecho (RankKeyword creadas, VisibilitySnapshots persistidos,
+// TfidfResults guardados) y una segunda invocación continúa desde donde
+// faltaba sin duplicar nada (la clave única de RankKeyword + el upsert de
+// TfidfResult lo garantizan).
+
+export type BootstrapStep = "keywords" | "tfidf" | "competitors" | "contentgap";
+
+export type BootstrapError = {
+  step: BootstrapStep;
+  ref: string; // keyword o dominio afecto
+  message: string;
+};
+
+export type BootstrapResult = {
+  keywordsImported: number;
+  keywordsChecked: number;
+  tfidfGenerated: number;
+  competitorsAnalyzed: number;
+  contentGapsCalculated: number;
+  errors: BootstrapError[];
+  spendLimitHit: boolean;
+};
+
+const DEFAULT_DEPTH = 30;
+const DEFAULT_FREQUENCY = "weekly";
+const DEFAULT_DEVICE = "desktop";
+
+// Calcula el coste estimado de ejecutar el bootstrap ahora. Mismo criterio
+// que el resto del sistema: orientativo, para que el usuario sepa cuánto va a
+// gastar ANTES de confirmar. El coste real es el que devuelve la API y se
+// registra en ApiUsageLog.
+export async function estimateBootstrapCost(projectId: string): Promise<{
+  keywordsToCheck: number;
+  competitorsToAnalyze: number;
+  estimatedCostUsd: number;
+  missingDomain: boolean;
+}> {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    select: { domain: true },
+  });
+  if (!project) {
+    return { keywordsToCheck: 0, competitorsToAnalyze: 0, estimatedCostUsd: 0, missingDomain: true };
+  }
+
+  // Keywords en estudios que aún no están en rank tracking (cualquier
+  // combinación keyword+ubicación+idioma+device nueva). Simplificación: una
+  // keyword del estudio que no esté en RankKeyword del proyecto suma.
+  const studies = await prisma.keywordStudy.findMany({
+    where: { projectId },
+    include: { keywords: { select: { keyword: true } } },
+  });
+  const studyKeywords = new Set<string>();
+  for (const s of studies) for (const k of s.keywords) studyKeywords.add(k.keyword);
+
+  const alreadyTracked = await prisma.rankKeyword.findMany({
+    where: { projectId },
+    select: { keyword: true },
+  });
+  const trackedSet = new Set(alreadyTracked.map((k) => k.keyword));
+
+  let keywordsToCheck = 0;
+  for (const kw of studyKeywords) if (!trackedSet.has(kw)) keywordsToCheck++;
+
+  // Competidores: se analizan todos (visibilidad + content gap) sin importar
+  // si ya tenían snapshot, para refrescar la tendencia.
+  const competitors = await prisma.competitor.count({ where: { projectId } });
+
+  const rankCost = keywordsToCheck * rankCheckCostUsd(DEFAULT_DEPTH);
+  const competitorCost = competitors * (competitorAnalysisCostUsd() + contentGapCostUsd());
+
+  return {
+    keywordsToCheck,
+    competitorsToAnalyze: competitors,
+    estimatedCostUsd: Math.round((rankCost + competitorCost) * 100) / 100,
+    missingDomain: !project.domain,
+  };
+}
+
+export async function bootstrapProjectAnalysis(projectId: string): Promise<BootstrapResult> {
+  const result: BootstrapResult = {
+    keywordsImported: 0,
+    keywordsChecked: 0,
+    tfidfGenerated: 0,
+    competitorsAnalyzed: 0,
+    contentGapsCalculated: 0,
+    errors: [],
+    spendLimitHit: false,
+  };
+
+  const project = await prisma.project.findUnique({ where: { id: projectId } });
+  if (!project) throw new Error("Proyecto no encontrado");
+  if (!project.domain) {
+    throw new Error(
+      "El proyecto no tiene dominio configurado. Añádelo en la ficha del proyecto antes de lanzar el análisis."
+    );
+  }
+
+  // ---- 1) Keywords: importar de estudios + chequeo + TF-IDF ----
+  const studies = await prisma.keywordStudy.findMany({
+    where: { projectId },
+    include: { keywords: true },
+  });
+
+  // Pre-carga lo ya seguido para dedupe sin N queries.
+  const alreadyTracked = await prisma.rankKeyword.findMany({
+    where: { projectId },
+    select: { keyword: true, locationCode: true, languageCode: true, device: true },
+  });
+  const trackedKey = (k: string, loc: number, lang: string, dev: string) =>
+    `${k}|${loc}|${lang}|${dev}`;
+  const trackedSet = new Set(alreadyTracked.map((r) => trackedKey(r.keyword, r.locationCode, r.languageCode, r.device)));
+
+  let spendHitKeywords = false;
+
+  for (const study of studies) {
+    if (spendHitKeywords) break;
+    const group = study.name.slice(0, 60) || "Bootstrap";
+    for (const k of study.keywords) {
+      const key = trackedKey(k.keyword, study.locationCode, study.languageCode, DEFAULT_DEVICE);
+      let rankKeywordId: string | null = null;
+
+      if (!trackedSet.has(key)) {
+        try {
+          const created = await prisma.rankKeyword.create({
+            data: {
+              projectId,
+              keyword: k.keyword,
+              locationCode: study.locationCode,
+              languageCode: study.languageCode,
+              device: DEFAULT_DEVICE,
+              frequency: DEFAULT_FREQUENCY,
+              depth: DEFAULT_DEPTH,
+              group,
+            },
+          });
+          rankKeywordId = created.id;
+          trackedSet.add(key);
+          result.keywordsImported++;
+        } catch (error) {
+          // P2002 = ya existe (race). Tratamos de localizarla para igualmente chequear.
+          if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+            const existing = await prisma.rankKeyword.findFirst({
+              where: {
+                projectId,
+                keyword: k.keyword,
+                locationCode: study.locationCode,
+                languageCode: study.languageCode,
+                device: DEFAULT_DEVICE,
+              },
+              select: { id: true },
+            });
+            rankKeywordId = existing?.id ?? null;
+          } else {
+            result.errors.push({
+              step: "keywords",
+              ref: k.keyword,
+              message: error instanceof Error ? error.message : "Error al importar la keyword",
+            });
+            continue;
+          }
+        }
+      } else {
+        // Ya seguida: localizamos para chequearla también (refresco).
+        const existing = await prisma.rankKeyword.findFirst({
+          where: {
+            projectId,
+            keyword: k.keyword,
+            locationCode: study.locationCode,
+            languageCode: study.languageCode,
+            device: DEFAULT_DEVICE,
+          },
+          select: { id: true },
+        });
+        rankKeywordId = existing?.id ?? null;
+      }
+
+      if (!rankKeywordId) continue;
+
+      // Chequeo síncrono (consume SERP API). Si el tope salta, marcamos y
+      // dejamos de procesar más keywords — pero seguimos con competidores
+      // (sus llamadas Labs son independientes y la misma limitad puede no
+      // haberse tocado todavía desde ese flujo). En la práctica, cuando el
+      // tope cae, todas las llamadas subsiguientes lo cumplen; por eso
+      // respetamos la señal también para competidores.
+      try {
+        const checked = await checkRankKeyword(rankKeywordId);
+        result.keywordsChecked++;
+        // TF-IDF reutiliza el SERP que ya pagó el chequeo → gratis si está en
+        // SerpCache. Se invoca explícitamente aquí (checkRankKeyword no lo
+        // dispara por sí solo; solo lo hace el route handler de /check).
+        try {
+          await autoRunTfidf({
+            projectId: checked.projectId,
+            keyword: checked.keyword,
+            locationCode: checked.locationCode,
+            languageCode: checked.languageCode,
+            device: checked.device,
+          });
+          result.tfidfGenerated++;
+        } catch (tfidfError) {
+          // TF-IDF es bonus: si falla no contagia al chequeo.
+          result.errors.push({
+            step: "tfidf",
+            ref: checked.keyword,
+            message: tfidfError instanceof Error ? tfidfError.message : "Error al calcular TF-IDF",
+          });
+        }
+      } catch (error) {
+        if (error instanceof DataForSeoSpendLimitError) {
+          result.spendLimitHit = true;
+          spendHitKeywords = true;
+          result.errors.push({
+            step: "keywords",
+            ref: k.keyword,
+            message: error.message,
+          });
+          break;
+        }
+        result.errors.push({
+          step: "keywords",
+          ref: k.keyword,
+          message:
+            error instanceof DataForSeoError
+              ? error.message
+              : error instanceof Error
+                ? error.message
+                : "Error al comprobar la posición",
+        });
+      }
+    }
+  }
+
+  // ---- 2) Competidores: visibilidad + content gap ----
+  const competitors = await prisma.competitor.findMany({ where: { projectId } });
+  const projectDomain = normalizeDomain(project.domain);
+
+  for (const c of competitors) {
+    if (result.spendLimitHit) break;
+
+    // Visibilidad + top keywords (2 llamadas Labs).
+    try {
+      await assertWithinSpendLimit(projectId);
+      const [overview, ranked] = await Promise.all([
+        fetchDomainOverview({ domain: c.domain, locationCode: 2724, languageCode: "es" }),
+        fetchRankedKeywords({
+          domain: c.domain,
+          locationCode: 2724,
+          languageCode: "es",
+          limit: COMPETITORS_ANALYZE_DEFAULT_LIMIT,
+        }),
+      ]);
+
+      await prisma.visibilitySnapshot.create({
+        data: {
+          projectId,
+          domain: c.domain,
+          organicTraffic: overview.organicTraffic,
+          organicKeywords: overview.organicKeywords,
+          topKeywords: ranked.items as unknown as Prisma.InputJsonValue,
+        },
+      });
+
+      for (const [endpoint, cost] of [
+        ["competidores.visibilidad", overview.costUsd],
+        ["competidores.ranked", ranked.costUsd],
+      ] as const) {
+        if (cost !== null) {
+          await prisma.apiUsageLog.create({
+            data: { projectId, api: "dataforseo", endpoint, model: null, costUsd: cost },
+          });
+        }
+      }
+      result.competitorsAnalyzed++;
+    } catch (error) {
+      if (error instanceof DataForSeoSpendLimitError) {
+        result.spendLimitHit = true;
+        result.errors.push({ step: "competitors", ref: c.domain, message: error.message });
+        break;
+      }
+      result.errors.push({
+        step: "competitors",
+        ref: c.domain,
+        message:
+          error instanceof DataForSeoError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : "Error al analizar el competidor",
+      });
+      continue; // con el content gap no seguimos si el análisis falló
+    }
+
+    // Content gap (1 llamada Labs).
+    try {
+      await assertWithinSpendLimit(projectId);
+      const { items, costUsd } = await fetchContentGap({
+        competitorDomain: c.domain,
+        projectDomain,
+        locationCode: 2724,
+        languageCode: "es",
+        limit: COMPETITORS_GAP_DEFAULT_LIMIT,
+      });
+      await prisma.competitor.update({
+        where: { id: c.id },
+        data: {
+          contentGap: items as unknown as Prisma.InputJsonValue,
+          contentGapAt: new Date(),
+        },
+      });
+      if (costUsd !== null) {
+        await prisma.apiUsageLog.create({
+          data: {
+            projectId,
+            api: "dataforseo",
+            endpoint: "competidores.contentgap",
+            model: null,
+            costUsd,
+          },
+        });
+      }
+      result.contentGapsCalculated++;
+    } catch (error) {
+      if (error instanceof DataForSeoSpendLimitError) {
+        result.spendLimitHit = true;
+        result.errors.push({ step: "contentgap", ref: c.domain, message: error.message });
+        break;
+      }
+      result.errors.push({
+        step: "contentgap",
+        ref: c.domain,
+        message:
+          error instanceof DataForSeoError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : "Error al calcular el content gap",
+      });
+    }
+  }
+
+  return result;
+}
