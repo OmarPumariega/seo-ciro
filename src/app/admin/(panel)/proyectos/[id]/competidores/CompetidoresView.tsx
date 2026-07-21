@@ -349,6 +349,13 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
                   <span>Keywords: <strong className="text-gray-700">{c.snapshot?.organicKeywords?.toLocaleString("es-ES") ?? "—"}</strong></span>
                   {c.snapshot && <span>· {new Date(c.snapshot.fetchedAt).toLocaleDateString("es-ES")}</span>}
                 </div>
+                {!c.snapshot && (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1 mt-2">
+                    Aún sin analizar. Pulsa <strong>Analizar</strong> a la derecha (cuesta{' '}
+                    {analyzeCost.toFixed(2)}$) o <strong>Lanzar / re-procesar análisis</strong> en la
+                    ficha del proyecto para procesar todos a la vez.
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-1.5">
                 <button

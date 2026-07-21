@@ -57,7 +57,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Estudio no encontrado" }, { status: 404 });
   }
 
-  const data: { name?: string; notes?: string | null } = {};
+  const data: { name?: string; notes?: string | null; locationCode?: number; languageCode?: string } = {};
   if (typeof body.name === "string") {
     const name = body.name.trim().slice(0, 120);
     if (name.length === 0) {
@@ -71,6 +71,19 @@ export async function PATCH(
   // notes puede enviarse como null para vaciar el campo desde la UI.
   if (body.notes === null) {
     data.notes = null;
+  }
+  // Ubicación e idioma: si el usuario se equivocó al crear el estudio (p.ej.
+  // no seleccionó Oviedo en el wizard), puede cambiarlo aquí y el siguiente
+  // "Lanzar / re-procesar análisis" propagará la nueva ubicación al Rank
+  // Tracking (reemplazando las keywords viejas sin histórico).
+  if (body.locationCode !== undefined) {
+    const raw = Number(body.locationCode);
+    data.locationCode = Number.isInteger(raw) && raw > 0 ? raw : 2724;
+  }
+  if (typeof body.languageCode === "string") {
+    if (/^[a-z]{2}$/i.test(body.languageCode)) {
+      data.languageCode = body.languageCode.toLowerCase();
+    }
   }
 
   if (Object.keys(data).length === 0) {

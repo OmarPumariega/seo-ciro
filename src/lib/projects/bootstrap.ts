@@ -51,6 +51,7 @@ export type BootstrapError = {
 
 export type BootstrapResult = {
   keywordsImported: number;
+  keywordsReplaced: number;
   keywordsChecked: number;
   tfidfGenerated: number;
   competitorsAnalyzed: number;
@@ -118,6 +119,7 @@ export async function estimateBootstrapCost(projectId: string): Promise<{
 export async function bootstrapProjectAnalysis(projectId: string): Promise<BootstrapResult> {
   const result: BootstrapResult = {
     keywordsImported: 0,
+    keywordsReplaced: 0,
     keywordsChecked: 0,
     tfidfGenerated: 0,
     competitorsAnalyzed: 0,
@@ -143,11 +145,50 @@ export async function bootstrapProjectAnalysis(projectId: string): Promise<Boots
   // Pre-carga lo ya seguido para dedupe sin N queries.
   const alreadyTracked = await prisma.rankKeyword.findMany({
     where: { projectId },
-    select: { keyword: true, locationCode: true, languageCode: true, device: true },
+    select: { id: true, keyword: true, locationCode: true, languageCode: true, device: true },
   });
   const trackedKey = (k: string, loc: number, lang: string, dev: string) =>
     `${k}|${loc}|${lang}|${dev}`;
-  const trackedSet = new Set(alreadyTracked.map((r) => trackedKey(r.keyword, r.locationCode, r.languageCode, r.device)));
+  const trackedSet = new Set(
+    alreadyTracked.map((r) => trackedKey(r.keyword, r.locationCode, r.languageCode, r.device))
+  );
+
+  // Limpieza de keywords "mal configuradas" de lanzamientos previos: si una
+  // keyword del estudio ya existe en RankKeyword pero con OTRA ubicación
+  // (p.ej. 2724 España nacional cuando el estudio ahora es Oviedo), la
+  // borramos y recreamos con la del estudio — SIEMPRE que no tenga histórico
+  // de posiciones. Esto arregla el caso típico: el usuario dio de alta el
+  // proyecto sin seleccionar Oviedo en el wizard, lanzó el análisis, vio
+  // "Nacional" en Rank Tracking, editó el estudio para poner Oviedo y
+  // relanzó — sin este paso, las keywords viejas seguirían con 2724 para
+  // siempre y la nueva ubicación nunca se aplicaría.
+  let keywordsReplaced = 0;
+  for (const study of studies) {
+    const studyKeywordSet = new Set(study.keywords.map((k) => k.keyword));
+    for (const rk of alreadyTracked) {
+      if (
+        rk.keyword &&
+        studyKeywordSet.has(rk.keyword) &&
+        (rk.locationCode !== study.locationCode ||
+          rk.languageCode !== study.languageCode ||
+          rk.device !== DEFAULT_DEVICE)
+      ) {
+        // Solo borramos si no hay histórico — nunca destruimos posiciones
+        // ya medidas, aunque estén con la ubicación vieja.
+        const positions = await prisma.rankPosition.count({ where: { rankKeywordId: rk.id } });
+        if (positions === 0) {
+          await prisma.rankKeyword.delete({ where: { id: rk.id } });
+          // Quita del trackedSet la entrada vieja para que el bloque de
+          // abajo la recree con la ubicación nueva.
+          trackedSet.delete(
+            trackedKey(rk.keyword, rk.locationCode, rk.languageCode, rk.device)
+          );
+          keywordsReplaced++;
+        }
+      }
+    }
+  }
+  result.keywordsReplaced = keywordsReplaced;
 
   let spendHitKeywords = false;
 

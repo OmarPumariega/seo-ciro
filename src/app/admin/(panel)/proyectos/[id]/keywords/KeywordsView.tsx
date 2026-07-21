@@ -17,6 +17,8 @@ import {
 import { cn } from "@/lib/utils";
 import { suggestionsCostUsd } from "@/lib/dataforseo/pricing";
 import { downloadCsv } from "@/lib/csv";
+import LocationPicker, { type LocationValue } from "@/components/admin/LocationPicker";
+import { resolveLocationName } from "@/lib/rank/locations";
 
 type Keyword = {
   id: string;
@@ -179,6 +181,7 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [editLocation, setEditLocation] = useState<LocationValue>(null);
   const [savingStudy, setSavingStudy] = useState(false);
   const [deletingStudy, setDeletingStudy] = useState(false);
 
@@ -230,6 +233,14 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
     if (!current) return;
     setEditName(current.name);
     setEditNotes(current.notes ?? "");
+    // Cargamos la ubicación actual del estudio en el picker. Como el estudio
+    // solo guarda el locationCode (no el nombre), lo resolvemos desde el
+    // mismo JSON estático que usa el LocationPicker.
+    setEditLocation(
+      current.locationCode && current.locationCode !== 2724
+        ? { code: current.locationCode, name: resolveLocationName(current.locationCode) ?? `Código ${current.locationCode}` }
+        : null
+    );
     setEditing(true);
   }
 
@@ -242,6 +253,7 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
       body: JSON.stringify({
         name: editName.trim() ? editName : current.name,
         notes: editNotes.trim() ? editNotes : null,
+        locationCode: editLocation?.code ?? 2724,
       }),
     });
     const data = await res.json();
@@ -457,6 +469,17 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
                 placeholder="Notas internas sobre este estudio (opcional)..."
                 className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
               />
+            </div>
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Ubicación de la búsqueda</label>
+              <div className="max-w-sm">
+                <LocationPicker value={editLocation} onChange={setEditLocation} />
+              </div>
+              <p className="text-xs text-gray-400">
+                Cambiarla aquí NO recalcula en bloque las keywords ya cacheadas, pero el siguiente
+                “Lanzar / re-procesar análisis” propagará la nueva ubicación al Rank Tracking
+                (reemplazando las keywords viejas sin histórico).
+              </p>
             </div>
             <div className="flex items-center gap-2">
               <button

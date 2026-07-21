@@ -19,6 +19,7 @@ type Estimate = {
 
 type Result = {
   keywordsImported: number;
+  keywordsReplaced?: number;
   keywordsChecked: number;
   tfidfGenerated: number;
   competitorsAnalyzed: number;
@@ -144,6 +145,7 @@ export default function BootstrapPanel({ projectId }: { projectId: string }) {
           </div>
           <ul className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-gray-600">
             <li>Keywords importadas: <strong className="text-gray-900">{result.keywordsImported}</strong></li>
+            <li>Keywords reemplazadas: <strong className="text-gray-900">{result.keywordsReplaced ?? 0}</strong></li>
             <li>Posiciones comprobadas: <strong className="text-gray-900">{result.keywordsChecked}</strong></li>
             <li>TF-IDF generados: <strong className="text-gray-900">{result.tfidfGenerated}</strong></li>
             <li>Competidores analizados: <strong className="text-gray-900">{result.competitorsAnalyzed}</strong></li>
