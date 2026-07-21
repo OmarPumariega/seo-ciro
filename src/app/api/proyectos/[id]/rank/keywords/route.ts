@@ -7,6 +7,7 @@ import { normalizeKeyword } from "@/lib/keywords/normalize";
 import { ALLOWED_DEPTHS } from "@/lib/rank/serp";
 import { checkRankKeyword } from "@/lib/rank/check";
 import { RANK_FREQUENCIES } from "@/lib/rank/constants";
+import { resolveLocationName } from "@/lib/rank/locations";
 
 const DEVICES = ["desktop", "mobile"] as const;
 
@@ -52,6 +53,12 @@ export async function GET(
   const withVolume = keywords.map((kw) => ({
     ...kw,
     searchVolume: volumeByKey.get(`${kw.keyword}|${kw.languageCode}|${kw.locationCode}`) ?? null,
+    // Si la BD tiene locationName=null (porque la keyword se creó antes del
+    // fix que lo resolvía desde el JSON estático), lo rellenamos al vuelo
+    // usando el locationCode existente. Así la UI muestra "Oviedo,..." en
+    // vez de "Nacional" sin necesidad de migrar las filas antiguas.
+    locationName:
+      kw.locationName ?? resolveLocationName(kw.locationCode),
   }));
 
   return NextResponse.json(withVolume);

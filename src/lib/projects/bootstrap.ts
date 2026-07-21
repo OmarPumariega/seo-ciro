@@ -255,9 +255,21 @@ export async function bootstrapProjectAnalysis(projectId: string): Promise<Boots
             languageCode: study.languageCode,
             device: DEFAULT_DEVICE,
           },
-          select: { id: true },
+          select: { id: true, lastPosition: true, lastCheckedAt: true },
         });
         rankKeywordId = existing?.id ?? null;
+        // Optimización: si la keyword ya tiene posición Y se chequeó hace
+        // menos de 1h, la saltamos (no tiene sentido volver a pagar una
+        // llamada SERP para el mismo dato). Si lastPosition es null (el
+        // chequeo anterior falló, p.ej. por 40101 antes del retry) o si hace
+        // más de 1h, la re-chequeamos para que el "Lanzar análisis" sea
+        // efectivo como acción de remedio.
+        if (existing && existing.lastPosition !== null && existing.lastCheckedAt) {
+          const oneHourAgo = Date.now() - 60 * 60 * 1000;
+          if (existing.lastCheckedAt.getTime() > oneHourAgo) {
+            continue;
+          }
+        }
       }
 
       if (!rankKeywordId) continue;
