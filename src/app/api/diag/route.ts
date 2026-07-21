@@ -66,7 +66,7 @@ export async function GET(_req: NextRequest) {
         keywordsByFrequency: freqs,
         keywordsByLocation: byLocation,
         keywordsNeverChecked: never,
-        keywordsWithPosition,
+        keywordsWithPosition: withPosition,
       };
     })
   );
