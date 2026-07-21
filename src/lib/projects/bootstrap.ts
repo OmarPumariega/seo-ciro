@@ -22,6 +22,7 @@ import {
   contentGapCostUsd,
   rankCheckCostUsd,
 } from "@/lib/dataforseo/pricing";
+import { resolveLocationName } from "@/lib/rank/locations";
 
 // Orquestador del "lanzamiento completo" de un proyecto. Vincula las piezas
 // que el wizard de alta creó por separado (estudio de keywords, competidores)
@@ -159,6 +160,11 @@ export async function bootstrapProjectAnalysis(projectId: string): Promise<Boots
 
       if (!trackedSet.has(key)) {
         try {
+          // Resolvemos el nombre legible de la ubicación (p.ej. "Oviedo,...")
+          // desde el JSON estático — sin esto, el RankKeyword se crearía con
+          // locationName=null y la UI mostraría "Nacional" aunque el
+          // locationCode sea correcto.
+          const locationName = resolveLocationName(study.locationCode);
           const created = await prisma.rankKeyword.create({
             data: {
               projectId,
@@ -169,6 +175,7 @@ export async function bootstrapProjectAnalysis(projectId: string): Promise<Boots
               frequency: DEFAULT_FREQUENCY,
               depth: DEFAULT_DEPTH,
               group,
+              locationName,
             },
           });
           rankKeywordId = created.id;
@@ -269,8 +276,16 @@ export async function bootstrapProjectAnalysis(projectId: string): Promise<Boots
   }
 
   // ---- 2) Competidores: visibilidad + content gap ----
+  // Usamos la ubicación e idioma del estudio con más keywords del proyecto
+  // (un proyecto puede tener varios estudios, cada uno con su ubicación —
+  // antes estaba hardcoded a España nacional 2724, lo que ignoraba por
+  // completo la ubicación elegida en el wizard y always analizaba a nivel
+  // país, aunque el cliente fuera un negocio local de Oviedo).
   const competitors = await prisma.competitor.findMany({ where: { projectId } });
   const projectDomain = normalizeDomain(project.domain);
+  const primaryStudy = studies.slice().sort((a, b) => b.keywords.length - a.keywords.length)[0];
+  const competitorLocationCode = primaryStudy?.locationCode ?? 2724;
+  const competitorLanguageCode = primaryStudy?.languageCode ?? "es";
 
   for (const c of competitors) {
     if (result.spendLimitHit) break;
@@ -279,11 +294,15 @@ export async function bootstrapProjectAnalysis(projectId: string): Promise<Boots
     try {
       await assertWithinSpendLimit(projectId);
       const [overview, ranked] = await Promise.all([
-        fetchDomainOverview({ domain: c.domain, locationCode: 2724, languageCode: "es" }),
+        fetchDomainOverview({
+          domain: c.domain,
+          locationCode: competitorLocationCode,
+          languageCode: competitorLanguageCode,
+        }),
         fetchRankedKeywords({
           domain: c.domain,
-          locationCode: 2724,
-          languageCode: "es",
+          locationCode: competitorLocationCode,
+          languageCode: competitorLanguageCode,
           limit: COMPETITORS_ANALYZE_DEFAULT_LIMIT,
         }),
       ]);
@@ -334,8 +353,8 @@ export async function bootstrapProjectAnalysis(projectId: string): Promise<Boots
       const { items, costUsd } = await fetchContentGap({
         competitorDomain: c.domain,
         projectDomain,
-        locationCode: 2724,
-        languageCode: "es",
+        locationCode: competitorLocationCode,
+        languageCode: competitorLanguageCode,
         limit: COMPETITORS_GAP_DEFAULT_LIMIT,
       });
       await prisma.competitor.update({

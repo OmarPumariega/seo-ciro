@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { NextRequest, NextResponse } from "next/server";
 import { ALLOWED_DEPTHS } from "@/lib/rank/serp";
 import { RANK_FREQUENCIES } from "@/lib/rank/constants";
+import { resolveLocationName } from "@/lib/rank/locations";
 
 const DEVICES = ["desktop", "mobile"] as const;
 
@@ -68,6 +69,10 @@ export async function POST(
 
   let created = 0;
   let skipped = 0;
+  // Resolvemos el nombre legible de la ubicación (p.ej. "Oviedo,Oviedo,...")
+  // desde el JSON estático para que la UI de Rank Tracking muestre la
+  // ubicación correcta en vez de "Nacional".
+  const locationName = resolveLocationName(study.locationCode);
   for (const k of study.keywords) {
     if (tracked.has(k.keyword)) {
       skipped++;
@@ -83,6 +88,7 @@ export async function POST(
         frequency,
         depth,
         group,
+        locationName,
       },
     });
     tracked.add(k.keyword);
