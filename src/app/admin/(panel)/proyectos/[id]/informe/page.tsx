@@ -4,6 +4,7 @@ import InformeBuilder, { type ReportData, type CategoryScores, type TopKeyword }
 import { Prisma } from "@prisma/client";
 import { computePageRank, type LinkNode } from "@/lib/links/pagerank";
 import { normalizeReportConfig } from "@/lib/informe/sections";
+import { loadGlobalReportConfig } from "@/lib/informe/global-config";
 import { getGoogleClient, GoogleNotConnectedError } from "@/lib/google/client";
 import { listCannibalizations } from "@/lib/google/search-console";
 import { normalizeDomain } from "@/lib/competitors/dataforseo";
@@ -327,7 +328,13 @@ export default async function InformePage({
     };
   }
 
-  const { sections: initialConfig, order: initialOrder } = normalizeReportConfig(project.reportConfig);
+  // Cascada: Project.reportConfig (override) → GlobalSetting.INFORME_DEFAULT_CONFIG
+  // (default para todos los proyectos) → DEFAULT_SECTIONS/DEFAULT_ORDER (hardcoded).
+  const globalBase = await loadGlobalReportConfig();
+  const { sections: initialConfig, order: initialOrder } = normalizeReportConfig(
+    project.reportConfig,
+    globalBase
+  );
 
   const data: ReportData = {
     project: { name: project.name, domain: project.domain, isLocalBusiness: project.isLocalBusiness },

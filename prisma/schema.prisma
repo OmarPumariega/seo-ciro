@@ -585,3 +585,20 @@ model AppSetting {
   value     String // cifrado, formato "iv:cipher" (ver src/lib/crypto.ts)
   updatedAt DateTime @updatedAt
 }
+
+// Configuración global (no sensible) en formato JSON. Vive aquí y no en
+// AppSetting porque esta última cifra el valor (pensada para secrets) y la
+// config del informe NO lo es — tratarla como password ensuciaba la UI
+// (input type=password) y el modelo conceptual. Hoy solo guarda
+// INFORME_DEFAULT_CONFIG { sections, order } pero futuro sidebar/prefs
+// globales pueden reutilizar la misma tabla.
+//
+// Resolución de la config del informe en cascada:
+//   Project.reportConfig (override explícito por proyecto)
+//     → GlobalSetting.INFORME_DEFAULT_CONFIG (default para todos los proyectos)
+//     → DEFAULT_SECTIONS/DEFAULT_ORDER hardcoded en src/lib/informe/sections.ts
+model GlobalSetting {
+  key       String   @id // "INFORME_DEFAULT_CONFIG", ...
+  value     Json // shape depende de la clave (ver doc en cada caller)
+  updatedAt DateTime @updatedAt
+}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Sparkles, XCircle, GitCompareArrows, Check, MapPin, Star, MousePointerClick } from "lucide-react";
+import { Loader2, Sparkles, XCircle, GitCompareArrows, Check, MapPin, Star, MousePointerClick, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { geogridCostUsd } from "@/lib/dataforseo/pricing";
 import GeogridMap from "@/components/admin/GeogridMap";
@@ -255,6 +255,35 @@ export default function GeogridView({
   async function loadDetail(runId: string) {
     const res = await fetch(`/api/proyectos/${projectId}/geogrid/${runId}`);
     if (res.ok) setCurrent(await res.json());
+  }
+
+  // Borra un geogrid del historial. Si era el current, sustituye por el
+  // siguiente disponible (o null si no quedan). El endpoint bloquea el
+  // borrado de runs pending/running (409) — aquí lo mostramos como error.
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  async function handleDelete(runId: string, keyword: string) {
+    if (!window.confirm(`¿Borrar el geogrid de «${keyword}»? No se puede deshacer.`)) return;
+    setDeletingId(runId);
+    setError("");
+    try {
+      const res = await fetch(`/api/proyectos/${projectId}/geogrid/${runId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error ?? "Error al borrar el geogrid");
+        return;
+      }
+      setHistory((prev) => {
+        const next = prev.filter((r) => r.id !== runId);
+        // Si era el current, saltamos al siguiente disponible (o null).
+        setCurrent((cur) => {
+          if (cur?.id !== runId) return cur;
+          return next[0] ?? null;
+        });
+        return next;
+      });
+    } finally {
+      setDeletingId(null);
+    }
   }
 
   function handleGbpApplied(c: GbpCandidate) {
@@ -622,6 +651,31 @@ export default function GeogridView({
                     <span className="text-[10px] text-amber-600 max-w-[120px] text-right">
                       Misma keyword y rejilla para comparar
                     </span>
+                  )}
+                  {!compareMode && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(run.id, run.keyword);
+                      }}
+                      disabled={
+                        deletingId === run.id ||
+                        run.status === "pending" ||
+                        run.status === "running"
+                      }
+                      className="p-1 text-gray-300 hover:text-red-600 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                      title={
+                        run.status === "pending" || run.status === "running"
+                          ? "No se puede borrar mientras se está procesando"
+                          : "Borrar geogrid"
+                      }
+                    >
+                      {deletingId === run.id ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
+                      )}
+                    </button>
                   )}
                 </div>
               );

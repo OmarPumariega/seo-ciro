@@ -1,6 +1,12 @@
 // Secciones del informe, compartidas entre la ruta de configuración, la página
 // del informe (server) y el builder (cliente). Única fuente de verdad para las
 // claves, el orden por defecto y las etiquetas visibles.
+//
+// IMPORTANTE: este archivo se importa desde CLIENT components (InformeBuilder).
+// No meter aquí imports de Prisma ni de @/lib/db/prisma —
+// arrastraría el cliente `pg` al bundle del navegador y rompería el build.
+// Las funciones que tocan BD viven en src/lib/informe/global-config.ts
+// (server-only).
 
 export type SectionKey =
   | "tasks"
@@ -67,14 +73,23 @@ export const DEFAULT_ORDER: SectionKey[] = [...SECTION_KEYS];
 
 // Normaliza la config guardada al shape actual { sections, order } con back-compat:
 // acepta el shape viejo (solo `sections` objeto de bool) y rellena claves nuevas.
+//
+// Si se pasa `base`, en vez de arrancar de DEFAULT_SECTIONS/DEFAULT_ORDER
+// arranca de esa config (típicamente la config global del informe leída de
+// GlobalSetting). Así la resolución en cascada es:
+//   Project.reportConfig (override)
+//     → GlobalSetting.INFORME_DEFAULT_CONFIG (global)
+//     → DEFAULT_SECTIONS/DEFAULT_ORDER (hardcoded)
+// El caller pasa `base = await loadGlobalReportConfig()` cuando quiere que el
+// default sea la global; sin `base` (o `base=null`) se usa el hardcoded.
 export type NormalizedConfig = {
   sections: ReportSections;
   order: SectionKey[];
 };
 
-export function normalizeReportConfig(raw: unknown): NormalizedConfig {
-  const sections: ReportSections = { ...DEFAULT_SECTIONS };
-  let order: SectionKey[] = [...DEFAULT_ORDER];
+export function normalizeReportConfig(raw: unknown, base?: NormalizedConfig | null): NormalizedConfig {
+  const sections: ReportSections = { ...(base?.sections ?? DEFAULT_SECTIONS) };
+  let order: SectionKey[] = [...(base?.order ?? DEFAULT_ORDER)];
 
   if (raw && typeof raw === "object") {
     const obj = raw as { sections?: unknown; order?: unknown };
@@ -98,3 +113,9 @@ export function normalizeReportConfig(raw: unknown): NormalizedConfig {
 
   return { sections, order };
 }
+
+// --- Carga/guardado de la config global (GlobalSetting) ---
+//
+// Viven en src/lib/informe/global-config.ts (server-only) porque importan
+// Prisma y @/lib/db/prisma — no pueden estar aquí porque este archivo se
+// importa desde InformeBuilder.tsx (client component).

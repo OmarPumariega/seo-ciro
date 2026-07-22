@@ -94,7 +94,7 @@ coste mínimo de terceros, ver `docs/01-vision-general.md`.
 ## Esquema de base de datos (Prisma)
 
 Ver [`docs/04-modelo-de-datos.md`](./docs/04-modelo-de-datos.md) para el detalle
-completo (22 modelos). Resumen: `User` (login agencia), `Project` (cliente/dominio, con
+completo (23 modelos). Resumen: `User` (login agencia), `Project` (cliente/dominio, con
 NAP, perfil de marca, propiedad de Google seleccionada y tope de gasto opcional),
 `TitleMetaGeneration` y `SchemaGeneration` (historial de los Módulos 3 y 4),
 `ApiUsageLog` (coste por llamada a OpenRouter/DataForSEO, base del control de gasto),
@@ -104,7 +104,9 @@ on-page/robots/sitemap), `KeywordStudy` + `Keyword` + `KeywordDataCache` (Módul
 `RankKeyword` + `RankPosition` (Módulo 5), `GeogridRun` (Módulo 9), `TodoItem` (manual
 + auto-generado desde auditoría), `NotificationLog` (dedupe de avisos por email),
 `CopilotThread`, `SerpCache` (compartida entre Rank Tracking y TF-IDF), `Competitor` +
-`VisibilitySnapshot` (módulo Competidores).
+`VisibilitySnapshot` (módulo Competidores), `AppSetting` (secrets cifrados,
+cascada BD→.env) y `GlobalSetting` (config JSON no sensible — p.ej. el default del
+informe para todos los proyectos).
 
 ## Estructura de carpetas
 
@@ -142,7 +144,7 @@ devuelve la API y se registra en `ApiUsageLog`.
 
 ### Configuración (`/admin/configuracion`)
 Único ítem realmente global (no de proyecto) del sidebar aparte de Panel general y
-Proyectos. Dos bloques:
+Proyectos. Tres bloques:
 
 - **Claves de API** (`src/lib/settings.ts`, modelo `AppSetting`): las claves de
   DataForSEO, OpenRouter, PageSpeed Insights, **Google OAuth (Client ID/Secret/
@@ -156,6 +158,15 @@ Proyectos. Dos bloques:
   guardar). `DATABASE_URL`, `NEXTAUTH_SECRET` y `ENCRYPTION_KEY` quedan fuera a
   propósito — son necesarias para arrancar la app o abrir la propia base de
   datos, no pueden vivir dentro de ella.
+- **Informe — configuración por defecto** (`src/components/admin/InformeGlobalConfigCard.tsx`,
+  modelo `GlobalSetting`): define qué secciones del informe (tasks, audit, rank,
+  keywords, …) están activadas y en qué orden para TODOS los proyectos por defecto.
+  Persiste en `GlobalSetting["INFORME_DEFAULT_CONFIG"]` como JSON sin cifrar (no es
+  sensible). La cascada de resolución al abrir el informe de un proyecto es:
+  `Project.reportConfig` (override explícito del proyecto) → `GlobalSetting.INFORME_DEFAULT_CONFIG`
+  (global) → `DEFAULT_SECTIONS`/`DEFAULT_ORDER` hardcoded en `src/lib/informe/sections.ts`.
+  Cada proyecto puede tener su propio override desde su InformeBuilder; el botón
+  "Restablecer al default global" borra ese override (`DELETE /api/proyectos/[id]/informe/config`).
 - **Conexión con Google** (Módulo 6): OAuth2 de la agencia. Conectar/desconectar, ver
   email y scopes concedidos. La *selección de propiedad* por proyecto vive en la
   ficha de cada proyecto, no aquí — la conexión es una, las propiedades son por
@@ -264,7 +275,9 @@ Google, Contenido, TF-IDF, Auditoría, Enlaces, Canibalizaciones, Competidores, 
   Maps SERP en cada punto con coordenada exacta, localiza la posición del negocio
   (match por place_id/nombre/dominio) → mapa de calor verde/amarillo/rojo, con
   histórico y comparación lado a lado entre dos runs de la misma keyword. Tope de
-  gasto aplicado al inicio de cada run.
+  gasto aplicado al inicio de cada run. Cada run del histórico se puede borrar
+  (icono papelera); el borrado se bloquea si está pending/running para no
+  machacar el job en curso (`DELETE /api/proyectos/[id]/geogrid/[runId]`).
 - **Informe**: vista HTML de solo lectura con auditoría, rank tracking, keywords,
   geogrid (si aplica) y gasto del mes, con hoja de estilos de impresión —
   "Guardar como PDF" es el propio diálogo de impresión del navegador, no hay

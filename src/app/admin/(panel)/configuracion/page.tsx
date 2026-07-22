@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import GoogleConnectionCard from "@/components/admin/GoogleConnectionCard";
 import ApiSettingsCard from "@/components/admin/ApiSettingsCard";
+import InformeGlobalConfigCard from "@/components/admin/InformeGlobalConfigCard";
 
 const ERROR_MESSAGES: Record<string, string> = {
   cancelado: "Has cancelado la conexión con Google.",
@@ -36,6 +37,8 @@ export default async function ConfiguracionPage({
       </div>
 
       <ApiSettingsCard />
+
+      <InformeGlobalConfigCard />
 
       <GoogleConnectionCard
         connection={connection}

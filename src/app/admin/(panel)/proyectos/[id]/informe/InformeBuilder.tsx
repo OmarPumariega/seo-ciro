@@ -171,6 +171,24 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
     }
   }
 
+  // Borra el override del proyecto (reportConfig = null) y recarga la página
+  // para que la cascada caiga al default global. Solo lo mostramos si el
+  // proyecto tiene override (siempre lo tiene si guardó alguna vez).
+  const [resetting, setResetting] = useState(false);
+  async function reset() {
+    if (!window.confirm("¿Restablecer este informe al default global? Se pierde la configuración específica de este proyecto.")) return;
+    setResetting(true);
+    try {
+      const res = await fetch(`/api/proyectos/${projectId}/informe/config`, { method: "DELETE" });
+      if (res.ok) {
+        // Recarga para que el server vuelva a renderizar con la cascada nueva.
+        window.location.reload();
+      }
+    } finally {
+      setResetting(false);
+    }
+  }
+
   // --- Render de cada sección como función, despachada por orden ---
   const renderTasks = () => (
     <section className="space-y-4">
@@ -771,6 +789,15 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
               </li>
             ))}
           </ul>
+          <button
+            type="button"
+            onClick={reset}
+            disabled={resetting || saving}
+            className="mt-3 w-full text-xs text-gray-500 hover:text-gray-900 disabled:opacity-50"
+            title="Borra el override de este proyecto y cae al default configurado en Configuración → Informe"
+          >
+            {resetting ? "Restableciendo…" : "Restablecer al default global"}
+          </button>
         </div>
       </aside>
 
