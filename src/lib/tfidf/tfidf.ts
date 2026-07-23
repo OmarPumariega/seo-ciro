@@ -32,6 +32,20 @@ export type TfidfResult = {
   headingsByPage: HeadingByPage[]; // encabezados completos por página
   headingTerms: HeadingTerm[]; // palabras más frecuentes en los encabezados
   sources: string[]; // URLs que se pudieron scrapear (corpus real usado)
+  // Top-10 orgánico tal cual lo devuelve Google para la keyword: posición,
+  // título, URL y snippet (description). Es el "cómo está posicionando la
+  // competencia hoy" — ejemplo de copy accionable sin coste extra, porque
+  // estos datos ya llegaban en el SERP que paga el rank tracking / TF-IDF.
+  competitors: CompetitorSerp[];
+};
+
+// Una entrada del SERP del top-10 tal cual la ve Google. El snippet
+// (description) es el dato de copy más reutilizable de todo el módulo.
+export type CompetitorSerp = {
+  url: string;
+  title: string;
+  position: number | null;
+  description: string | null;
 };
 
 export type TopicGap = {
@@ -77,6 +91,19 @@ function ngrams(tokens: string[]): string[] {
 }
 
 export async function computeTfidf(top: SerpTopResult[]): Promise<TfidfResult> {
+  // Top-10 tal cual lo devuelve Google: lo pasamos al resultado para que la UI
+  // muestre "cómo posiciona la competencia" (título + snippet) sin coste
+  // extra. Ordenamos por posición (rank_absolute) cuando exista; si no,
+  // respetamos el orden del SERP que ya viene ordenado por relevancia.
+  const competitors: CompetitorSerp[] = top
+    .map((r) => ({
+      url: r.url,
+      title: r.title,
+      position: r.position ?? null,
+      description: r.description ?? null,
+    }))
+    .sort((a, b) => (a.position ?? 99) - (b.position ?? 99));
+
   // --- Fase 1: scraping del corpus (tolerante a fallos por página) ---
   const sources: string[] = [];
   const docs: Map<string, number>[] = []; // tf por documento: term → count
@@ -182,5 +209,5 @@ export async function computeTfidf(top: SerpTopResult[]): Promise<TfidfResult> {
     .sort((a, b) => b.count - a.count)
     .slice(0, 30);
 
-  return { terms, topics, headingsByPage, headingTerms, sources };
+  return { terms, topics, headingsByPage, headingTerms, sources, competitors };
 }

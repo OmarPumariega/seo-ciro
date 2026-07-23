@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Loader2, Search, ChevronDown, ChevronUp, FileSearch,
-  CheckCircle2, XCircle, ClipboardCopy, Check, Clock, List,
+  CheckCircle2, XCircle, ClipboardCopy, Check, Clock, List, ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LocationPicker, { type LocationValue } from "@/components/admin/LocationPicker";
@@ -13,6 +13,15 @@ type TfidfTerm = { term: string; tfidf: number; docs: number };
 type TopicGap = { text: string; coverage: number; urls: string[] };
 type HeadingByPage = { url: string; headings: string[] };
 type HeadingTerm = { term: string; count: number };
+// Top-10 orgánico tal cual lo devuelve Google para la keyword. El snippet
+// (description) es "cómo está posicionando la competencia hoy" — ejemplo de
+// copy accionable que llega gratis con el SERP que ya pagamos.
+type CompetitorSerp = {
+  url: string;
+  title: string;
+  position: number | null;
+  description: string | null;
+};
 
 type FullResult = {
   terms: TfidfTerm[];
@@ -20,6 +29,7 @@ type FullResult = {
   headingsByPage: HeadingByPage[];
   headingTerms: HeadingTerm[];
   sources: string[];
+  competitors?: CompetitorSerp[];
   costUsd?: number | null;
 };
 
@@ -205,6 +215,54 @@ export default function TfidfView({ projectId }: { projectId: string }) {
       {/* Resultados */}
       {result && (
         <div className="space-y-4">
+          {/* Cómo lo muestran los competidores en Google (top-10 con snippet).
+              El snippet es el dato de copy más accionable: cómo vende Google a
+              quienes ya posicionan. Llega gratis con el SERP que paga el
+              rank tracking / este análisis. */}
+          {result.competitors && result.competitors.length > 0 && (
+            <div className="bg-white rounded-xl border border-gray-100 p-5">
+              <div className="flex items-center gap-2 mb-1">
+                <Search className="h-4 w-4 text-gray-400" />
+                <h3 className="text-sm font-semibold text-gray-900">
+                  Cómo lo muestran tus competidores en Google (top-10)
+                </h3>
+              </div>
+              <p className="text-xs text-gray-400 mb-4">
+                El título y el snippet con el que Google muestra a cada resultado — tu mejor referencia de copy para titulo/meta.
+              </p>
+              <ol className="space-y-2">
+                {result.competitors.map((c, i) => (
+                  <li key={i} className="flex gap-2.5">
+                    <span className="shrink-0 mt-0.5 h-5 w-5 rounded bg-gray-100 text-gray-500 text-[11px] font-semibold inline-flex items-center justify-center tabular-nums">
+                      {c.position ?? i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <a
+                        href={c.url} target="_blank" rel="noopener noreferrer"
+                        className="text-sm text-indigo-700 hover:underline font-medium inline-flex items-start gap-1"
+                      >
+                        <span className="truncate">{c.title || c.url}</span>
+                        <ExternalLink className="h-3 w-3 shrink-0 mt-1 text-gray-400" />
+                      </a>
+                      {c.description && (
+                        <p className="text-xs text-gray-600 leading-relaxed mt-0.5">{c.description}</p>
+                      )}
+                      <p className="text-[11px] text-gray-400 truncate mt-0.5">
+                        {(() => {
+                          try {
+                            return new URL(c.url).hostname.replace(/^www\./, "");
+                          } catch {
+                            return c.url;
+                          }
+                        })()}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
           {/* Temas del top-10 (H2/H3 con cobertura) */}
           {result.topics.length > 0 && (
             <div className="bg-white rounded-xl border border-gray-100 p-5">

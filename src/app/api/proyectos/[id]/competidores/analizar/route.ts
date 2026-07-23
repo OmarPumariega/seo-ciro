@@ -65,6 +65,8 @@ export async function POST(
         domain,
         organicTraffic: overview.organicTraffic,
         organicKeywords: overview.organicKeywords,
+        positionBuckets: overview.positionBuckets ?? undefined,
+        avgPosition: overview.avgPosition ?? undefined,
         topKeywords: ranked.items as unknown as Prisma.InputJsonValue,
       },
     });

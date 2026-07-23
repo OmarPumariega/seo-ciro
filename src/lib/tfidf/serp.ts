@@ -1,5 +1,5 @@
 import { postTask, DataForSeoError } from "@/lib/dataforseo/client";
-import { getCachedSerp, saveSerpCache } from "@/lib/dataforseo/serp-cache";
+import { getCachedSerp, saveSerpCache, type CachedSerpItem } from "@/lib/dataforseo/serp-cache";
 
 // Obtiene las top URLs orgánicas de Google para una keyword, vía el mismo
 // endpoint Live Advanced que usa el Módulo 5 (rank tracking). Aquí no buscamos
@@ -14,6 +14,12 @@ import { getCachedSerp, saveSerpCache } from "@/lib/dataforseo/serp-cache";
 export type SerpTopResult = {
   url: string;
   title: string;
+  // Posición absoluta en el SERP y snippet con el que Google muestra la
+  // página. Ambos llegan gratis en el mismo item orgánico que ya pagamos;
+  // antes se tiraban. Se propagan al TF-IDF para mostrar "cómo vende Google
+  // al competidor" como ejemplo de copy accionable.
+  position?: number;
+  description?: string;
 };
 
 export type SerpTopOutcome = {
@@ -26,6 +32,8 @@ type OrganicItem = {
   url?: string;
   title?: string;
   domain?: string;
+  description?: string;
+  rank_absolute?: number;
 };
 
 export async function fetchTopOrganic(params: {
@@ -41,7 +49,7 @@ export async function fetchTopOrganic(params: {
   const cached = await getCachedSerp({ keyword, locationCode, languageCode, device });
   if (cached && cached.length > 0) {
     return {
-      results: cached.map((c) => ({ url: c.url, title: c.title })),
+      results: cached.map((c) => ({ url: c.url, title: c.title, position: c.position, description: c.description })),
       costUsd: null, // gratis — reutilizado del rank tracking
     };
   }
@@ -58,15 +66,23 @@ export async function fetchTopOrganic(params: {
   const items = Array.isArray(resultObj.items) ? (resultObj.items as Array<Record<string, unknown>>) : [];
 
   const results: SerpTopResult[] = [];
-  const forCache: { url: string; title: string; domain: string }[] = [];
+  const forCache: CachedSerpItem[] = [];
   for (const raw of items) {
     const item = raw as OrganicItem;
     if (item.type !== "organic") continue;
     const url = typeof item.url === "string" ? item.url : "";
     const title = typeof item.title === "string" ? item.title : "";
     if (!url) continue;
-    results.push({ url, title });
-    forCache.push({ url, title, domain: typeof item.domain === "string" ? item.domain : "" });
+    const position = typeof item.rank_absolute === "number" ? item.rank_absolute : undefined;
+    const description = typeof item.description === "string" ? item.description : undefined;
+    results.push({ url, title, position, description });
+    forCache.push({
+      url,
+      title,
+      domain: typeof item.domain === "string" ? item.domain : "",
+      position,
+      description,
+    });
     if (forCache.length >= 10) break;
   }
 

@@ -1,7 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Loader2, Sparkles, Plus, Trash2, Target, TrendingUp, AlertTriangle } from "lucide-react";
+import { Fragment, useEffect, useState } from "react";
+import {
+  Loader2, Sparkles, Plus, Trash2, Target, TrendingUp, AlertTriangle,
+  ExternalLink, ChevronDown, ChevronUp,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConfirmDialog from "@/components/admin/ConfirmDialog";
 import LocationPicker, { type LocationValue } from "@/components/admin/LocationPicker";
@@ -10,13 +13,33 @@ import {
   contentGapCostUsd,
 } from "@/lib/dataforseo/pricing";
 
-type TopKeyword = { keyword: string; position: number | null; volume: number | null };
+// Item enriquecido de keyword (visibilidad o content gap). Todos los campos
+// extra llegan GRATIS en la misma respuesta Labs que ya pagábamos — antes se
+// descartaban. CPC y dificultad sirven para priorizar; la URL y el snippet
+// (description) son "cómo posiciona el competidor", el ejemplo de copy más
+// accionable de todo el módulo.
+type TopKeyword = {
+  keyword: string;
+  position: number | null;
+  volume: number | null;
+  competition: string | null; // HIGH | MEDIUM | LOW
+  competitionIndex: number | null; // 0-100
+  cpc: number | null;
+  monthlySearches: number[] | null;
+  title: string | null;
+  url: string | null;
+  description: string | null;
+};
+
+type PositionBuckets = { top3: number; top10: number; top100: number };
 
 type Snapshot = {
   id: string;
   domain: string;
   organicTraffic: number | null;
   organicKeywords: number | null;
+  positionBuckets: PositionBuckets | null;
+  avgPosition: number | null;
   topKeywords: TopKeyword[] | null;
   fetchedAt: string;
 } | null;
@@ -45,6 +68,30 @@ function fmtTraffic(v: number | null): string {
   return v.toFixed(0);
 }
 
+function fmtCpc(v: number | null): string {
+  if (v === null) return "—";
+  return `${v.toFixed(2)}$`;
+}
+
+// Dificultad unificada: prioriza la etiqueta HIGH/MEDIUM/LOW (más legible) y
+// recurre al índice 0-100 si la etiqueta no viene. Devuelve {label, color}
+// para pintar un chip consistente.
+function difficulty(
+  competition: string | null,
+  index: number | null
+): { label: string; cls: string } {
+  if (competition === "HIGH" || (competition === null && index !== null && index >= 67)) {
+    return { label: "Alta", cls: "bg-red-50 text-red-700" };
+  }
+  if (competition === "LOW" || (competition === null && index !== null && index < 34)) {
+    return { label: "Baja", cls: "bg-emerald-50 text-emerald-700" };
+  }
+  if (competition === "MEDIUM" || index !== null) {
+    return { label: "Media", cls: "bg-amber-50 text-amber-700" };
+  }
+  return { label: "?", cls: "bg-gray-100 text-gray-400" };
+}
+
 function TrafficSparkline({ points }: { points: number[] }) {
   if (points.length < 2) return null;
   const W = 200;
@@ -62,18 +109,97 @@ function TrafficSparkline({ points }: { points: number[] }) {
   );
 }
 
-// Buscador client-side + lista con scroll acotado — los datos ya están todos en
-// memoria tras "Analizar"/"Gap" (hasta 1000 filas), así que filtrar no gasta nada.
+// Distribución de fuerza del dominio: cuántas keywords en top-3, top-10 (4-10)
+// y top-100. Barra apilada con tres segmentos. Es la señal más útil para
+// comparar dominios de un vistazo y ya venía gratis en domain_rank_overview.
+function PositionDistribution({ buckets }: { buckets: PositionBuckets | null }) {
+  if (!buckets) return null;
+  const total = buckets.top3 + buckets.top10 + buckets.top100;
+  if (total === 0) return null;
+  const pct = (n: number) => (n / total) * 100;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-gray-100">
+        {buckets.top3 > 0 && (
+          <div className="bg-emerald-500" style={{ width: `${pct(buckets.top3)}%` }} title={`Top 3: ${buckets.top3}`} />
+        )}
+        {buckets.top10 > 0 && (
+          <div className="bg-emerald-300" style={{ width: `${pct(buckets.top10)}%` }} title={`Top 4-10: ${buckets.top10}`} />
+        )}
+        {buckets.top100 > 0 && (
+          <div className="bg-gray-300" style={{ width: `${pct(buckets.top100)}%` }} title={`Top 11-100: ${buckets.top100}`} />
+        )}
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-500">
+        <span className="inline-flex items-center gap-1">
+          <span className="h-2 w-2 rounded-sm bg-emerald-500" /> Top 3 · <strong className="text-gray-700">{buckets.top3}</strong>
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="h-2 w-2 rounded-sm bg-emerald-300" /> Top 4-10 · <strong className="text-gray-700">{buckets.top10}</strong>
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="h-2 w-2 rounded-sm bg-gray-300" /> Top 11-100 · <strong className="text-gray-700">{buckets.top100}</strong>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// Vista de visibilidad de un dominio (KPIs + distribución + tendencia).
+function VisibilityKpis({ snapshot, trend }: { snapshot: Snapshot; trend?: number[] }) {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div>
+        <div className="text-2xl font-semibold text-gray-900">{fmtTraffic(snapshot?.organicTraffic ?? null)}</div>
+        <div className="text-sm text-gray-500">Tráfico orgánico (est. mensual)</div>
+      </div>
+      <div>
+        <div className="text-2xl font-semibold text-gray-900">{snapshot?.organicKeywords?.toLocaleString("es-ES") ?? "—"}</div>
+        <div className="text-sm text-gray-500">Keywords orgánicas</div>
+      </div>
+      {snapshot?.positionBuckets ? (
+        <div className="space-y-1">
+          <div className="text-sm text-gray-500">Fuerza del dominio</div>
+          <PositionDistribution buckets={snapshot.positionBuckets} />
+          {snapshot.avgPosition !== null && (
+            <p className="text-[11px] text-gray-400">Posición media: {snapshot.avgPosition.toFixed(1)}</p>
+          )}
+        </div>
+      ) : trend && trend.length >= 2 ? (
+        <div className="flex flex-col items-start">
+          <TrafficSparkline points={trend} />
+          <span className="text-[11px] text-gray-400 flex items-center gap-0.5">
+            <TrendingUp className="h-3 w-3" /> {trend.length} análisis
+          </span>
+        </div>
+      ) : (
+        <div className="flex items-center text-xs text-gray-400">Sin tendencia todavía</div>
+      )}
+    </div>
+  );
+}
+
+// Chips compactos para las top keywords de un dominio (propio o competidor):
+// keyword · volumen · #posición, más badge de dificultad cuando se conoce.
 function KeywordChips({ keywords, colorClass }: { keywords: TopKeyword[]; colorClass: string }) {
   return (
     <div className="max-h-64 overflow-y-auto flex flex-wrap content-start gap-1.5">
-      {keywords.map((k, i) => (
-        <span key={i} className={cn("inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded", colorClass)}>
-          {k.keyword}
-          {k.volume !== null && <span className="opacity-70">· {k.volume.toLocaleString("es-ES")}</span>}
-          {k.position !== null && <span className="opacity-70">· #{k.position}</span>}
-        </span>
-      ))}
+      {keywords.map((k, i) => {
+        const dif = difficulty(k.competition, k.competitionIndex);
+        return (
+          <span key={i} className={cn("inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded", colorClass)}>
+            {k.keyword}
+            {k.volume !== null && <span className="opacity-70">· {k.volume.toLocaleString("es-ES")}</span>}
+            {k.position !== null && <span className="opacity-70">· #{k.position}</span>}
+            {k.cpc !== null && <span className="opacity-70">· {fmtCpc(k.cpc)}</span>}
+            {(k.competition || k.competitionIndex !== null) && (
+              <span className={cn("px-1 rounded font-medium", dif.cls)} title={`Dificultad ${dif.label}`}>
+                {dif.label}
+              </span>
+            )}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -88,13 +214,9 @@ function TopKeywords({ keywords, title }: { keywords: TopKeyword[] | null; title
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <p className="text-xs text-gray-500">
-          {title} ({keywords.length})
-        </p>
+        <p className="text-xs text-gray-500">{title} ({keywords.length})</p>
         <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          type="text" value={search} onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar keyword..."
           className="px-2 py-1 border border-gray-200 rounded text-[11px] outline-none focus:border-gray-400 w-36"
         />
@@ -108,8 +230,13 @@ function TopKeywords({ keywords, title }: { keywords: TopKeyword[] | null; title
   );
 }
 
+// Content gap como TABLA rica: cada fila es accionable — volumen, CPC y
+// dificultad para priorizar, y al expandir, el snippet + título + URL con la
+// que el competidor posiciona esa keyword (ejemplo de copy). Antes solo se veían
+// 3 campos de los 10 que ya pagábamos.
 function ContentGapList({ items, contentGapAt }: { items: TopKeyword[]; contentGapAt: string | null }) {
   const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = useState<string | null>(null);
   const q = search.trim().toLowerCase();
   const filtered = q ? items.filter((k) => k.keyword.toLowerCase().includes(q)) : items;
   return (
@@ -120,9 +247,7 @@ function ContentGapList({ items, contentGapAt }: { items: TopKeyword[]; contentG
           {contentGapAt ? ` · ${new Date(contentGapAt).toLocaleDateString("es-ES")}` : ""}
         </p>
         <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          type="text" value={search} onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar keyword..."
           className="px-2 py-1 border border-gray-200 rounded text-[11px] outline-none focus:border-gray-400 w-36"
         />
@@ -130,7 +255,74 @@ function ContentGapList({ items, contentGapAt }: { items: TopKeyword[]; contentG
       {filtered.length === 0 ? (
         <p className="text-xs text-gray-400">Sin resultados para &laquo;{search}&raquo;.</p>
       ) : (
-        <KeywordChips keywords={filtered} colorClass="bg-emerald-50 text-emerald-700" />
+        <div className="max-h-80 overflow-y-auto border border-gray-100 rounded-lg">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-gray-50 text-left text-gray-400">
+              <tr>
+                <th className="py-1.5 pl-2 pr-2 font-medium">Keyword</th>
+                <th className="py-1.5 px-2 font-medium text-right">Vol.</th>
+                <th className="py-1.5 px-2 font-medium text-right">CPC</th>
+                <th className="py-1.5 px-2 font-medium text-right">Dif.</th>
+                <th className="py-1.5 px-2 font-medium text-right">#</th>
+                <th className="py-1.5 pr-2 pl-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((k, i) => {
+                const dif = difficulty(k.competition, k.competitionIndex);
+                const isOpen = expanded === `${i}-${k.keyword}`;
+                const hasDetail = Boolean(k.description || k.title || k.url);
+                return (
+                  <Fragment key={i}>
+                    <tr className="border-t border-gray-50 hover:bg-gray-50/60">
+                      <td className="py-1.5 pl-2 pr-2 text-gray-900 font-medium">{k.keyword}</td>
+                      <td className="py-1.5 px-2 text-right text-gray-600 tabular-nums">
+                        {k.volume !== null ? k.volume.toLocaleString("es-ES") : "—"}
+                      </td>
+                      <td className="py-1.5 px-2 text-right text-gray-600 tabular-nums">{fmtCpc(k.cpc)}</td>
+                      <td className="py-1.5 px-2 text-right">
+                        <span className={cn("inline-block px-1.5 py-0.5 rounded font-medium", dif.cls)}>{dif.label}</span>
+                      </td>
+                      <td className="py-1.5 px-2 text-right text-gray-600 tabular-nums">
+                        {k.position !== null ? `#${k.position}` : "—"}
+                      </td>
+                      <td className="py-1.5 pr-2 pl-2 text-right">
+                        {hasDetail && (
+                          <button
+                            onClick={() => setExpanded(isOpen ? null : `${i}-${k.keyword}`)}
+                            className="text-gray-400 hover:text-gray-700"
+                            title="Ver cómo lo posiciona el competidor"
+                          >
+                            {isOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                    {isOpen && hasDetail && (
+                      <tr className="border-t border-gray-50 bg-emerald-50/40">
+                        <td colSpan={6} className="px-3 py-2 space-y-1">
+                          {k.title && <p className="text-xs font-medium text-gray-800">{k.title}</p>}
+                          {k.description && (
+                            <p className="text-xs text-gray-600 leading-relaxed">{k.description}</p>
+                          )}
+                          {k.url && (
+                            <a
+                              href={k.url} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:underline"
+                            >
+                              <span className="truncate max-w-md">{k.url}</span>
+                              <ExternalLink className="h-3 w-3 shrink-0" />
+                            </a>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
@@ -242,7 +434,8 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
         <h2 className="text-lg font-semibold text-gray-900">Competidores</h2>
         <p className="text-sm text-gray-500 mt-1">
           Espía el tráfico orgánico estimado y las keywords de cualquier dominio (DataForSEO Labs), y
-          descubre el content gap: keywords por las que ranquean y tú no.
+          descubre el content gap: keywords por las que ranquean y tú no, con CPC, dificultad y el
+          snippet con el que posicionan.
         </p>
       </div>
 
@@ -290,28 +483,7 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
             <AlertTriangle className="h-4 w-4" /> Define el dominio del proyecto en su ficha para analizar su visibilidad.
           </p>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <div className="text-2xl font-semibold text-gray-900">{fmtTraffic(data?.projectSnapshot?.organicTraffic ?? null)}</div>
-              <div className="text-sm text-gray-500">Tráfico orgánico (est. mensual)</div>
-            </div>
-            <div>
-              <div className="text-2xl font-semibold text-gray-900">{data?.projectSnapshot?.organicKeywords?.toLocaleString("es-ES") ?? "—"}</div>
-              <div className="text-sm text-gray-500">Keywords orgánicas</div>
-            </div>
-            <div className="flex flex-col items-start">
-              {trend.length >= 2 ? (
-                <>
-                  <TrafficSparkline points={trend} />
-                  <span className="text-[11px] text-gray-400 flex items-center gap-0.5">
-                    <TrendingUp className="h-3 w-3" /> {trend.length} análisis
-                  </span>
-                </>
-              ) : (
-                <span className="text-xs text-gray-400">Tendencia al acumular análisis</span>
-              )}
-            </div>
-          </div>
+          <VisibilityKpis snapshot={data?.projectSnapshot ?? null} trend={trend} />
         )}
         {data?.projectSnapshot && (
           <TopKeywords keywords={data.projectSnapshot.topKeywords} title="Tus top keywords" />
@@ -341,10 +513,10 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
         {data?.competitors.length === 0 && <p className="text-sm text-gray-500">Aún no hay competidores. Añade uno para espiar su visibilidad.</p>}
         {data?.competitors.map((c) => (
           <div key={c.id} className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-gray-900">{c.domain}</p>
-                <div className="flex gap-4 mt-1 text-xs text-gray-500">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-gray-900 truncate">{c.domain}</p>
+                <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1 text-xs text-gray-500">
                   <span>Tráfico: <strong className="text-gray-700">{fmtTraffic(c.snapshot?.organicTraffic ?? null)}</strong></span>
                   <span>Keywords: <strong className="text-gray-700">{c.snapshot?.organicKeywords?.toLocaleString("es-ES") ?? "—"}</strong></span>
                   {c.snapshot && <span>· {new Date(c.snapshot.fetchedAt).toLocaleDateString("es-ES")}</span>}
@@ -357,7 +529,7 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
                   </p>
                 )}
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   onClick={() => handleAnalyze(c.domain)}
                   disabled={analyzingDomain === c.domain}
@@ -381,6 +553,7 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
                 </button>
               </div>
             </div>
+            {c.snapshot && <VisibilityKpis snapshot={c.snapshot} />}
             {c.snapshot?.topKeywords && <TopKeywords keywords={c.snapshot.topKeywords} title="Sus top keywords" />}
             {c.contentGap && c.contentGap.length > 0 && (
               <ContentGapList items={c.contentGap} contentGapAt={c.contentGapAt} />

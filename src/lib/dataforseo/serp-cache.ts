@@ -11,7 +11,19 @@ import { Prisma } from "@prisma/client";
 
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-export type CachedSerpItem = { url: string; title: string; domain: string };
+export type CachedSerpItem = {
+  url: string;
+  title: string;
+  domain: string;
+  // Posición absoluta en el SERP (rank_absolute). Se guarda para que el TF-IDF
+  // pueda mostrar el top-10 ordenado y la UI lo respete sin reconstruirlo.
+  position?: number;
+  // Snippet con el que Google muestra el resultado (campo `description` del
+  // item orgánico). Dato de copy muy reutilizable: ejemplo de cómo posiciona
+  // el competidor, base para títulos/metas. Antes se descartaba pese a venir
+  // gratis en la misma respuesta que ya pagábamos.
+  description?: string;
+};
 
 export async function getCachedSerp(params: {
   keyword: string;

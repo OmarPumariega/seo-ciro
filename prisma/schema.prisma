@@ -506,7 +506,7 @@ model Competitor {
   projectId    String
   project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   domain       String // dominio normalizado (sin esquema/www)
-  contentGap   Json? // [{keyword, volume, position}] — keywords que rankea y el proyecto no
+  contentGap   Json? // [{keyword, volume, position, competition, competitionIndex, cpc, monthlySearches, title, url, description}] — keywords que rankea y el proyecto no
   contentGapAt DateTime?
   createdAt    DateTime  @default(now())
 
@@ -516,9 +516,14 @@ model Competitor {
 
 // Snapshot de visibilidad de un dominio (el del proyecto o un competidor):
 // tráfico orgánico estimado (metrics.organic.etv), nº de keywords orgánicas
-// (metrics.organic.count) y top keywords. Se añade uno por análisis → con el
-// tiempo acumula tendencia. El coste real se paga al ANALIZAR (explícito); ver
-// los resultados es gratis (lee el snapshot más reciente).
+// (metrics.organic.count), distribución de posiciones y top keywords. Se
+// añade uno por análisis → con el tiempo acumula tendencia. El coste real se
+// paga al ANALIZAR (explícito); ver los resultados es gratis (lee el snapshot
+// más reciente).
+//
+// positionBuckets/avgPosition se añaden porque ya venían gratis en la misma
+// respuesta de domain_rank_overview que pagábamos (antes se descartaban). Es
+// la señal más útil para comparar "fuerza" entre dominios.
 model VisibilitySnapshot {
   id              String   @id @default(cuid())
   projectId       String
@@ -526,7 +531,9 @@ model VisibilitySnapshot {
   domain          String // dominio analizado (proyecto o competidor)
   organicTraffic  Float? // metrics.organic.etv (tráfico orgánico estimado mensual)
   organicKeywords Int? // metrics.organic.count (nº de SERPs orgánicas)
-  topKeywords     Json? // [{keyword, position, volume}]
+  positionBuckets Json? // { top3, top10, top100 } — nº de keywords en cada rango
+  avgPosition     Float? // metrics.organic.avg_position (posición media del dominio)
+  topKeywords     Json? // [{keyword, position, volume, competition, competitionIndex, cpc, monthlySearches, title, url, description}]
   fetchedAt       DateTime @default(now())
 
   @@index([projectId, domain, fetchedAt])

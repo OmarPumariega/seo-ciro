@@ -54,6 +54,7 @@ type OrganicItem = {
   domain?: string;
   url?: string;
   title?: string;
+  description?: string;
 };
 
 export async function checkSerpRank(params: {
@@ -94,6 +95,10 @@ export async function checkSerpRank(params: {
   // hubiera resuelto aún, el TF-IDF no encontraría el cache y pediría OTRO
   // SERP pagando dos veces por el mismo dato. Una upsert es rápida; no merece
   // la pena el riesgo de carrera por ahorrar unos ms.
+  // Además de url/title/domain, guardamos position (rank_absolute) y
+  // description (snippet): llegan gratis en el mismo item que ya pagamos y
+  // son justo lo que el TF-IDF necesita para mostrar "cómo posiciona Google
+  // al competidor" como ejemplo de copy. Antes se tiraban.
   const topForCache: CachedSerpItem[] = [];
   for (const raw of organicItems) {
     const item = raw as OrganicItem;
@@ -102,6 +107,8 @@ export async function checkSerpRank(params: {
       url: typeof item.url === "string" ? item.url : "",
       title: typeof item.title === "string" ? item.title : "",
       domain: typeof item.domain === "string" ? item.domain : "",
+      position: typeof item.rank_absolute === "number" ? item.rank_absolute : undefined,
+      description: typeof item.description === "string" ? item.description : undefined,
     });
     if (topForCache.length >= 10) break;
   }
