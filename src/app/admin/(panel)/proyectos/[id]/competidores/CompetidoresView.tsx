@@ -61,15 +61,18 @@ type Data = {
 const analyzeCost = competitorAnalysisCostUsd();
 const gapCost = contentGapCostUsd();
 
-function fmtTraffic(v: number | null): string {
-  if (v === null) return "—";
+function fmtTraffic(v: number | null | undefined): string {
+  if (v == null) return "—";
   if (v >= 1000) return `${(v / 1000).toFixed(1)}k`;
   return v.toFixed(0);
 }
 
-function fmtCpc(v: number | null): string {
-  if (v === null) return "—";
-  return `${v.toFixed(2)}$`;
+function fmtCpc(v: number | null | undefined): string {
+  // nullish (== null): cubre null Y undefined. Los items viejos del content
+  // gap/top keywords NO tienen cpc (campo ausente → undefined), no null —
+  // chequear solo `=== null` dejaba pasar undefined y rompía en .toFixed().
+  if (v == null) return "—";
+  return `${(v as number).toFixed(2)}$`;
 }
 
 // Mini-sparkline de estacionalidad (12 meses). El dato llega gratis en cada
@@ -172,10 +175,10 @@ function KeywordChips({ keywords, colorClass }: { keywords: TopKeyword[]; colorC
         return (
           <span key={i} className={cn("inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded", colorClass)}>
             {k.keyword}
-            {k.volume !== null && <span className="opacity-70">· {k.volume.toLocaleString("es-ES")}</span>}
-            {k.position !== null && <span className="opacity-70">· #{k.position}</span>}
-            {k.cpc !== null && <span className="opacity-70">· {fmtCpc(k.cpc)}</span>}
-            {(k.competition || k.competitionIndex !== null) && (
+            {k.volume != null && <span className="opacity-70">· {k.volume.toLocaleString("es-ES")}</span>}
+            {k.position != null && <span className="opacity-70">· #{k.position}</span>}
+            {k.cpc != null && <span className="opacity-70">· {fmtCpc(k.cpc)}</span>}
+            {(k.competition || k.competitionIndex != null) && (
               <span className={cn("px-1 rounded font-medium", dif.cls)} title={`Dificultad ${dif.label}`}>
                 {dif.label}
               </span>
@@ -261,7 +264,7 @@ function ContentGapList({ items, contentGapAt }: { items: TopKeyword[]; contentG
                     <tr className="border-t border-gray-50 hover:bg-gray-50/60">
                       <td className="py-1.5 pl-2 pr-2 text-gray-900 font-medium">{k.keyword}</td>
                       <td className="py-1.5 px-2 text-right text-gray-600 tabular-nums">
-                        {k.volume !== null ? k.volume.toLocaleString("es-ES") : "—"}
+                        {k.volume != null ? k.volume.toLocaleString("es-ES") : "—"}
                       </td>
                       <td className="py-1.5 px-2 text-center">
                         <SeasonalitySparkline points={k.monthlySearches} />
@@ -271,7 +274,7 @@ function ContentGapList({ items, contentGapAt }: { items: TopKeyword[]; contentG
                         <span className={cn("inline-block px-1.5 py-0.5 rounded font-medium", dif.cls)}>{dif.label}</span>
                       </td>
                       <td className="py-1.5 px-2 text-right text-gray-600 tabular-nums">
-                        {k.position !== null ? `#${k.position}` : "—"}
+                        {k.position != null ? `#${k.position}` : "—"}
                       </td>
                       <td className="py-1.5 pr-2 pl-2 text-right">
                         {hasDetail && (
