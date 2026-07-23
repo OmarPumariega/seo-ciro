@@ -9,6 +9,12 @@ import { checkRankKeyword } from "@/lib/rank/check";
 // "Comprobar ahora": chequeo SÍCRONO (a diferencia del patrón async del
 // Módulo 8, una sola llamada SERP tarda ~3s, no cientos de páginas como un
 // crawl). Devuelve la posición actualizada al momento.
+//
+// El guard de "un chequeo por día natural" vive dentro de checkRankKeyword:
+// si hoy ya se comprobó esta keyword, NO se llama a la API y se devuelve la
+// posición fijada con fromCache=true (gratis). La UI usa ese flag para avisar
+// en vez de pintar un cambio engañoso. El disparo del TF-IDF también vive en
+// checkRankKeyword (aprovecha el SERP ya pagado), así no se duplica por handler.
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string; kwId: string }> }
@@ -26,24 +32,12 @@ export async function POST(
     const result = await checkRankKeyword(kwId);
     const updated = await prisma.rankKeyword.findUnique({ where: { id: kwId } });
 
-    // Fire-and-forget: aprovecha el SERP ya pagado para alimentar el TF-IDF
-    // automáticamente (scraping del top-10 + cálculo + persistencia). No
-    // bloquea la respuesta — corre en background.
-    if (result.projectId) {
-      import("@/lib/tfidf/auto")
-        .then(({ autoRunTfidf }) =>
-          autoRunTfidf({
-            projectId: result.projectId,
-            keyword: result.keyword,
-            locationCode: result.locationCode,
-            languageCode: result.languageCode,
-            device: result.device,
-          })
-        )
-        .catch((e) => console.error("[tfidf-auto] fire-and-forget:", e));
-    }
-
-    return NextResponse.json({ position: result.position, keyword: updated });
+    return NextResponse.json({
+      position: result.position,
+      keyword: updated,
+      fromCache: result.fromCache,
+      checkedAt: result.checkedAt,
+    });
   } catch (error) {
     if (error instanceof DataForSeoSpendLimitError) {
       return NextResponse.json({ error: error.message }, { status: 422 });

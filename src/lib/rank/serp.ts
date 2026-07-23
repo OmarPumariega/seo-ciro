@@ -89,8 +89,11 @@ export async function checkSerpRank(params: {
   const organicItems = Array.isArray(resultObj.items) ? (resultObj.items as Array<Record<string, unknown>>) : [];
 
   // Guarda el top-10 orgánico en la caché de SERP para que el TF-IDF (u otros
-  // módulos) lo reutilicen sin pagar otro SERP. Fire-and-forget (no bloquea la
-  // respuesta del rank).
+  // módulos) lo reutilice sin pagar otro SERP. CON await: el caller (check.ts)
+  // dispara autoRunTfidf justo después, que lee getCachedSerp — si esto no se
+  // hubiera resuelto aún, el TF-IDF no encontraría el cache y pediría OTRO
+  // SERP pagando dos veces por el mismo dato. Una upsert es rápida; no merece
+  // la pena el riesgo de carrera por ahorrar unos ms.
   const topForCache: CachedSerpItem[] = [];
   for (const raw of organicItems) {
     const item = raw as OrganicItem;
@@ -103,7 +106,7 @@ export async function checkSerpRank(params: {
     if (topForCache.length >= 10) break;
   }
   if (topForCache.length > 0) {
-    saveSerpCache({ keyword, locationCode, languageCode, device, results: topForCache }).catch(() => {});
+    await saveSerpCache({ keyword, locationCode, languageCode, device, results: topForCache });
   }
 
   // El dominio puede aparecer varias veces (varias URLs del mismo dominio).

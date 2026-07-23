@@ -1,13 +1,24 @@
 import { prisma } from "@/lib/db/prisma";
 import { assertWithinSpendLimit } from "@/lib/dataforseo/spend";
 import { checkSerpRank, normalizeDomain } from "@/lib/rank/serp";
+import { madridDayBounds } from "@/lib/rank/day-guard";
 
 // Comprueba la posición orgánica de una RankKeyword contra DataForSEO SERP y
 // persiste el resultado: una nueva fila en RankPosition (histórico) + la
 // actualización de lastPosition/bestPosition/lastCheckedAt + una fila de
 // ApiUsageLog con el coste real. Una sola implementación del chequeo,
-// compartida por el botón "comprobar ahora" (síncrono, UI) y por el cron
-// (programado, job.ts) — sin duplicar lógica.
+// compartida por el botón "comprobar ahora" (síncrono, UI), el cron
+// (programado, job.ts) y la creación de keywords — sin duplicar lógica.
+//
+// >>> REGLA DE NEGOCIO: máximo un chequeo real por keyword y por día natural
+// (Europe/Madrid). <<< El primer chequeo del día fija la posición y la
+// deja inamovible hasta mañana: cualquier llamada posterior (manual o del
+// cron) devuelve esa posición SIN llamar a la API ni crear fila nueva
+// (gratis). Sin esto, pulsar "comprobar" varias veces en un día generaba
+// varias RankPosition y la posición fluctuaba con cada SERP (Google
+// personaliza/varía entre consultas) — no había estabilidad. Bloqueo
+// estricto, sin override. Los fallos reales de API (excepción) sí permiten
+// reintentar, porque en ese caso no llega a crearse RankPosition.
 export async function checkRankKeyword(rankKeywordId: string): Promise<{
   position: number | null;
   projectId: string;
@@ -15,6 +26,11 @@ export async function checkRankKeyword(rankKeywordId: string): Promise<{
   locationCode: number;
   languageCode: string;
   device: string;
+  // true = el chequeo NO se hizo contra la API: ya existía uno para hoy y se
+  // ha devuelto la posición fijada. La UI lo usa para avisar en vez de
+  // mostrar un cambio engañoso.
+  fromCache: boolean;
+  checkedAt?: string;
 }> {
   const rk = await prisma.rankKeyword.findUnique({
     where: { id: rankKeywordId },
@@ -25,8 +41,31 @@ export async function checkRankKeyword(rankKeywordId: string): Promise<{
     throw new Error("El proyecto no tiene dominio configurado");
   }
 
+  // Guard "un chequeo por día natural" (Europe/Madrid). Si hoy ya hay una
+  // RankPosition (da igual su valor, incluido null = no posiciona), se
+  // devuelve esa posición fijada sin gastar ni tocar el histórico. La query
+  // aprovecha el índice @@index([rankKeywordId, checkedAt]).
+  const { start, end } = madridDayBounds();
+  const todays = await prisma.rankPosition.findFirst({
+    where: { rankKeywordId: rk.id, checkedAt: { gte: start, lt: end } },
+    orderBy: { checkedAt: "desc" },
+  });
+  if (todays) {
+    return {
+      position: todays.position,
+      projectId: rk.projectId,
+      keyword: rk.keyword,
+      locationCode: rk.locationCode,
+      languageCode: rk.languageCode,
+      device: rk.device,
+      fromCache: true,
+      checkedAt: todays.checkedAt.toISOString(),
+    };
+  }
+
   // Tope de gasto: bloquea ANTES de la llamada (no gastar si ya estamos en el
-  // límite mensual). Las posiciones cacheadas no aplican aquí (SERP no cachea).
+  // límite mensual). Solo se evalúa para chequeos reales (los cacheados no
+  // gastan).
   await assertWithinSpendLimit(rk.projectId);
 
   const projectDomain = normalizeDomain(rk.project.domain);
@@ -102,6 +141,26 @@ export async function checkRankKeyword(rankKeywordId: string): Promise<{
     });
   }
 
+  // Aprovecha el SERP recién pagado (y ya en SerpCache) para alimentar el
+  // TF-IDF automáticamente: scraping del top-10 + cálculo + persistencia en
+  // TfidfResult. Vive AQUÍ (no en cada route handler) para que TODO flujo que
+  // chequea posición lo dispare de una sola vez: "comprobar ahora", "comprobar
+  // todas", añadir keyword nueva, el cron diario y el "Lanzar análisis".
+  // Fire-and-forget: no bloquea la respuesta al usuario (el scraping son 10
+  // páginas y puede tardar varios segundos). El SERP ya está cacheado así que
+  // es gratis — nunca se paga un segundo SERP para el TF-IDF.
+  import("@/lib/tfidf/auto")
+    .then(({ autoRunTfidf }) =>
+      autoRunTfidf({
+        projectId: rk.projectId,
+        keyword: rk.keyword,
+        locationCode: rk.locationCode,
+        languageCode: rk.languageCode,
+        device: rk.device,
+      })
+    )
+    .catch((e) => console.error(`[rank→tfidf] keyword "${rk.keyword}":`, e));
+
   return {
     position: rank.position,
     projectId: rk.projectId,
@@ -109,5 +168,7 @@ export async function checkRankKeyword(rankKeywordId: string): Promise<{
     locationCode: rk.locationCode,
     languageCode: rk.languageCode,
     device: rk.device,
+    fromCache: false,
+    checkedAt: now.toISOString(),
   };
 }

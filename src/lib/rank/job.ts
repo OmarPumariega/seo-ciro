@@ -7,6 +7,13 @@ import { notify } from "@/lib/notifications/notify";
 // "manual" no se tocan aquí — el usuario las dispara síncrono desde la UI.
 // Reutiliza el mismo poller que el Módulo 8 (instrumentation-node.ts), sin Redis.
 //
+// Cada keyword se chequea vía checkRankKeyword, que aplica dos garantías:
+//   1) Guard "un chequeo por día natural" (Europe/Madrid): aunque este tick
+//      seleccione la keyword, si hoy ya se comprobó, NO llama a la API (devuelve
+//      la posición fijada). Así el histórico es estable — un punto por día.
+//   2) Dispara autoRunTfidf fire-and-forget en cada chequeo real: el cron
+//      mantiene el TF-IDF fresco sin que el usuario tenga que ir a generarlo.
+//
 // >>> REQUISITO DE NEGOCIO: TODAS las keywords programadas de un proyecto se
 // chequean el MISMO DÍA. <<<
 // Para garantizarlo, el job no recorre keywords sueltas sino PROYECTOS: cuando

@@ -10,8 +10,12 @@ import { normalizeKeyword } from "@/lib/keywords/normalize";
 // en TfidfResult (upsert por project+keyword) para que el módulo TF-IDF lo
 // muestre sin que el usuario tenga que ir a ejecutarlo.
 //
-// Se llama fire-and-forget desde la ruta de check manual de rank tracking (no
-// desde el cron, para no saturar con scraping en lotes programados).
+// Se invoca desde dentro de checkRankKeyword (fire-and-forget) en CADA chequeo
+// real de posición — manual ("comprobar ahora"/"comprobar todas"), al añadir
+// keyword nueva y desde el cron diario. Antes vivía solo en el handler de
+// /check (no en el cron); ahora cubre todos los flujos y mantiene el TF-IDF
+// fresco sin acción manual. Con el guard de "un chequeo por día", el scraping
+// del top-10 solo ocurre una vez por keyword y por día.
 export async function autoRunTfidf(params: {
   projectId: string;
   keyword: string;
@@ -28,11 +32,19 @@ export async function autoRunTfidf(params: {
     languageCode,
     device,
   });
-  if (results.length === 0) return;
+  if (results.length === 0) {
+    console.warn(`[tfidf] "${keyword}": SERP sin resultados orgánicos, nada que analizar`);
+    return;
+  }
 
   // 2) Scrapea + calcula TF-IDF, temas, encabezados por página y freq de palabras.
   const tfidfResult = await computeTfidf(results);
-  if (tfidfResult.sources.length === 0) return;
+  if (tfidfResult.sources.length === 0) {
+    console.warn(
+      `[tfidf] "${keyword}": no se pudo scrapear ninguna de las ${results.length} URLs del top-10 (anti-bot/timeouts)`
+    );
+    return;
+  }
 
   // 3) Persiste (upsert por project+keyword normalizada).
   const normalized = normalizeKeyword(keyword);

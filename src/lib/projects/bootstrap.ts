@@ -14,7 +14,6 @@ import {
   normalizeDomain,
 } from "@/lib/competitors/dataforseo";
 import { checkRankKeyword } from "@/lib/rank/check";
-import { autoRunTfidf } from "@/lib/tfidf/auto";
 import {
   COMPETITORS_ANALYZE_DEFAULT_LIMIT,
   COMPETITORS_GAP_DEFAULT_LIMIT,
@@ -283,26 +282,12 @@ export async function bootstrapProjectAnalysis(projectId: string): Promise<Boots
       try {
         const checked = await checkRankKeyword(rankKeywordId);
         result.keywordsChecked++;
-        // TF-IDF reutiliza el SERP que ya pagó el chequeo → gratis si está en
-        // SerpCache. Se invoca explícitamente aquí (checkRankKeyword no lo
-        // dispara por sí solo; solo lo hace el route handler de /check).
-        try {
-          await autoRunTfidf({
-            projectId: checked.projectId,
-            keyword: checked.keyword,
-            locationCode: checked.locationCode,
-            languageCode: checked.languageCode,
-            device: checked.device,
-          });
-          result.tfidfGenerated++;
-        } catch (tfidfError) {
-          // TF-IDF es bonus: si falla no contagia al chequeo.
-          result.errors.push({
-            step: "tfidf",
-            ref: checked.keyword,
-            message: tfidfError instanceof Error ? tfidfError.message : "Error al calcular TF-IDF",
-          });
-        }
+        // El TF-IDF lo dispara checkRankKeyword internamente (aprovechando el
+        // SERP recién pagado y ya cacheado), por eso no se invoca aquí. Solo
+        // cuenta como generado cuando el chequeo fue REAL (no cacheado del
+        // día): un chequeo cacheado no trae SERP nuevo y, por tanto, no
+        // re-dispara el scraping del TF-IDF.
+        if (!checked.fromCache) result.tfidfGenerated++;
       } catch (error) {
         if (error instanceof DataForSeoSpendLimitError) {
           result.spendLimitHit = true;

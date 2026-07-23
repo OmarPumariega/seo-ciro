@@ -406,9 +406,17 @@ export default function RankView({ projectId }: { projectId: string }) {
       return;
     }
     await loadKeywords();
-    
+
     if (selectedId === kwId) {
       await Promise.all([loadHistory(kwId), loadCompetitors(kwId)]);
+    }
+
+    // El guard "un chequeo por día natural" puede devolver la posición ya
+    // fijada hoy sin llamar a la API (fromCache). Se avisa en verde para que
+    // no parezca que la posición "no cambió" por azar — es política, no ruido.
+    if (data.fromCache && data.checkedAt) {
+      const hora = new Date(data.checkedAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" });
+      setErrorFor("check", `Ya comprobada hoy a las ${hora}. Posición fijada hasta mañana.`);
     }
   }
 
@@ -428,6 +436,7 @@ export default function RankView({ projectId }: { projectId: string }) {
     setCheckAllProgress({ done: 0, total: targets.length });
 
     let ok = 0;
+    let cached = 0;
     let failed = 0;
     let stoppedForSpend = false;
 
@@ -439,6 +448,11 @@ export default function RankView({ projectId }: { projectId: string }) {
         });
         if (res.ok) {
           ok++;
+          // El guard "un chequeo por día" puede servir la posición fijada hoy
+          // sin llamar a la API — se contabiliza aparte para que el resumen
+          // refleje cuántas se actualizaron de verdad.
+          const data = await res.json().catch(() => ({}));
+          if (data.fromCache) cached++;
         } else {
           failed++;
           if (res.status === 422) {
@@ -457,7 +471,9 @@ export default function RankView({ projectId }: { projectId: string }) {
     setCheckAllProgress(null);
     await loadKeywords();
 
-    const parts = [`${ok} comprobadas`];
+    const updated = ok - cached;
+    const parts = [`${updated} actualizadas`];
+    if (cached > 0) parts.push(`${cached} ya fijadas hoy`);
     if (stoppedForSpend) parts.push("detenido por tope de gasto alcanzado");
     else if (failed > 0) parts.push(`${failed} con error`);
     setErrorFor("checkall", parts.join(" · "));
