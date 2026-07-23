@@ -8,6 +8,7 @@ import {
 import { cn } from "@/lib/utils";
 import ConfirmDialog from "@/components/admin/ConfirmDialog";
 import LocationPicker, { type LocationValue } from "@/components/admin/LocationPicker";
+import PositionDistribution, { type PositionBuckets } from "@/components/admin/PositionDistribution";
 import {
   competitorAnalysisCostUsd,
   contentGapCostUsd,
@@ -30,8 +31,6 @@ type TopKeyword = {
   url: string | null;
   description: string | null;
 };
-
-type PositionBuckets = { top3: number; top10: number; top100: number };
 
 type Snapshot = {
   id: string;
@@ -73,6 +72,29 @@ function fmtCpc(v: number | null): string {
   return `${v.toFixed(2)}$`;
 }
 
+// Mini-sparkline de estacionalidad (12 meses). El dato llega gratis en cada
+// item de content gap / ranked (keyword_info.monthly_searches); antes se
+// tiraba. Aquí sirve para descartar keywords que pican solo en una época o,
+// al revés, para detectar oportunidades estacionales. Null → "—".
+function SeasonalitySparkline({ points }: { points: number[] | null | undefined }) {
+  if (!points || points.length < 2) return <span className="text-gray-300">—</span>;
+  const W = 44;
+  const H = 16;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const range = max - min || 1;
+  const x = (i: number) => (i / (points.length - 1)) * W;
+  const y = (v: number) => H - ((v - min) / range) * H;
+  const pts = points.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const title = `Estacionalidad 12m · pico ${max.toLocaleString("es-ES")} · actual ${points[points.length - 1].toLocaleString("es-ES")}`;
+  return (
+    <svg width={W} height={H} className="text-gray-400" role="img" aria-label={title}>
+      <title>{title}</title>
+      <polyline points={pts} fill="none" stroke="currentColor" strokeWidth={1.25} />
+    </svg>
+  );
+}
+
 // Dificultad unificada: prioriza la etiqueta HIGH/MEDIUM/LOW (más legible) y
 // recurre al índice 0-100 si la etiqueta no viene. Devuelve {label, color}
 // para pintar un chip consistente.
@@ -109,42 +131,6 @@ function TrafficSparkline({ points }: { points: number[] }) {
   );
 }
 
-// Distribución de fuerza del dominio: cuántas keywords en top-3, top-10 (4-10)
-// y top-100. Barra apilada con tres segmentos. Es la señal más útil para
-// comparar dominios de un vistazo y ya venía gratis en domain_rank_overview.
-function PositionDistribution({ buckets }: { buckets: PositionBuckets | null }) {
-  if (!buckets) return null;
-  const total = buckets.top3 + buckets.top10 + buckets.top100;
-  if (total === 0) return null;
-  const pct = (n: number) => (n / total) * 100;
-  return (
-    <div className="space-y-1.5">
-      <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-gray-100">
-        {buckets.top3 > 0 && (
-          <div className="bg-emerald-500" style={{ width: `${pct(buckets.top3)}%` }} title={`Top 3: ${buckets.top3}`} />
-        )}
-        {buckets.top10 > 0 && (
-          <div className="bg-emerald-300" style={{ width: `${pct(buckets.top10)}%` }} title={`Top 4-10: ${buckets.top10}`} />
-        )}
-        {buckets.top100 > 0 && (
-          <div className="bg-gray-300" style={{ width: `${pct(buckets.top100)}%` }} title={`Top 11-100: ${buckets.top100}`} />
-        )}
-      </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-500">
-        <span className="inline-flex items-center gap-1">
-          <span className="h-2 w-2 rounded-sm bg-emerald-500" /> Top 3 · <strong className="text-gray-700">{buckets.top3}</strong>
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="h-2 w-2 rounded-sm bg-emerald-300" /> Top 4-10 · <strong className="text-gray-700">{buckets.top10}</strong>
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="h-2 w-2 rounded-sm bg-gray-300" /> Top 11-100 · <strong className="text-gray-700">{buckets.top100}</strong>
-        </span>
-      </div>
-    </div>
-  );
-}
-
 // Vista de visibilidad de un dominio (KPIs + distribución + tendencia).
 function VisibilityKpis({ snapshot, trend }: { snapshot: Snapshot; trend?: number[] }) {
   return (
@@ -160,10 +146,7 @@ function VisibilityKpis({ snapshot, trend }: { snapshot: Snapshot; trend?: numbe
       {snapshot?.positionBuckets ? (
         <div className="space-y-1">
           <div className="text-sm text-gray-500">Fuerza del dominio</div>
-          <PositionDistribution buckets={snapshot.positionBuckets} />
-          {snapshot.avgPosition !== null && (
-            <p className="text-[11px] text-gray-400">Posición media: {snapshot.avgPosition.toFixed(1)}</p>
-          )}
+          <PositionDistribution buckets={snapshot.positionBuckets} avgPosition={snapshot.avgPosition} />
         </div>
       ) : trend && trend.length >= 2 ? (
         <div className="flex flex-col items-start">
@@ -261,6 +244,7 @@ function ContentGapList({ items, contentGapAt }: { items: TopKeyword[]; contentG
               <tr>
                 <th className="py-1.5 pl-2 pr-2 font-medium">Keyword</th>
                 <th className="py-1.5 px-2 font-medium text-right">Vol.</th>
+                <th className="py-1.5 px-2 font-medium text-center">Tend.</th>
                 <th className="py-1.5 px-2 font-medium text-right">CPC</th>
                 <th className="py-1.5 px-2 font-medium text-right">Dif.</th>
                 <th className="py-1.5 px-2 font-medium text-right">#</th>
@@ -278,6 +262,9 @@ function ContentGapList({ items, contentGapAt }: { items: TopKeyword[]; contentG
                       <td className="py-1.5 pl-2 pr-2 text-gray-900 font-medium">{k.keyword}</td>
                       <td className="py-1.5 px-2 text-right text-gray-600 tabular-nums">
                         {k.volume !== null ? k.volume.toLocaleString("es-ES") : "—"}
+                      </td>
+                      <td className="py-1.5 px-2 text-center">
+                        <SeasonalitySparkline points={k.monthlySearches} />
                       </td>
                       <td className="py-1.5 px-2 text-right text-gray-600 tabular-nums">{fmtCpc(k.cpc)}</td>
                       <td className="py-1.5 px-2 text-right">
@@ -300,7 +287,7 @@ function ContentGapList({ items, contentGapAt }: { items: TopKeyword[]; contentG
                     </tr>
                     {isOpen && hasDetail && (
                       <tr className="border-t border-gray-50 bg-emerald-50/40">
-                        <td colSpan={6} className="px-3 py-2 space-y-1">
+                        <td colSpan={7} className="px-3 py-2 space-y-1">
                           {k.title && <p className="text-xs font-medium text-gray-800">{k.title}</p>}
                           {k.description && (
                             <p className="text-xs text-gray-600 leading-relaxed">{k.description}</p>

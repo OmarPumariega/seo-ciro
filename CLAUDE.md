@@ -187,12 +187,14 @@ Google, Contenido, TF-IDF, Auditoría, Enlaces, Canibalizaciones, Competidores, 
   obsoletas. Las tareas manuales nunca se tocan.
 - **Keywords** (Módulo 1): espacio de trabajo tipo Planificador por estudio.
   Siembras una keyword → DataForSEO Labs (`keyword_suggestions`) devuelve relacionadas
-  con volumen/competición/CPC/intención ya resueltos (se cachean al traerlas, así
-  añadir después es gratis) → añades/quitas las que interesan → ese conjunto ES el
-  estudio; las prioridades se recalculan en cada cambio. Alternativa de "pegar lista"
-  (resuelve vía caché + volumen/intención) sigue disponible. Sobre el estudio:
-  "Generar estructura de URLs" (vía OpenRouter). Solo DataForSEO como fuente por ahora
-  (Google Ads, fuente alternativa, pendiente).
+  con volumen/competición/CPC/intención/estacionalidad ya resueltos (se cachean al
+  traerlas, así añadir después es gratis) → añades/quitas las que interesan → ese
+  conjunto ES el estudio; las prioridades se recalculan en cada cambio. La
+  **estacionalidad** (`monthly_searches`, 12 meses) llega gratis en la misma
+  respuesta y se muestra como mini-sparkline "Tend." por keyword. Alternativa de
+  "pegar lista" (resuelve vía caché + volumen/intención) sigue disponible. Sobre
+  el estudio: "Generar estructura de URLs" (vía OpenRouter). Solo DataForSEO como
+  fuente por ahora (Google Ads, fuente alternativa, pendiente).
 - **Arquitectura**: visualiza `KeywordStudy.structure` (la misma "Generar estructura de
   URLs" del Módulo 1) como árbol en abanico horizontal — clic en una rama despliega sus
   páginas hijas con la URL completa propuesta. `src/lib/keywords/structure-tree.ts`
@@ -221,7 +223,10 @@ Google, Contenido, TF-IDF, Auditoría, Enlaces, Canibalizaciones, Competidores, 
   nacional (`locationCode` 2724). Posición actual con flecha de tendencia, mejor
   histórica y sparkline de evolución. Importa keywords desde un estudio del Módulo 1.
   Solo orgánico (Geogrid → Módulo 9). Cada chequeo alimenta `SerpCache` (reutilizada por
-  TF-IDF) y dispara un aviso por email si la posición cae ≥10.
+  TF-IDF, ahora con snippet de cada resultado) y dispara un aviso por email si la
+  posición cae ≥10. **Guard "un chequeo por día natural"** (Europe/Madrid): el primer
+  chequeo del día fija la posición; los siguientes la devuelven gratis sin llamar a la
+  API ni tocar el histórico (estabilidad frente a la fluctuación del SERP).
 - **Google** (Módulo 6): si no hay conexión de agencia, enlaza a Configuración. Si la
   hay, selectores de propiedad de Search Console y GA4 (Business Profile deshabilitado,
   pendiente de aprobación de Google) + dashboard de últimos 28 días (clics/impresiones
@@ -240,14 +245,20 @@ Google, Contenido, TF-IDF, Auditoría, Enlaces, Canibalizaciones, Competidores, 
 - **Contenido** (Módulo 7): tema + tipo (Blog/Página/Producto/Novedad GBP) + longitud
   objetivo → texto vía OpenRouter con encabezados en Markdown, usando el tono de marca
   del proyecto (`Project.toneOfVoice`). Keyword objetivo y enlaces internos a incluir
-  son manuales (hasta que exista el Módulo 1) — si no se aportan, nunca se inventan.
-  Generaciones agrupadas por tema (versionado): comparar versiones con diff línea a
-  línea (LCS), restaurar una anterior o regenerar.
+  son manuales — si no se aportan, nunca se inventan. El botón **"Usar en Contenido"**
+  del módulo TF-IDF inyecta vía `sessionStorage` los temas/términos del top-10, que el
+  generador recibe (`tfidfTerms`) y pasa al prompt como guía de cobertura (cero coste:
+  son datos del SERP que ya pagó el TF-IDF). Generaciones agrupadas por tema
+  (versionado): comparar versiones con diff línea a línea (LCS), restaurar una
+  anterior o regenerar.
 - **TF-IDF**: siembra una keyword + ubicación opcional (mismo `LocationPicker` que Rank
   Tracking) → top-10 orgánico real (vía `SerpCache` si ya existe, si no una llamada SERP
   nueva) → scraping de cada resultado → términos más relevantes por TF-IDF para orientar
   el contenido. Sin coste si el rank tracking ya consultó esa keyword/ubicación
-  recientemente.
+  recientemente. El SERP cacheado guarda además la **posición y el snippet
+  (description)** de cada resultado, así que el TF-IDF muestra *"cómo lo muestran tus
+  competidores en Google"* (título + snippet del top-10) como ejemplo de copy
+  accionable. El botón **"Usar en Contenido"** lleva los temas/términos al Módulo 7.
 - **Auditoría** (Módulo 8): botón "Ejecutar auditoría ahora" → crea `AuditRun` pending
   → se procesa de inmediato (fire-and-forget) y también vía el cron interno como
   respaldo → rastreo del sitio (enlaces rotos, HTTPS, canonicals, meta robots,
@@ -267,9 +278,17 @@ Google, Contenido, TF-IDF, Auditoría, Enlaces, Canibalizaciones, Competidores, 
 - **Competidores** (Tier 2): trackear dominios competidores → ubicación de análisis
   opcional (mismo `LocationPicker`, aplica a "Analizar" y "Gap" de toda la sesión) →
   "Analizar" pide visibilidad real vía DataForSEO Labs (tráfico estimado, nº keywords,
-  top keywords, histórico de snapshots) y content gap (`domain_intersection`: keywords
-  que ranquea el competidor y el proyecto no). Ver histórico ya calculado es gratis,
-  solo "Analizar"/recalcular gap paga.
+  **distribución de fuerza del dominio** top3/10/100 + posición media, top keywords
+  con CPC/dificultad/estacionalidad, e histórico de snapshots con **tendencia por
+  competidor**) y content gap (`domain_intersection`: keywords que ranquea el
+  competidor y el proyecto no). El content gap es una **tabla rica** — por keyword:
+  volumen, CPC, dificultad, posición, mini-sparkline de estacionalidad y, al
+  expandir, el **snippet + título + URL** con la que el competidor posiciona
+  (ejemplo de copy). Todo ese detalle llega gratis en el mismo ítem que ya se pagaba
+  (antes se tiraba). Cada competidor tiene botones **"Importar a estudio"** (crea un
+  estudio del Módulo 1 con su gap + top) y **"Añadir a seguimiento"** (Rank Tracking,
+  manual), reutilizando los endpoints bulk existentes. Ver histórico ya calculado es
+  gratis, solo "Analizar"/recalcular gap paga.
 - **Geogrid** (Módulo 9, solo negocios locales): keyword + rejilla (3×3/5×5/7×7) + radio
   → crea `GeogridRun` pending → se procesa de inmediato y también vía el cron →
   Maps SERP en cada punto con coordenada exacta, localiza la posición del negocio

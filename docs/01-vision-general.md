@@ -58,9 +58,12 @@ Esta primera fase construye únicamente la base sobre la que colgará el resto:
 - ✅ Copilot SEO — chat con IA que entiende los datos del proyecto (`CopilotThread`)
 
 - ✅ Competidores (Tier 2) — espionaje vía DataForSEO Labs: visibilidad de
-  cualquier dominio (tráfico orgánico estimado + nº keywords + top keywords),
-  histórico de snapshots para tendencia, y content gap (keywords que ranquea un
-  competidor y el proyecto no, vía domain_intersection)
+  cualquier dominio (tráfico orgánico estimado + nº keywords + **distribución de
+  fuerza del dominio** top3/10/100 + top keywords con CPC/dificultad/estacionalidad),
+  histórico de snapshots para **tendencia por competidor**, y content gap (keywords
+  que ranquea un competidor y el proyecto no, vía domain_intersection) como **tabla
+  rica** con snippet + URL del competidor por keyword. Botones para importar el
+  gap/top a un estudio (Módulo 1) o a Rank Tracking.
 
 ## Roadmap pendiente (futuro, no olvidar)
 

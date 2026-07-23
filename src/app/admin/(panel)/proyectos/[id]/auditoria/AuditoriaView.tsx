@@ -8,6 +8,7 @@ import AuditTrendChart from "@/components/admin/AuditTrendChart";
 import AuditIssuesTrendChart from "@/components/admin/AuditIssuesTrendChart";
 import AuditTechnicalDetails from "@/components/admin/AuditTechnicalDetails";
 import AuditIssuesList from "@/components/admin/AuditIssuesList";
+import PositionDistribution, { type PositionBuckets } from "@/components/admin/PositionDistribution";
 import { TECNICA_ISSUES, ONPAGE_ISSUES } from "@/lib/audit/issue-meta";
 
 type CategoryScore = { score: number; max: number; detail: Record<string, number> };
@@ -199,7 +200,14 @@ function LabsVisibilityPanel({
   snapshot,
   projectId,
 }: {
-  snapshot: { organicTraffic: number | null; organicKeywords: number | null; topKeywords: TopKeyword[] | null; fetchedAt: string } | null;
+  snapshot: {
+    organicTraffic: number | null;
+    organicKeywords: number | null;
+    positionBuckets: PositionBuckets | null;
+    avgPosition: number | null;
+    topKeywords: TopKeyword[] | null;
+    fetchedAt: string;
+  } | null;
   projectId: string;
 }) {
   return (
@@ -225,6 +233,12 @@ function LabsVisibilityPanel({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <KpiTile label="Tráfico orgánico (est. mensual)" value={fmtTraffic(snapshot.organicTraffic)} />
             <KpiTile label="Keywords orgánicas" value={snapshot.organicKeywords?.toLocaleString("es-ES") ?? "—"} />
+            {snapshot.positionBuckets && (
+              <div className="sm:col-span-2 space-y-1">
+                <div className="text-sm text-gray-500">Fuerza del dominio</div>
+                <PositionDistribution buckets={snapshot.positionBuckets} avgPosition={snapshot.avgPosition} />
+              </div>
+            )}
           </div>
           {snapshot.topKeywords && snapshot.topKeywords.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
@@ -268,6 +282,8 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
   const [labsSnapshot, setLabsSnapshot] = useState<{
     organicTraffic: number | null;
     organicKeywords: number | null;
+    positionBuckets: PositionBuckets | null;
+    avgPosition: number | null;
     topKeywords: TopKeyword[] | null;
     fetchedAt: string;
   } | null>(null);
@@ -349,6 +365,8 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
           setLabsSnapshot({
             organicTraffic: d.projectSnapshot.organicTraffic ?? null,
             organicKeywords: d.projectSnapshot.organicKeywords ?? null,
+            positionBuckets: d.projectSnapshot.positionBuckets ?? null,
+            avgPosition: d.projectSnapshot.avgPosition ?? null,
             topKeywords: d.projectSnapshot.topKeywords ?? null,
             fetchedAt: d.projectSnapshot.fetchedAt,
           });
