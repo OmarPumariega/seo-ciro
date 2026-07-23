@@ -350,6 +350,9 @@ model RankKeyword {
 
 // Una fila por chequeo de posición (histórico para la gráfica de evolución).
 // position null = el dominio no aparecía entre los resultados pedidos (depth).
+// title/description (el snippet con el que Google mostraba la URL) llegan gratis
+// en el mismo SERP que ya pagábamos — se persisten para auditar cómo evolucionó
+// el copy del dominio propio a lo largo del tiempo.
 model RankPosition {
   id            String      @id @default(cuid())
   rankKeywordId String
@@ -357,6 +360,8 @@ model RankPosition {
   checkedAt     DateTime    @default(now())
   position      Int? // null = fuera del depth pedido (no apareció)
   url           String? // URL del proyecto que posiciona, si apareció
+  title         String? // title del resultado en el SERP
+  description   String? // snippet (description) con el que Google lo mostraba
 
   @@index([rankKeywordId, checkedAt])
 }
@@ -373,6 +378,8 @@ model RankCompetitorPosition {
   checkedAt        DateTime    @default(now())
   position         Int? // null = el competidor no apareció en el depth pedido
   url              String?
+  title            String? // title del resultado del competidor
+  description      String? // snippet del competidor en el SERP
 
   @@index([rankKeywordId, competitorDomain, checkedAt])
 }

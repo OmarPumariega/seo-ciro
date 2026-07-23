@@ -20,6 +20,7 @@ import {
   Pencil,
   X,
   Calendar,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { rankMonthlyCostUsd } from "@/lib/dataforseo/pricing";
@@ -29,7 +30,16 @@ import LocationPicker, { type LocationValue } from "@/components/admin/LocationP
 import UrlLink from "@/components/admin/UrlLink";
 import { RANK_FREQUENCY_LABELS, RANK_SCAN_FREQUENCIES } from "@/lib/rank/constants";
 
-type RankPosition = { id: string; checkedAt: string; position: number | null; url: string | null };
+type RankPosition = {
+  id: string;
+  checkedAt: string;
+  position: number | null;
+  url: string | null;
+  // Copy con el que Google mostraba la URL en esa fecha — llega gratis en el
+  // SERP ya pagado; el histórico conserva la evolución del título/meta.
+  title?: string | null;
+  description?: string | null;
+};
 
 type RankKeyword = {
   id: string;
@@ -54,7 +64,14 @@ type SortKey = "keyword" | "volume" | "position" | "best" | "delta" | (string & 
 
 type StudyListItem = { id: string; name: string; _count: { keywords: number }; hasStructure: boolean };
 
-type CompetitorPosition = { domain: string; position: number | null; url: string | null; checkedAt: string };
+type CompetitorPosition = {
+  domain: string;
+  position: number | null;
+  url: string | null;
+  title?: string | null;
+  description?: string | null;
+  checkedAt: string;
+};
 
 const DEPTHS = [10, 30, 50, 100];
 const MAX_DATE_COLUMNS = 8;
@@ -202,6 +219,9 @@ export default function RankView({ projectId }: { projectId: string }) {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [competitors, setCompetitors] = useState<CompetitorPosition[]>([]);
   const [loadingCompetitors, setLoadingCompetitors] = useState(false);
+  // Copy histórico expandible por fila: al seleccionar una fecha con title/
+  // snippet se despliega el "cómo lo mostraba Google" en ese chequeo.
+  const [copyExpanded, setCopyExpanded] = useState<string | null>(null);
 
   // Programación explícita del escaneo conjunto (Project.rankScanFrequency /
   // rankNextScanAt) — unificada con el selector "Frecuencia" de arriba (mismo
@@ -1232,24 +1252,60 @@ export default function RankView({ projectId }: { projectId: string }) {
                                     <UrlLink url={history[history.length - 1]!.url!} className="text-xs" />
                                   </div>
                                 )}
-                                <div className="max-h-40 overflow-y-auto">
+                                {/* Copy actual: cómo muestra Google tu resultado en el
+                                    último chequeo. Dato gratis del SERP ya pagado. */}
+                                {(() => {
+                                  const last = history[history.length - 1];
+                                  if (!last || (!last.title && !last.description)) return null;
+                                  return (
+                                    <div className="bg-gray-50 border border-gray-100 rounded-lg p-2 space-y-0.5">
+                                      {last.title && <p className="text-xs font-medium text-gray-800 line-clamp-1">{last.title}</p>}
+                                      {last.description && <p className="text-xs text-gray-500 line-clamp-2">{last.description}</p>}
+                                    </div>
+                                  );
+                                })()}
+                                <div className="max-h-48 overflow-y-auto">
                                   <table className="w-full text-xs">
                                     <tbody>
-                                      {history.slice().reverse().map((p) => (
-                                        <tr key={p.id} className="border-b border-gray-50">
-                                          <td className="py-1 text-gray-500 whitespace-nowrap">{new Date(p.checkedAt).toLocaleString("es-ES")}</td>
-                                          <td className="py-1 text-right text-gray-900 tabular-nums whitespace-nowrap">
-                                            {p.position === null ? <span className="text-gray-300">fuera top-{kw.depth}</span> : `#${p.position}`}
-                                          </td>
-                                          <td className="py-1 pl-2 min-w-0">
-                                            {p.url ? (
-                                              <UrlLink url={p.url} className="text-xs" showIcon={false} />
-                                            ) : (
-                                              <span className="text-gray-300">—</span>
+                                      {history.slice().reverse().map((p) => {
+                                        const hasCopy = Boolean(p.title || p.description);
+                                        const open = copyExpanded === p.id;
+                                        return (
+                                          <Fragment key={p.id}>
+                                            <tr
+                                              className={cn("border-b border-gray-50", hasCopy && "cursor-pointer hover:bg-gray-50")}
+                                              onClick={() => hasCopy && setCopyExpanded(open ? null : p.id)}
+                                            >
+                                              <td className="py-1 text-gray-500 whitespace-nowrap">{new Date(p.checkedAt).toLocaleString("es-ES")}</td>
+                                              <td className="py-1 text-right text-gray-900 tabular-nums whitespace-nowrap">
+                                                {p.position === null ? <span className="text-gray-300">fuera top-{kw.depth}</span> : `#${p.position}`}
+                                              </td>
+                                              <td className="py-1 pl-2 min-w-0">
+                                                {p.url ? (
+                                                  <UrlLink url={p.url} className="text-xs" showIcon={false} />
+                                                ) : (
+                                                  <span className="text-gray-300">—</span>
+                                                )}
+                                              </td>
+                                              <td className="py-1 pl-1 text-right w-6">
+                                                {hasCopy && (
+                                                  <span className="text-gray-400">
+                                                    {open ? <ChevronUp className="h-3 w-3 inline" /> : <ChevronDown className="h-3 w-3 inline" />}
+                                                  </span>
+                                                )}
+                                              </td>
+                                            </tr>
+                                            {open && hasCopy && (
+                                              <tr className="bg-gray-50">
+                                                <td colSpan={4} className="px-2 py-1.5 space-y-0.5">
+                                                  {p.title && <p className="text-xs font-medium text-gray-800">{p.title}</p>}
+                                                  {p.description && <p className="text-xs text-gray-600 leading-relaxed">{p.description}</p>}
+                                                </td>
+                                              </tr>
                                             )}
-                                          </td>
-                                        </tr>
-                                      ))}
+                                          </Fragment>
+                                        );
+                                      })}
                                     </tbody>
                                   </table>
                                 </div>
@@ -1270,30 +1326,61 @@ export default function RankView({ projectId }: { projectId: string }) {
                               ) : (
                                 <table className="w-full text-xs">
                                   <tbody>
-                                    {competitors.map((c) => (
-                                      <tr key={c.domain} className="border-b border-gray-50 last:border-0">
-                                        <td className="py-1 text-gray-700 font-mono">{c.domain}</td>
-                                        <td className="py-1 text-gray-400">
-                                          {new Date(c.checkedAt).toLocaleDateString("es-ES")}
-                                        </td>
-                                        <td className="py-1 text-right text-gray-900 tabular-nums">
-                                          {c.position === null ? (
-                                            <span className="text-gray-300">fuera top-{kw.depth}</span>
-                                          ) : (
-                                            `#${c.position}`
+                                    {competitors.map((c) => {
+                                      const hasCopy = Boolean(c.title || c.description);
+                                      const key = `comp:${c.domain}`;
+                                      const open = copyExpanded === key;
+                                      return (
+                                        <Fragment key={c.domain}>
+                                          <tr
+                                            className={cn("border-b border-gray-50", hasCopy && "cursor-pointer hover:bg-gray-50")}
+                                            onClick={() => hasCopy && setCopyExpanded(open ? null : key)}
+                                          >
+                                            <td className="py-1 text-gray-700 font-mono">
+                                              {c.domain}
+                                              {hasCopy && (
+                                                <span className="ml-1 text-gray-400 align-middle">
+                                                  {open ? <ChevronUp className="h-3 w-3 inline" /> : <ChevronDown className="h-3 w-3 inline" />}
+                                                </span>
+                                              )}
+                                            </td>
+                                            <td className="py-1 text-gray-400">
+                                              {new Date(c.checkedAt).toLocaleDateString("es-ES")}
+                                            </td>
+                                            <td className="py-1 text-right text-gray-900 tabular-nums">
+                                              {c.position === null ? (
+                                                <span className="text-gray-300">fuera top-{kw.depth}</span>
+                                              ) : (
+                                                `#${c.position}`
+                                              )}
+                                            </td>
+                                            <td className="py-1 pl-2 text-right whitespace-nowrap">
+                                              {c.position !== null && kw.lastPosition !== null ? (
+                                                <span className={kw.lastPosition < c.position ? "text-emerald-600" : "text-red-600"}>
+                                                  {kw.lastPosition < c.position ? "vas delante" : "vas detrás"}
+                                                </span>
+                                              ) : (
+                                                "—"
+                                              )}
+                                            </td>
+                                          </tr>
+                                          {open && hasCopy && (
+                                            <tr className="bg-gray-50">
+                                              <td colSpan={4} className="px-2 py-1.5 space-y-0.5">
+                                                {c.title && <p className="text-xs font-medium text-gray-800">{c.title}</p>}
+                                                {c.description && <p className="text-xs text-gray-600 leading-relaxed">{c.description}</p>}
+                                                {c.url && (
+                                                  <a href={c.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:underline">
+                                                    <span className="truncate max-w-sm">{c.url}</span>
+                                                    <ExternalLink className="h-3 w-3 shrink-0" />
+                                                  </a>
+                                                )}
+                                              </td>
+                                            </tr>
                                           )}
-                                        </td>
-                                        <td className="py-1 pl-2 text-right whitespace-nowrap">
-                                          {c.position !== null && kw.lastPosition !== null ? (
-                                            <span className={kw.lastPosition < c.position ? "text-emerald-600" : "text-red-600"}>
-                                              {kw.lastPosition < c.position ? "vas delante" : "vas detrás"}
-                                            </span>
-                                          ) : (
-                                            "—"
-                                          )}
-                                        </td>
-                                      </tr>
-                                    ))}
+                                        </Fragment>
+                                      );
+                                    })}
                                   </tbody>
                                 </table>
                               )}

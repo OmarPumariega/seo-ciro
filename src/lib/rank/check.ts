@@ -97,6 +97,11 @@ export async function checkRankKeyword(rankKeywordId: string): Promise<{
         checkedAt: now,
         position: rank.position,
         url: rank.url,
+        // Copy con el que Google mostraba la URL del proyecto en este chequeo
+        // (llega gratis en el mismo SERP que ya pagamos). El histórico conserva
+        // la evolución del título/meta descripción a lo largo del tiempo.
+        title: rank.title,
+        description: rank.description,
       },
     }),
     prisma.rankKeyword.update({
@@ -123,6 +128,8 @@ export async function checkRankKeyword(rankKeywordId: string): Promise<{
               checkedAt: now,
               position: competitorRanks[c.domain]?.position ?? null,
               url: competitorRanks[c.domain]?.url ?? null,
+              title: competitorRanks[c.domain]?.title ?? null,
+              description: competitorRanks[c.domain]?.description ?? null,
             })),
           }),
         ]

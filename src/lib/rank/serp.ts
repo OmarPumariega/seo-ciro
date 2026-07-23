@@ -16,6 +16,12 @@ export const ALLOWED_DEPTHS = [10, 30, 50, 100] as const;
 export type SerpRank = {
   position: number | null; // null = el dominio no apareció en el depth pedido
   url: string | null; // URL del proyecto que posiciona
+  // title y snippet (description) del resultado tal como lo muestra Google.
+  // Llegan gratis en el mismo item orgánico que ya pagamos; antes se tiraban.
+  // Se devuelven aquí para que el histórico de Rank Position conserve el copy
+  // que Google mostraba en cada fecha (auditoría de evolución de título/meta).
+  title: string | null;
+  description: string | null;
 };
 
 export type SerpResult = {
@@ -121,6 +127,8 @@ export async function checkSerpRank(params: {
   function bestMatch(domain: string): SerpRank {
     let bestPosition: number | null = null;
     let bestUrl: string | null = null;
+    let bestTitle: string | null = null;
+    let bestDescription: string | null = null;
     for (const raw of organicItems) {
       const item = raw as OrganicItem;
       if (item.type !== "organic") continue;
@@ -131,9 +139,11 @@ export async function checkSerpRank(params: {
       if (bestPosition === null || pos < bestPosition) {
         bestPosition = pos;
         bestUrl = typeof item.url === "string" ? item.url : null;
+        bestTitle = typeof item.title === "string" ? item.title : null;
+        bestDescription = typeof item.description === "string" ? item.description : null;
       }
     }
-    return { position: bestPosition, url: bestUrl };
+    return { position: bestPosition, url: bestUrl, title: bestTitle, description: bestDescription };
   }
 
   const competitors: Record<string, SerpRank> = {};
