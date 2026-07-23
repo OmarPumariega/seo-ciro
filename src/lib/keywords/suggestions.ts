@@ -1,5 +1,5 @@
 import { postTask } from "@/lib/dataforseo/client";
-import { mapIntent, type IntentValue, type Competition } from "@/lib/keywords/dataforseo";
+import { mapIntent, flattenMonthlySearches, type IntentValue, type Competition } from "@/lib/keywords/dataforseo";
 import { upsertCache } from "@/lib/keywords/cache";
 
 // Sugerencias de keywords (Módulo 1, modo Planificador). A partir de una
@@ -43,7 +43,7 @@ export async function fetchSuggestions(params: {
   const rawItems = Array.isArray(resultArr[0]?.items) ? (resultArr[0]!.items as Array<Record<string, unknown>>) : [];
 
   const items: Suggestion[] = [];
-  const cacheData = new Map<string, { searchVolume: number | null; competition: string | null; cpc: number | null; intent: string | null }>();
+  const cacheData = new Map<string, { searchVolume: number | null; competition: string | null; cpc: number | null; intent: string | null; monthlySearches: number[] | null }>();
 
   for (const item of rawItems) {
     const kw = typeof item.keyword === "string" ? item.keyword : null;
@@ -51,6 +51,9 @@ export async function fetchSuggestions(params: {
     const ki = (item.keyword_info ?? {}) as Record<string, unknown>;
     const si = (item.search_intent_info ?? {}) as Record<string, unknown>;
     const intent = mapIntent(typeof si.main_intent === "string" ? si.main_intent : undefined);
+    // monthly_searches también viene en keyword_info del endpoint de
+    // sugerencias — se aprovecha igual que en search_volume (gratis).
+    const monthlySearches = flattenMonthlySearches(ki.monthly_searches);
     const suggestion: Suggestion = {
       keyword: kw,
       searchVolume: typeof ki.search_volume === "number" ? ki.search_volume : null,
@@ -64,6 +67,7 @@ export async function fetchSuggestions(params: {
       competition: suggestion.competition,
       cpc: suggestion.cpc,
       intent,
+      monthlySearches,
     });
   }
 

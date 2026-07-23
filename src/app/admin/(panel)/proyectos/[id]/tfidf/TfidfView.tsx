@@ -1,10 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import {
   Loader2, Search, ChevronDown, ChevronUp, FileSearch,
-  CheckCircle2, XCircle, ClipboardCopy, Check, Clock, List, ExternalLink,
+  CheckCircle2, XCircle, ClipboardCopy, Check, Clock, List, ExternalLink, Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LocationPicker, { type LocationValue } from "@/components/admin/LocationPicker";
@@ -122,6 +121,27 @@ export default function TfidfView({ projectId }: { projectId: string }) {
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  }
+
+  // Lleva los temas/términos al módulo de Contenido sin copiar a mano: los
+  // guarda en sessionStorage (clave fija) y navega. ContentView los lee al
+  // montar y los inyecta en el prompt de generación como guía de cobertura.
+  // Reutiliza datos del SERP ya pagado → cero coste extra.
+  function sendToContent() {
+    if (!result) return;
+    const lines = [
+      ...result.topics.slice(0, 20).map((t) => t.text),
+      ...result.terms.slice(0, 10).map((t) => t.term),
+    ];
+    try {
+      sessionStorage.setItem(
+        "tfidf-for-content",
+        JSON.stringify({ keyword, terms: lines.join("\n") })
+      );
+    } catch {
+      /* sessionStorage puede fallar en modo privado; nada crítico */
+    }
+    window.location.href = `/admin/proyectos/${projectId}/contenido`;
   }
 
   const maxHeadingTermCount = result?.headingTerms[0]?.count ?? 1;
@@ -277,10 +297,12 @@ export default function TfidfView({ projectId }: { projectId: string }) {
                     {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <ClipboardCopy className="h-3.5 w-3.5" />}
                     {copied ? "Copiado" : "Copiar temas"}
                   </button>
-                  <Link href={`/admin/proyectos/${projectId}/contenido`}
-                    className="px-2.5 py-1 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-800">
-                    Ir a Contenido →
-                  </Link>
+                  <button onClick={sendToContent}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-800"
+                    title="Llevar estos temas/términos al generador de contenido como guía de cobertura">
+                    <Send className="h-3.5 w-3.5" />
+                    Usar en Contenido →
+                  </button>
                 </div>
               </div>
               <p className="text-xs text-gray-400 mb-4">

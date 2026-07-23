@@ -82,6 +82,10 @@ export async function POST(
   const keyword = normalizeText(body.keyword);
   const targetUrl = normalizeText(body.targetUrl);
   const internalLinks = normalizeText(body.internalLinks, MAX_LONG);
+  // Términos/temas del TF-IDF inyectados como guía de cobertura. Acotado a
+  // MAX_LONG para no inflar el prompt desmesuradamente; la UI envía ya una
+  // selección (topics + términos top).
+  const tfidfTerms = normalizeText(body.tfidfTerms, MAX_LONG);
 
   const targetWordsRaw = Number(body.targetWords);
   const targetWords =
@@ -99,7 +103,7 @@ export async function POST(
       temperature: 0.7,
       messages: [
         { role: "system", content: buildSystemPrompt(type, targetWords, project.toneOfVoice) },
-        { role: "user", content: buildUserMessage({ topic, keyword, targetUrl, internalLinks }) },
+        { role: "user", content: buildUserMessage({ topic, keyword, targetUrl, internalLinks, tfidfTerms }) },
       ],
     });
   } catch (error) {

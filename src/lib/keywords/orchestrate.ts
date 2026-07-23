@@ -15,6 +15,7 @@ export type KeywordDatum = {
   competition: string | null;
   cpc: number | null;
   intent: IntentValue | null;
+  monthlySearches: number[] | null;
 };
 
 export type UsageLogInput = {
@@ -48,6 +49,7 @@ export async function fetchKeywordData(params: {
         competition: cached.competition,
         cpc: cached.cpc,
         intent: cached.intent as IntentValue | null,
+        monthlySearches: cached.monthlySearches,
       });
     }
   }
@@ -75,6 +77,7 @@ export async function fetchKeywordData(params: {
       competition: vol?.competition ?? null,
       cpc: vol?.cpc ?? null,
       intent: intent.byKeyword.get(kw) ?? null,
+      monthlySearches: vol?.monthlySearches ?? null,
     });
   }
 

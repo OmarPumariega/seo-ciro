@@ -13,6 +13,7 @@ export type CachedRow = {
   competition: string | null;
   cpc: number | null;
   intent: string | null;
+  monthlySearches: number[] | null;
 };
 
 type Datum = {
@@ -20,6 +21,7 @@ type Datum = {
   competition: string | null;
   cpc: number | null;
   intent: string | null;
+  monthlySearches: number[] | null;
 };
 
 // Devuelve solo las keywords pedidas que tengan una fila fresca (< 30 días).
@@ -46,6 +48,9 @@ export async function getFreshCache(
       competition: row.competition,
       cpc: row.cpc ? Number(row.cpc) : null,
       intent: row.intent,
+      monthlySearches: Array.isArray(row.monthlySearches)
+        ? (row.monthlySearches as unknown as number[])
+        : null,
     });
   }
   return map;
@@ -80,6 +85,7 @@ export async function upsertCache(
           competition: d.competition,
           cpc: d.cpc,
           intent: d.intent,
+          monthlySearches: d.monthlySearches ?? undefined,
           fetchedAt: new Date(),
         },
         update: {
@@ -87,6 +93,7 @@ export async function upsertCache(
           competition: d.competition,
           cpc: d.cpc,
           intent: d.intent,
+          monthlySearches: d.monthlySearches ?? undefined,
           fetchedAt: new Date(),
         },
       });

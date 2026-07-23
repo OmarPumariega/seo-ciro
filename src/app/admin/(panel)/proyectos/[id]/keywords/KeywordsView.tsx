@@ -27,6 +27,10 @@ type Keyword = {
   competition: string | null;
   cpc: number | string | null;
   intent: string | null;
+  // Estacionalidad (12 meses, orden cronológico). Llega gratis con el
+  // search_volume; antes se tiraba. Mini-sparkline en la tabla para ver de un
+  // vistazo si una keyword es estable o estacional.
+  monthlySearches?: number[] | null;
   priority: number;
 };
 
@@ -86,6 +90,35 @@ function fmtCpc(v: number | string | null): string {
   if (v === null || v === undefined) return "—";
   const n = typeof v === "string" ? Number(v) : v;
   return Number.isFinite(n) ? `${n.toFixed(2)}€` : "—";
+}
+
+// Mini-sparkline de estacionalidad (12 meses). Mismo principio que el de rank
+// tracking: rápido de leer, sin librería de gráficos. El título del <svg>
+// ofrece el detalle (pico mes/dato) al hacer hover. Null/sin datos → "—".
+function SeasonalitySparkline({ points }: { points: number[] | null | undefined }) {
+  if (!points || points.length < 2) return <span className="text-gray-300">—</span>;
+  const W = 48;
+  const H = 18;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const range = max - min || 1;
+  const x = (i: number) => (i / (points.length - 1)) * W;
+  const y = (v: number) => H - ((v - min) / range) * H;
+  const pts = points.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
+  const peakIdx = points.indexOf(max);
+  const months = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+  // El último punto corresponde al mes más reciente; reconstruimos hacia atrás.
+  const last = points.length - 1;
+  const label =
+    `Pico: ${max.toLocaleString("es-ES")} (hace ${last - peakIdx} meses) · ` +
+    `Actual: ${points[last].toLocaleString("es-ES")} · ` +
+    months[((new Date().getMonth() - (last - peakIdx)) % 12 + 12) % 12];
+  return (
+    <svg width={W} height={H} className="text-gray-400" role="img" aria-label={label}>
+      <title>{label}</title>
+      <polyline points={pts} fill="none" stroke="currentColor" strokeWidth={1.25} />
+    </svg>
+  );
 }
 
 // --- Árbol de estructura de URLs (mismo render que antes) ---
@@ -658,6 +691,7 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
                   <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
                     <th className="font-medium py-2 px-2">Keyword</th>
                     <th className="font-medium py-2 px-2">Volumen</th>
+                    <th className="font-medium py-2 px-2">Tend.</th>
                     <th className="font-medium py-2 px-2">Comp.</th>
                     <th className="font-medium py-2 px-2">CPC</th>
                     <th className="font-medium py-2 px-2">Intención</th>
@@ -671,6 +705,9 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
                       <td className="py-2 px-2 text-gray-900">{kw.keyword}</td>
                       <td className="py-2 px-2 text-gray-700 tabular-nums">
                         {kw.searchVolume === null ? <span className="text-gray-300">—</span> : kw.searchVolume.toLocaleString("es-ES")}
+                      </td>
+                      <td className="py-2 px-2">
+                        <SeasonalitySparkline points={kw.monthlySearches} />
                       </td>
                       <td className="py-2 px-2">
                         <span className={cn("text-xs font-medium", COMPETITION_STYLES[kw.competition ?? ""] ?? "text-gray-400")}>

@@ -284,6 +284,10 @@ model Keyword {
   competition  String? // "HIGH" | "MEDIUM" | "LOW", tal cual DataForSEO
   cpc          Decimal?     @db.Decimal(10, 2)
   intent       String? // "informacional" | "mixta" | "transaccional"
+  // Estacionalidad (12 meses, orden cronológico). Llega gratis en la misma
+  // llamada de search_volume que ya pagábamos (campo monthly_searches);
+  // antes se descartaba. Vital para planificar contenido estacional.
+  monthlySearches Json?
   priority     Int // 0-100, cuota de volumen dentro del estudio
 
   @@unique([studyId, keyword])
@@ -304,6 +308,9 @@ model KeywordDataCache {
   competition  String?
   cpc          Decimal? @db.Decimal(10, 2)
   intent       String?
+  // Estacionalidad (12 meses, orden cronológico) — llega gratis con el
+  // search_volume; antes se tiraba. Se cachea aquí como el resto de métricas.
+  monthlySearches Json?
   fetchedAt    DateTime @default(now())
 
   @@unique([keyword, languageCode, locationCode])

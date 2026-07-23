@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import {
   Loader2, Sparkles, Plus, Trash2, Target, TrendingUp, AlertTriangle,
-  ExternalLink, ChevronDown, ChevronUp,
+  ExternalLink, ChevronDown, ChevronUp, ArrowDownToLine, Crosshair,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConfirmDialog from "@/components/admin/ConfirmDialog";
@@ -335,9 +335,16 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
   const [addDomain, setAddDomain] = useState("");
   const [analyzingDomain, setAnalyzingDomain] = useState<string | null>(null);
   const [gapId, setGapId] = useState<string | null>(null);
+  const [importingId, setImportingId] = useState<string | null>(null);
+  const [trackingId, setTrackingId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string>("");
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
-  const [trend, setTrend] = useState<number[]>([]);
+  // Series de tendencia agrupadas por dominio (proyecto + competidores). Una
+  // sola llamada a /tendencia (sin ?domain) alimenta TODOS los sparklines en
+  // vez de pedir uno por competidor. Antes solo tenía tendencia el dominio
+  // propio; ahora cada tarjeta de competidor muestra su evolución.
+  const [trendsByDomain, setTrendsByDomain] = useState<Record<string, number[]>>({});
   // Ubicación usada por TODOS los análisis (propio + competidores) y el
   // content gap de esta sesión — DataForSEO Labs también resuelve tráfico y
   // keywords por punto geográfico, no solo a nivel país.
@@ -351,12 +358,40 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
       });
   }
 
+  // Recarga las series de tendencia. Sin `domain` → trae TODOS los dominios
+  // del proyecto en una sola respuesta y se agrupan aquí en el cliente.
+  async function loadTrends(domain?: string) {
+    const url = domain
+      ? `/api/proyectos/${projectId}/competidores/tendencia?domain=${encodeURIComponent(domain)}`
+      : `/api/proyectos/${projectId}/competidores/tendencia`;
+    const t = await fetch(url).then((r) => r.json());
+    if (!Array.isArray(t)) return;
+    const byDomain: Record<string, number[]> = {};
+    for (const s of t as { domain: string; organicTraffic: number | null }[]) {
+      if (!byDomain[s.domain]) byDomain[s.domain] = [];
+      byDomain[s.domain].push(s.organicTraffic ?? 0);
+    }
+    setTrendsByDomain((prev) => (domain ? { ...prev, ...byDomain } : byDomain));
+  }
+
   useEffect(() => {
+    // Carga inicial: visibilidad + TODAS las series de tendencia agrupadas por
+    // dominio (proyecto + competidores) en una sola respuesta. El agrupado y
+    // el setState viven dentro del .then (patrón async, no marca la regla
+    // set-state-in-effect); loadTrends() nominado se reserva para el refresco
+    // tras "Analizar", que cuelga de un handler (no de un effect).
     Promise.all([
       load(),
       fetch(`/api/proyectos/${projectId}/competidores/tendencia`).then((r) => r.json()),
     ]).then(([, t]) => {
-      if (Array.isArray(t)) setTrend((t as { organicTraffic: number | null }[]).map((x) => x.organicTraffic ?? 0));
+      if (Array.isArray(t)) {
+        const byDomain: Record<string, number[]> = {};
+        for (const s of t as { domain: string; organicTraffic: number | null }[]) {
+          if (!byDomain[s.domain]) byDomain[s.domain] = [];
+          byDomain[s.domain].push(s.organicTraffic ?? 0);
+        }
+        setTrendsByDomain(byDomain);
+      }
       setLoading(false);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -394,11 +429,9 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
       return;
     }
     await load();
-    // refresca tendencia si era el dominio del proyecto
-    if (data?.projectDomain === domain) {
-      const t = await fetch(`/api/proyectos/${projectId}/competidores/tendencia?domain=${encodeURIComponent(domain)}`).then((r) => r.json());
-      if (Array.isArray(t)) setTrend((t as { organicTraffic: number | null }[]).map((x) => x.organicTraffic ?? 0));
-    }
+    // refresca la tendencia del dominio recién analizado (el propio o un
+    // competidor) para que su sparkline se actualice al momento.
+    await loadTrends(domain);
   }
 
   async function handleGap(competitorId: string) {
@@ -424,6 +457,89 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
     setRemoving(false);
     setConfirmRemoveId(null);
     load();
+  }
+
+  // Recoge las keywords únicas de un competidor (content gap优先, complementado
+  // con sus top keywords). Es la materia prima para "importar a estudio" o
+  // "añadir a seguimiento": fricción cero para llevar la inteligencia del
+  // competidor a los módulos donde se trabaja, sin copiar a mano.
+  function collectKeywords(c: Competitor): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    const sources = [c.contentGap ?? [], c.snapshot?.topKeywords ?? []];
+    for (const arr of sources) {
+      for (const k of arr) {
+        const kw = k.keyword?.trim();
+        if (kw && !seen.has(kw)) {
+          seen.add(kw);
+          out.push(kw);
+        }
+      }
+    }
+    return out;
+  }
+
+  function showNotice(msg: string) {
+    setNotice(msg);
+    setTimeout(() => setNotice(""), 5000);
+  }
+
+  // Crea un estudio del Módulo 1 con las keywords del competidor (content gap
+  // + top). Reutiliza el mismo endpoint que "pegar lista" / GSC → resuelve
+  // volumen/intención gratis desde caché cuando ya se conoce.
+  async function handleImportToStudy(c: Competitor) {
+    const keywords = collectKeywords(c);
+    if (keywords.length === 0) {
+      showNotice("Este competidor no tiene keywords todavía.");
+      return;
+    }
+    setImportingId(c.id);
+    const res = await fetch(`/api/proyectos/${projectId}/keywords/estudios`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: `Competidor ${c.domain} — ${new Date().toLocaleDateString("es-ES")}`,
+        keywords: keywords.join("\n"),
+        locationCode: location?.code,
+      }),
+    });
+    const d = await res.json();
+    setImportingId(null);
+    if (!res.ok) {
+      showNotice(d.error ?? "Error al crear el estudio");
+      return;
+    }
+    showNotice(`Estudio creado con ${d.keywords?.length ?? keywords.length} keywords de ${c.domain}.`);
+  }
+
+  // Añade las keywords del competidor a Rank Tracking (frecuencia manual, no
+  // gasta solo). Reutiliza POST /rank/keywords (bulk).
+  async function handleAddToTracking(c: Competitor) {
+    const keywords = collectKeywords(c);
+    if (keywords.length === 0) {
+      showNotice("Este competidor no tiene keywords todavía.");
+      return;
+    }
+    setTrackingId(c.id);
+    const res = await fetch(`/api/proyectos/${projectId}/rank/keywords`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        keywords: keywords.join("\n"),
+        device: "desktop",
+        frequency: "manual",
+        depth: 10,
+        locationCode: location?.code,
+        group: `Competidores (${c.domain})`,
+      }),
+    });
+    const d = await res.json();
+    setTrackingId(null);
+    if (!res.ok) {
+      showNotice(d.error ?? "Error al añadir a seguimiento");
+      return;
+    }
+    showNotice(`${d.added ?? 0} añadidas a seguimiento${d.skipped ? ` · ${d.skipped} ya seguidas` : ""} (manual — pulsa «Comprobar» para ver posición).`);
   }
 
   if (loading) return <Loader2 className="h-5 w-5 animate-spin text-gray-400" />;
@@ -456,6 +572,7 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
       </div>
 
       {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+      {notice && <p className="text-sm text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg">{notice}</p>}
 
       {/* Aviso de coste estimado por acción (como en geogrid/rank tracking) */}
       <div className="bg-white rounded-xl border border-gray-100 p-4 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-gray-600">
@@ -483,7 +600,10 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
             <AlertTriangle className="h-4 w-4" /> Define el dominio del proyecto en su ficha para analizar su visibilidad.
           </p>
         ) : (
-          <VisibilityKpis snapshot={data?.projectSnapshot ?? null} trend={trend} />
+          <VisibilityKpis
+            snapshot={data?.projectSnapshot ?? null}
+            trend={data?.projectDomain ? trendsByDomain[data.projectDomain] : undefined}
+          />
         )}
         {data?.projectSnapshot && (
           <TopKeywords keywords={data.projectSnapshot.topKeywords} title="Tus top keywords" />
@@ -553,10 +673,36 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
                 </button>
               </div>
             </div>
-            {c.snapshot && <VisibilityKpis snapshot={c.snapshot} />}
+            {c.snapshot && <VisibilityKpis snapshot={c.snapshot} trend={trendsByDomain[c.domain]} />}
             {c.snapshot?.topKeywords && <TopKeywords keywords={c.snapshot.topKeywords} title="Sus top keywords" />}
             {c.contentGap && c.contentGap.length > 0 && (
               <ContentGapList items={c.contentGap} contentGapAt={c.contentGapAt} />
+            )}
+            {/* Acciones cruzadas: lleva la inteligencia del competidor a los
+                módulos donde se trabaja (estudio / rank tracking), sin copiar
+                a mano. Solo aparecen si hay keywords recolectadas. */}
+            {collectKeywords(c).length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100">
+                <button
+                  onClick={() => handleImportToStudy(c)}
+                  disabled={importingId === c.id}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                  title="Crear un estudio (Módulo 1) con las keywords de este competidor"
+                >
+                  {importingId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowDownToLine className="h-3.5 w-3.5" />}
+                  Importar a estudio
+                </button>
+                <button
+                  onClick={() => handleAddToTracking(c)}
+                  disabled={trackingId === c.id}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                  title="Añadir estas keywords a Rank Tracking (manual)"
+                >
+                  {trackingId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Crosshair className="h-3.5 w-3.5" />}
+                  Añadir a seguimiento
+                </button>
+                <span className="text-[11px] text-gray-400">{collectKeywords(c).length} keywords</span>
+              </div>
             )}
           </div>
         ))}

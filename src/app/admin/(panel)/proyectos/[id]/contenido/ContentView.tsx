@@ -76,13 +76,34 @@ function extractUrlsFromGraph(raw: unknown): string[] {
 
 type ProjectUrl = { full: string; short: string };
 
+// Lee (una sola vez) los términos/temas que el módulo TF-IDF dejó en
+// sessionStorage (clave "tfidf-for-content"). Se invoca como inicializador
+// perezoso de useState, así evitamos el patrón setState-dentro-de-effect (que
+// duplicaba renders). Cero coste: son datos del SERP que ya pagó el TF-IDF.
+function consumeTfidfPayload(): { keyword?: string; terms?: string } {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.sessionStorage.getItem("tfidf-for-content");
+    if (!raw) return {};
+    window.sessionStorage.removeItem("tfidf-for-content");
+    return JSON.parse(raw) as { keyword?: string; terms?: string };
+  } catch {
+    return {};
+  }
+}
+
 export default function ContentView({ projectId }: { projectId: string }) {
+  // Pre-llenado desde TF-IDF (lazy init — lee sessionStorage solo al montar).
+  const [tfidfPayload] = useState(consumeTfidfPayload);
   const [type, setType] = useState<ContentType>("blog");
-  const [topic, setTopic] = useState("");
-  const [keyword, setKeyword] = useState("");
+  const [topic, setTopic] = useState(tfidfPayload.keyword ?? "");
+  const [keyword, setKeyword] = useState(tfidfPayload.keyword ?? "");
   const [targetUrl, setTargetUrl] = useState("");
   const [internalLinks, setInternalLinks] = useState("");
   const [targetWords, setTargetWords] = useState(DEFAULT_TARGET_WORDS.blog);
+  // Términos/temas inyectados desde el módulo TF-IDF que se pasan al prompt
+  // como guía de cobertura. Vacío cuando no viene nada.
+  const [tfidfTerms, setTfidfTerms] = useState(tfidfPayload.terms ?? "");
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -239,6 +260,7 @@ export default function ContentView({ projectId }: { projectId: string }) {
         keyword: keyword || undefined,
         targetUrl: targetUrl || undefined,
         internalLinks: internalLinks || undefined,
+        tfidfTerms: tfidfTerms || undefined,
         targetWords,
       }),
     });
@@ -298,6 +320,31 @@ export default function ContentView({ projectId }: { projectId: string }) {
           del proyecto.
         </p>
       </div>
+
+      {tfidfTerms.trim() && (
+        <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl p-4 space-y-1.5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <Sparkles className="h-4 w-4 text-indigo-500 shrink-0" />
+              <p className="text-sm text-indigo-900">
+                Términos y temas cargados desde TF-IDF ({tfidfTerms.split("\n").filter(Boolean).length}).
+                Se pasarán al modelo como guía de cobertura.
+              </p>
+            </div>
+            <button
+              onClick={() => setTfidfTerms("")}
+              className="text-indigo-400 hover:text-indigo-700 shrink-0"
+              title="Quitar los términos TF-IDF"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <p className="text-xs text-indigo-700/80 line-clamp-2">
+            {tfidfTerms.split("\n").filter(Boolean).slice(0, 12).join(" · ")}
+            {tfidfTerms.split("\n").filter(Boolean).length > 12 ? "…" : ""}
+          </p>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

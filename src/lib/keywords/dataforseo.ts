@@ -24,6 +24,10 @@ export type KeywordVolume = {
   searchVolume: number | null;
   competition: Competition | null;
   cpc: number | null;
+  // Estacionalidad (12 meses, orden cronológico ascendente). Llega gratis en
+  // la misma respuesta de search_volume (campo monthly_searches); antes se
+  // tiraba. Null si DataForSEO no la devuelve para esa keyword.
+  monthlySearches: number[] | null;
 };
 
 // "informacional" | "mixta" | "transaccional" — el vocabulario de 3 buckets
@@ -73,10 +77,31 @@ export async function fetchSearchVolume(
       searchVolume: typeof item.search_volume === "number" ? item.search_volume : null,
       competition: isCompetition(item.competition) ? item.competition : null,
       cpc: typeof item.cpc === "number" ? round2(item.cpc) : null,
+      monthlySearches: flattenMonthlySearches(item.monthly_searches),
     });
   }
 
   return { byKeyword, costUsd: typeof task.cost === "number" ? task.cost : null };
+}
+
+// Aplana monthly_searches (array de {year, month, searches}) a number[] ordenado
+// cronológicamente (más antiguo → más reciente). Devuelve null si no viene.
+// Exportado para reutilizarlo en suggestions.ts (mismo campo en keyword_info).
+export function flattenMonthlySearches(
+  ms: unknown
+): number[] | null {
+  if (!Array.isArray(ms) || ms.length === 0) return null;
+  const sorted = [...ms]
+    .filter(
+      (m): m is { year: number; month: number; searches: number } =>
+        !!m &&
+        typeof (m as { year?: unknown }).year === "number" &&
+        typeof (m as { month?: unknown }).month === "number" &&
+        typeof (m as { searches?: unknown }).searches === "number"
+    )
+    .sort((a, b) => a.year * 12 + a.month - (b.year * 12 + b.month));
+  if (sorted.length === 0) return null;
+  return sorted.map((m) => m.searches);
 }
 
 // Intención de búsqueda. Aquí la estructura es más profunda:

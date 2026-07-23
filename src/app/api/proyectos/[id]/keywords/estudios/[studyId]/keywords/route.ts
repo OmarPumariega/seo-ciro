@@ -81,6 +81,7 @@ export async function POST(
           competition: i.competition ?? null,
           cpc: i.cpc ?? null,
           intent: i.intent ?? null,
+          monthlySearches: null,
         },
       ])
     );

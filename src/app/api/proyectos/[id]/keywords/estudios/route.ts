@@ -146,6 +146,7 @@ export async function POST(
             competition: d?.competition ?? null,
             cpc: d?.cpc ?? null,
             intent: d?.intent ?? null,
+            monthlySearches: d?.monthlySearches ?? undefined,
             priority: priorities.get(kw) ?? 0,
           };
         }),

@@ -46,6 +46,10 @@ export function buildUserMessage(params: {
   keyword: string | null;
   targetUrl: string | null;
   internalLinks: string | null;
+  // Términos y temas (H2/H3) que ya cubren las páginas que posicionan en el
+  // top-10 de Google para esta keyword — provienen del módulo TF-IDF, que los
+  // obtiene gratis del SERP ya pagado. Se inyectan como guía de cobertura.
+  tfidfTerms?: string | null;
 }): string {
   const lines = [`Tema: ${params.topic}`];
   if (params.keyword) lines.push(`Keyword objetivo: ${params.keyword}`);
@@ -53,6 +57,11 @@ export function buildUserMessage(params: {
   if (params.internalLinks) {
     lines.push(
       `Enlaces internos a tejer de forma natural en el texto (usa un anchor text relevante para cada uno):\n${params.internalLinks}`
+    );
+  }
+  if (params.tfidfTerms && params.tfidfTerms.trim()) {
+    lines.push(
+      `Términos y temas que ya cubren las páginas que posicionan en Google para esta keyword (cubrirlos de forma natural en encabezados y párrafos, sin forzar):\n${params.tfidfTerms.trim()}`
     );
   }
   lines.push("\nEscribe el contenido siguiendo las reglas del system prompt.");
