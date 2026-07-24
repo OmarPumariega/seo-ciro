@@ -97,6 +97,7 @@ model Project {
   copilotThreads       CopilotThread[]
   competitors          Competitor[]
   visibilitySnapshots  VisibilitySnapshot[]
+  backlinkSnapshots    BacklinkSnapshot[]
   gscSnapshots         GscSnapshot[]
   tfidfResults         TfidfResult[]
 }
@@ -549,6 +550,34 @@ model VisibilitySnapshot {
   avgPosition     Float? // metrics.organic.avg_position (posición media del dominio)
   topKeywords     Json? // [{keyword, position, volume, competition, competitionIndex, cpc, monthlySearches, title, url, description}]
   fetchedAt       DateTime @default(now())
+
+  @@index([projectId, domain, fetchedAt])
+}
+
+// Backlinks (enlazado externo) de un dominio (el del proyecto o un
+// competidor) — Tier 3, antes bloqueado ("Link Building / Link Craft —
+// API de Backlinks de DataForSEO aparte", ver docs/01-vision-general.md):
+// a diferencia del resto de módulos de esta app, este SÍ requiere un
+// producto de DataForSEO nuevo (Backlinks API), no reutiliza ninguna
+// llamada ya pagada. `domain` como string plano (no FK a Competitor),
+// mismo criterio que VisibilitySnapshot — un solo modelo cubre tanto el
+// dominio propio como cualquier competidor. Coste real se paga al
+// ANALIZAR (explícito, con guard de tope de gasto); ver el último
+// snapshot es gratis.
+model BacklinkSnapshot {
+  id                   String   @id @default(cuid())
+  projectId            String
+  project              Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  domain               String
+  rank                 Int? // "Domain Rank" de DataForSEO (autoridad, 0-1000)
+  backlinksTotal       Int?
+  referringDomains     Int?
+  referringMainDomains Int?
+  dofollowBacklinks    Int?
+  nofollowBacklinks    Int?
+  brokenBacklinks      Int?
+  topBacklinks         Json? // [{urlFrom, domainFrom, domainFromRank, anchor, dofollow, firstSeen}]
+  fetchedAt            DateTime @default(now())
 
   @@index([projectId, domain, fetchedAt])
 }

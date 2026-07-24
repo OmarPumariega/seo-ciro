@@ -87,14 +87,17 @@ infraestructura (colas, caché, tablas de coste) para módulos que todavía no e
 - **Infraestructura:** VPS Contabo existente, Docker, Coolify, Traefik
 
 Fuera del alcance actual, previstos para cuando el módulo correspondiente lo necesite:
-Google Ads API (fuente alternativa de volumen para el Módulo 1), Business Profile API,
-SEO para LLMs (menciones en ChatGPT/Gemini) y Link Building — ambos bloqueados por
-coste mínimo de terceros, ver `docs/01-vision-general.md`.
+Google Ads API (fuente alternativa de volumen para el Módulo 1), Business Profile API y
+SEO para LLMs (menciones en ChatGPT/Gemini) — bloqueados por coste mínimo de terceros o
+aprobación pendiente, ver `docs/01-vision-general.md`. Link Building (backlinks) ya no
+está bloqueado — ver **Backlinks** en la ficha de proyecto, más abajo; usa la API de
+Backlinks de DataForSEO, un producto separado del resto de la app (gasto nuevo, no
+reutiliza llamadas ya pagadas).
 
 ## Esquema de base de datos (Prisma)
 
 Ver [`docs/04-modelo-de-datos.md`](./docs/04-modelo-de-datos.md) para el detalle
-completo (23 modelos). Resumen: `User` (login agencia), `Project` (cliente/dominio, con
+completo (24 modelos). Resumen: `User` (login agencia), `Project` (cliente/dominio, con
 NAP, perfil de marca, propiedad de Google seleccionada y tope de gasto opcional),
 `TitleMetaGeneration` y `SchemaGeneration` (historial de los Módulos 3 y 4),
 `ApiUsageLog` (coste por llamada a OpenRouter/DataForSEO, base del control de gasto),
@@ -104,7 +107,8 @@ on-page/robots/sitemap), `KeywordStudy` + `Keyword` + `KeywordDataCache` (Módul
 `RankKeyword` + `RankPosition` (Módulo 5), `GeogridRun` (Módulo 9), `TodoItem` (manual
 + auto-generado desde auditoría), `NotificationLog` (dedupe de avisos por email),
 `CopilotThread`, `SerpCache` (compartida entre Rank Tracking y TF-IDF), `Competitor` +
-`VisibilitySnapshot` (módulo Competidores), `AppSetting` (secrets cifrados,
+`VisibilitySnapshot` (módulo Competidores), `BacklinkSnapshot` (módulo Backlinks,
+mismo criterio que `VisibilitySnapshot`), `AppSetting` (secrets cifrados,
 cascada BD→.env) y `GlobalSetting` (config JSON no sensible — p.ej. el default del
 informe para todos los proyectos).
 
@@ -175,8 +179,8 @@ Proyectos. Tres bloques:
 ### Ficha de proyecto (`/admin/proyectos/[id]/...`)
 Módulos anidados por ruta, con el nav en el sidebar global (no pestañas locales), en
 este orden: Perfil, Tareas, Keywords, Arquitectura, Título y Meta, Schema, Rank Tracking,
-Google, Contenido, TF-IDF, Auditoría, Enlaces, Canibalizaciones, Competidores, Geogrid
-(solo si el proyecto es negocio local con coordenadas), Informe. El Copilot **no** es una
+Google, Contenido, TF-IDF, Auditoría, Enlaces, Canibalizaciones, Competidores, Backlinks,
+Geogrid (solo si el proyecto es negocio local con coordenadas), Informe. El Copilot **no** es una
 ruta/módulo del nav — es un widget flotante global (`CopilotWidget.tsx`, montado en
 `AdminShell.tsx`), disponible en cualquier página de un proyecto sin navegar a ningún
 sitio; ver el apartado "Copilot" más abajo.
@@ -300,6 +304,17 @@ sitio; ver el apartado "Copilot" más abajo.
   estudio del Módulo 1 con su gap + top) y **"Añadir a seguimiento"** (Rank Tracking,
   manual), reutilizando los endpoints bulk existentes. Ver histórico ya calculado es
   gratis, solo "Analizar"/recalcular gap paga.
+- **Backlinks** (Tier 3, antes bloqueado): enlazado externo — qué dominios enlazan al
+  proyecto (y a cada competidor ya trackeado en Competidores, misma lista reutilizada,
+  sin duplicarla) y cuánta autoridad tienen. A diferencia de Competidores, usa un
+  producto de DataForSEO aparte (`src/lib/backlinks/dataforseo.ts`, API de Backlinks —
+  gasto real nuevo, no reutiliza ninguna llamada ya pagada). "Analizar" por dominio
+  (propio o competidor) trae autoridad (`rank` 0-1000), backlinks totales, dominios de
+  referencia, dofollow/nofollow, rotos, y el top de backlinks individuales (dominio de
+  origen + su autoridad, URL, anchor, dofollow, primera vez visto) — persistido en
+  `BacklinkSnapshot` (histórico, mismo criterio que `VisibilitySnapshot`). Tabla
+  comparativa de autoridad entre el proyecto y sus competidores arriba de todo. Ver
+  histórico ya calculado es gratis, solo "Analizar" paga (guard de tope de gasto).
 - **Geogrid** (Módulo 9, solo negocios locales): keyword + rejilla (3×3/5×5/7×7) + radio
   → crea `GeogridRun` pending → se procesa de inmediato y también vía el cron →
   Maps SERP en cada punto con coordenada exacta, localiza la posición del negocio
@@ -372,7 +387,7 @@ nuevos que desaparecen al reiniciar el dev.
 ## Estado y roadmap
 
 Los 9 módulos del spec están completos, más la funcionalidad fuera de spec descrita
-arriba ("Lo que estamos construyendo"). Lo que queda pendiente (Google Ads como fuente
-alternativa, Business Profile API, SEO para LLMs, Link Building) está bloqueado por
-coste o aprobación de terceros — ver el roadmap en
-[`docs/01-vision-general.md`](./docs/01-vision-general.md).
+arriba ("Lo que estamos construyendo"), incluido ya Backlinks (antes Tier 3 bloqueado,
+ver arriba). Lo que queda pendiente (Google Ads como fuente alternativa, Business
+Profile API, SEO para LLMs) está bloqueado por coste o aprobación de terceros — ver el
+roadmap en [`docs/01-vision-general.md`](./docs/01-vision-general.md).

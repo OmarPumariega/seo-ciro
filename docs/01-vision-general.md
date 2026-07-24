@@ -64,6 +64,12 @@ Esta primera fase construye únicamente la base sobre la que colgará el resto:
   que ranquea un competidor y el proyecto no, vía domain_intersection) como **tabla
   rica** con snippet + URL del competidor por keyword. Botones para importar el
   gap/top a un estudio (Módulo 1) o a Rank Tracking.
+- ✅ Backlinks (Tier 3, ya no bloqueado) — enlazado externo del proyecto y de cada
+  competidor ya trackeado en Competidores (misma lista, sin duplicarla): autoridad de
+  dominio (0-1000), backlinks totales, dominios de referencia, dofollow/nofollow,
+  rotos, y top de backlinks individuales (origen + su autoridad + anchor). Único
+  módulo que usa un producto de DataForSEO aparte (API de Backlinks) — gasto real
+  nuevo, no reutiliza llamadas ya pagadas por el resto de la app.
 
 ## Roadmap pendiente (futuro, no olvidar)
 
@@ -72,9 +78,13 @@ Funcionalidades de la competencia aún NO construidas:
 - **Tier 3 — bloqueadas por coste/terceros**:
   - SEO para LLMs (menciones en ChatGPT/Gemini/Claude) — DataForSEO LLM Mentions,
     compromiso mínimo 100$/mes.
-  - Link Building / Link Craft (backlinks) — API de Backlinks de DataForSEO aparte.
   - Google Ads como fuente alternativa de volumen (Módulo 1) — developer token aprobado.
   - Business Profile API (Módulo 6) — pendiente de aprobación de Google.
+
+  (Link Building / backlinks ya no está bloqueado — ver "Backlinks" arriba, en
+  construido. Tarifa de la API de Backlinks de DataForSEO pendiente de verificar
+  contra la publicada antes de confiar en la estimación de coste mostrada al
+  usuario; el gasto real registrado en `ApiUsageLog` no depende de eso.)
 
 Cada uno de estos módulos se planifica y construye en una sesión dedicada, siguiendo
 el orden recomendado en la sección 8 de `spec-original.md`.

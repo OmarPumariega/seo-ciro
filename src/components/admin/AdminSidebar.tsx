@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Anchor,
   Braces,
   ChevronDown,
   Copy,
@@ -97,6 +98,7 @@ function projectNav(base: string, isLocalBusiness: boolean): ProjectNav {
         { href: `${base}/rank`, label: "Rank Tracking", icon: TrendingUp },
         { href: `${base}/google`, label: "Google", icon: Globe },
         { href: `${base}/competidores`, label: "Competidores", icon: Users },
+        { href: `${base}/backlinks`, label: "Backlinks", icon: Anchor },
       ],
     },
   ];

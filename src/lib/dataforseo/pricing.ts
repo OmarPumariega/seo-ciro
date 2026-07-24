@@ -89,3 +89,22 @@ export const GEOGRID_KEYWORDS_DEFAULT_LIMIT = 50;
 export function geogridBusinessKeywordsCostUsd(limit = GEOGRID_KEYWORDS_DEFAULT_LIMIT): number {
   return Math.round((LABS_TASK_COST_USD + limit * LABS_ITEM_COST_USD) * 1000) / 1000;
 }
+
+// Backlinks (Tier 3) — API de Backlinks de DataForSEO, producto SEPARADO del
+// resto (Labs/SERP/Keywords Data/Maps): a diferencia de todo lo anterior en
+// este archivo, esto es gasto genuinamente nuevo, no reutiliza ninguna
+// llamada ya pagada. TODO: precio no verificado contra
+// dataforseo.com/pricing/backlinks-api — placeholder razonable a corregir
+// antes de confiar en la insignia de coste mostrada al usuario. El guard de
+// tope de gasto real (assertWithinSpendLimit) no depende de esto — usa el
+// coste REAL devuelto por la API en cada respuesta (tasks[0].cost).
+const BACKLINKS_SUMMARY_TASK_COST_USD = 0.02;
+const BACKLINKS_LIST_TASK_COST_USD = 0.02;
+const BACKLINKS_LIST_ITEM_COST_USD = 0.0002;
+export const BACKLINKS_LIST_DEFAULT_LIMIT = 20;
+
+export function backlinkAnalysisCostUsd(limit = BACKLINKS_LIST_DEFAULT_LIMIT): number {
+  const summary = BACKLINKS_SUMMARY_TASK_COST_USD;
+  const list = BACKLINKS_LIST_TASK_COST_USD + limit * BACKLINKS_LIST_ITEM_COST_USD;
+  return Math.round((summary + list) * 1000) / 1000;
+}
