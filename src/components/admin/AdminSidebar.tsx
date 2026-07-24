@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Bot,
   Braces,
   ChevronDown,
   Copy,
@@ -36,6 +35,7 @@ import {
 import { cn } from "@/lib/utils";
 import ProjectSwitcher, { pushRecent } from "@/components/admin/ProjectSwitcher";
 import Logo from "@/components/admin/Logo";
+import { useProjectIdFromPath } from "@/lib/hooks/useProjectIdFromPath";
 
 const NAV_ITEMS = [
   { href: "/admin", label: "Panel general", icon: LayoutDashboard },
@@ -51,10 +51,12 @@ type NavGroup = { id: string; label: string; icon: LucideIcon; modules: NavModul
 type ProjectNav = { top: NavModule[]; groups: NavGroup[]; bottom: NavModule[] };
 
 // Navegación de un proyecto agrupada por tipo de herramienta. Los módulos
-// transversales (Perfil, Tareas, Informe, Copilot) van sueltos; el resto se
-// agrupa en carpetas plegables: Investigación · On-Page · Técnico · Seguimiento.
-// Geogrid solo aparece en proyectos locales (negocio con coordenadas) y cuelga
-// del grupo Seguimiento.
+// transversales (Perfil, Tareas, Informe) van sueltos; el resto se agrupa en
+// carpetas plegables: Investigación · On-Page · Técnico · Seguimiento. Geogrid
+// solo aparece en proyectos locales (negocio con coordenadas) y cuelga del
+// grupo Seguimiento. Copilot ya NO es una entrada de nav — es un widget
+// flotante persistente (CopilotWidget.tsx, montado en AdminShell), disponible
+// en cualquier página de un proyecto sin navegar a ningún sitio.
 function projectNav(base: string, isLocalBusiness: boolean): ProjectNav {
   const groups: NavGroup[] = [
     {
@@ -111,7 +113,6 @@ function projectNav(base: string, isLocalBusiness: boolean): ProjectNav {
     groups,
     bottom: [
       { href: `${base}/informe`, label: "Informe", icon: FileBarChart2 },
-      { href: `${base}/copilot`, label: "Copilot", icon: Bot },
     ],
   };
 }
@@ -121,13 +122,6 @@ function projectNav(base: string, isLocalBusiness: boolean): ProjectNav {
 function isModuleActive(href: string, base: string, pathname: string): boolean {
   if (href === base) return pathname === href;
   return pathname === href || pathname.startsWith(href + "/");
-}
-
-// Extrae el projectId de la ruta /admin/proyectos/[id]/... si aplica.
-function useProjectIdFromPath(): string | null {
-  const pathname = usePathname();
-  const m = pathname?.match(/^\/admin\/proyectos\/([^/]+)(?:\/|$)/);
-  return m ? m[1] : null;
 }
 
 export default function AdminSidebar({

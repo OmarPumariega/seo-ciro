@@ -176,7 +176,10 @@ Proyectos. Tres bloques:
 Módulos anidados por ruta, con el nav en el sidebar global (no pestañas locales), en
 este orden: Perfil, Tareas, Keywords, Arquitectura, Título y Meta, Schema, Rank Tracking,
 Google, Contenido, TF-IDF, Auditoría, Enlaces, Canibalizaciones, Competidores, Geogrid
-(solo si el proyecto es negocio local con coordenadas), Informe, Copilot.
+(solo si el proyecto es negocio local con coordenadas), Informe. El Copilot **no** es una
+ruta/módulo del nav — es un widget flotante global (`CopilotWidget.tsx`, montado en
+`AdminShell.tsx`), disponible en cualquier página de un proyecto sin navegar a ningún
+sitio; ver el apartado "Copilot" más abajo.
 
 - **Tareas** (Módulo 2, ampliado): CRUD manual de to-dos (texto + fecha límite
   opcional) **más** generación automática — al completarse una auditoría,
@@ -309,9 +312,20 @@ Google, Contenido, TF-IDF, Auditoría, Enlaces, Canibalizaciones, Competidores, 
   geogrid (si aplica) y gasto del mes, con hoja de estilos de impresión —
   "Guardar como PDF" es el propio diálogo de impresión del navegador, no hay
   generación de PDF en servidor ni versionado del informe.
-- **Copilot**: chat de solo lectura vía OpenRouter con el contexto del proyecto
-  (auditoría, rankings, gasto) inyectado en el system prompt. No tiene tool-calling —
-  no puede modificar datos del proyecto.
+- **Copilot**: widget flotante persistente (`CopilotWidget.tsx`, montado en
+  `AdminShell.tsx` — no remonta al navegar entre módulos, así que conserva estado con
+  `useState` normal, sin Context ni librería nueva), no una página del nav. Tres
+  estados: cerrado (burbuja), abierto (panel compacto) y minimizado (barra con el
+  título del hilo activo, sin perder la conversación). Solo se renderiza dentro de un
+  proyecto (`useProjectIdFromPath`, compartido con `AdminSidebar.tsx`) — el backend
+  sigue siendo estrictamente por proyecto, sin endpoint global. Estado
+  visual + último hilo activo por proyecto persisten en `localStorage`
+  (`seoCiro:copilotWidget`, mismo patrón que los "recientes" de `ProjectSwitcher.tsx`),
+  así que sobreviven a recargas de página. Backend sin cambios: chat de solo lectura vía
+  OpenRouter con el contexto del proyecto (auditoría, rankings, gasto) inyectado en el
+  system prompt, varios hilos por proyecto con historial (`CopilotThread`), lógica
+  extraída a `src/lib/copilot/useCopilotThreads.ts`. No tiene tool-calling — no puede
+  modificar datos del proyecto.
 
 ## Seguridad
 
