@@ -180,18 +180,26 @@ export default function CanibalizacionesView({ projectId }: { projectId: string 
                         <Crown className="h-4 w-4 text-emerald-600 shrink-0" />
                         <UrlLink url={winner.url} className="text-sm flex-1" />
                         <span className="text-xs font-medium text-emerald-700">
-                          {winner.clicks} clics · pos. {winner.position.toFixed(1)}
+                          {winner.clicks} clics · {winner.impressions} impr. · pos. {winner.position.toFixed(1)}
                         </span>
                       </li>
-                      {rest.map((page) => (
-                        <li key={page.url} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 px-3 py-2">
-                          <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
-                          <UrlLink url={page.url} className="text-sm flex-1" />
-                          <span className="text-xs text-gray-500">
-                            {page.clicks} clics · pos. {page.position.toFixed(1)}
-                          </span>
-                        </li>
-                      ))}
+                      {rest.map((page) => {
+                        // Impresiones (y el CTR derivado) distinguen una URL competidora
+                        // que ya no recibe tráfico real (segura de fusionar) de una que
+                        // sigue aportando visibilidad (más delicada de tocar). Ya se
+                        // pedían a Search Console y se enviaban al cliente; antes nunca
+                        // se mostraban.
+                        const ctr = page.impressions > 0 ? ((page.clicks / page.impressions) * 100).toFixed(1) : null;
+                        return (
+                          <li key={page.url} className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-100 px-3 py-2">
+                            <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                            <UrlLink url={page.url} className="text-sm flex-1" />
+                            <span className="text-xs text-gray-500">
+                              {page.clicks} clics · {page.impressions} impr.{ctr !== null && ` (CTR ${ctr}%)`} · pos. {page.position.toFixed(1)}
+                            </span>
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
                 );
