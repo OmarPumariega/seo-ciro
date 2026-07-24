@@ -22,10 +22,11 @@ export type RankedKeyword = {
   position: number | null; // rank_absolute del dominio para esa keyword
   volume: number | null; // search_volume
   // --- Campos que ya venían gratis y antes se descartaban ---
-  competition: string | null; // "HIGH" | "MEDIUM" | "LOW"
-  competitionIndex: number | null; // 0-100 (más granular que `competition`)
+  competition: string | null; // "HIGH" | "MEDIUM" | "LOW" (Google Ads, densidad de pujas — NO es dificultad SEO)
+  competitionIndex: number | null; // 0-100 (más granular que `competition`, sigue siendo Google Ads)
   cpc: number | null; // coste por clic estimado (USD)
   monthlySearches: number[] | null; // 12 meses (estacionalidad), orden cronológico
+  difficulty: number | null; // keyword_properties.keyword_difficulty (0-100), dificultad SEO real
   title: string | null; // title de la URL que posiciona el dominio
   url: string | null; // URL exacta que rankea
   description: string | null; // snippet de Google (cómo se muestra)
@@ -71,6 +72,14 @@ type KeywordInfo = {
   competition_index?: number;
   cpc?: number;
   monthly_searches?: Array<{ year?: number; month?: number; searches?: number }>;
+};
+
+// keyword_data.keyword_properties — dificultad SEO real (0-100), distinta de
+// keyword_info.competition (que es densidad de pujas de Google Ads). Nunca se
+// leía en este módulo: la "Dificultad" mostrada hasta ahora era en realidad
+// el proxy de Ads, por eso casi siempre salía "Media" o "?".
+type KeywordProperties = {
+  keyword_difficulty?: number;
 };
 
 type SerpElement = {
@@ -169,6 +178,7 @@ export async function fetchRankedKeywords(params: {
   for (const raw of items) {
     const kd = raw.keyword_data as Record<string, unknown> | undefined;
     const ki = kd?.keyword_info as KeywordInfo | undefined;
+    const kp = kd?.keyword_properties as KeywordProperties | undefined;
     const serp = (raw.ranked_serp_element as Record<string, unknown> | undefined)?.serp_item as SerpElement | undefined;
     const keyword = typeof kd?.keyword === "string" ? kd.keyword : null;
     if (!keyword) continue;
@@ -180,6 +190,7 @@ export async function fetchRankedKeywords(params: {
       competitionIndex: typeof ki?.competition_index === "number" ? ki.competition_index : null,
       cpc: typeof ki?.cpc === "number" ? ki.cpc : null,
       monthlySearches: flattenMonthlySearches(ki?.monthly_searches),
+      difficulty: typeof kp?.keyword_difficulty === "number" ? kp.keyword_difficulty : null,
       title: typeof serp?.title === "string" ? serp.title : null,
       url: typeof serp?.url === "string" ? serp.url : null,
       description: typeof serp?.description === "string" ? serp.description : null,
@@ -220,6 +231,7 @@ export async function fetchContentGap(params: {
   for (const raw of items) {
     const kd = raw.keyword_data as Record<string, unknown> | undefined;
     const ki = kd?.keyword_info as KeywordInfo | undefined;
+    const kp = kd?.keyword_properties as KeywordProperties | undefined;
     const first = raw.first_domain_serp_element as SerpElement | undefined;
     const keyword = typeof kd?.keyword === "string" ? kd.keyword : null;
     if (!keyword) continue;
@@ -231,6 +243,7 @@ export async function fetchContentGap(params: {
       competitionIndex: typeof ki?.competition_index === "number" ? ki.competition_index : null,
       cpc: typeof ki?.cpc === "number" ? ki.cpc : null,
       monthlySearches: flattenMonthlySearches(ki?.monthly_searches),
+      difficulty: typeof kp?.keyword_difficulty === "number" ? kp.keyword_difficulty : null,
       title: typeof first?.title === "string" ? first.title : null,
       url: typeof first?.url === "string" ? first.url : null,
       description: typeof first?.description === "string" ? first.description : null,

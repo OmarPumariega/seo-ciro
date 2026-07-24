@@ -23,10 +23,11 @@ type TopKeyword = {
   keyword: string;
   position: number | null;
   volume: number | null;
-  competition: string | null; // HIGH | MEDIUM | LOW
-  competitionIndex: number | null; // 0-100
+  competition: string | null; // HIGH | MEDIUM | LOW (Google Ads, no es dificultad SEO)
+  competitionIndex: number | null; // 0-100 (Google Ads, no es dificultad SEO)
   cpc: number | null;
   monthlySearches: number[] | null;
+  difficulty: number | null; // 0-100, dificultad SEO real (keyword_properties.keyword_difficulty)
   title: string | null;
   url: string | null;
   description: string | null;
@@ -98,23 +99,15 @@ function SeasonalitySparkline({ points }: { points: number[] | null | undefined 
   );
 }
 
-// Dificultad unificada: prioriza la etiqueta HIGH/MEDIUM/LOW (más legible) y
-// recurre al índice 0-100 si la etiqueta no viene. Devuelve {label, color}
-// para pintar un chip consistente.
-function difficulty(
-  competition: string | null,
-  index: number | null
-): { label: string; cls: string } {
-  if (competition === "HIGH" || (competition === null && index !== null && index >= 67)) {
-    return { label: "Alta", cls: "bg-red-50 text-red-700" };
-  }
-  if (competition === "LOW" || (competition === null && index !== null && index < 34)) {
-    return { label: "Baja", cls: "bg-emerald-50 text-emerald-700" };
-  }
-  if (competition === "MEDIUM" || index !== null) {
-    return { label: "Media", cls: "bg-amber-50 text-amber-700" };
-  }
-  return { label: "?", cls: "bg-gray-100 text-gray-400" };
+// Dificultad SEO real (keyword_properties.keyword_difficulty, 0-100) — NO se
+// deriva de `competition`/`competitionIndex` (eso es densidad de pujas de
+// Google Ads, una señal distinta que antes se usaba como proxy y por eso
+// casi siempre salía "Media" o "?"). Sin dato → "?".
+function difficulty(score: number | null): { label: string; cls: string } {
+  if (score === null) return { label: "?", cls: "bg-gray-100 text-gray-400" };
+  if (score >= 67) return { label: `${score} · Alta`, cls: "bg-red-50 text-red-700" };
+  if (score >= 34) return { label: `${score} · Media`, cls: "bg-amber-50 text-amber-700" };
+  return { label: `${score} · Baja`, cls: "bg-emerald-50 text-emerald-700" };
 }
 
 function TrafficSparkline({ points }: { points: number[] }) {
@@ -171,14 +164,14 @@ function KeywordChips({ keywords, colorClass }: { keywords: TopKeyword[]; colorC
   return (
     <div className="max-h-64 overflow-y-auto flex flex-wrap content-start gap-1.5">
       {keywords.map((k, i) => {
-        const dif = difficulty(k.competition, k.competitionIndex);
+        const dif = difficulty(k.difficulty);
         return (
           <span key={i} className={cn("inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded", colorClass)}>
             {k.keyword}
             {k.volume != null && <span className="opacity-70">· {k.volume.toLocaleString("es-ES")}</span>}
             {k.position != null && <span className="opacity-70">· #{k.position}</span>}
             {k.cpc != null && <span className="opacity-70">· {fmtCpc(k.cpc)}</span>}
-            {(k.competition || k.competitionIndex != null) && (
+            {k.difficulty != null && (
               <span className={cn("px-1 rounded font-medium", dif.cls)} title={`Dificultad ${dif.label}`}>
                 {dif.label}
               </span>
@@ -256,7 +249,7 @@ function ContentGapList({ items, contentGapAt }: { items: TopKeyword[]; contentG
             </thead>
             <tbody>
               {filtered.map((k, i) => {
-                const dif = difficulty(k.competition, k.competitionIndex);
+                const dif = difficulty(k.difficulty);
                 const isOpen = expanded === `${i}-${k.keyword}`;
                 const hasDetail = Boolean(k.description || k.title || k.url);
                 return (
