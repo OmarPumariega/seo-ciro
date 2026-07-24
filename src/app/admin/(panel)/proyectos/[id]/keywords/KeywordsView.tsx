@@ -31,6 +31,10 @@ type Keyword = {
   // search_volume; antes se tiraba. Mini-sparkline en la tabla para ver de un
   // vistazo si una keyword es estable o estacional.
   monthlySearches?: number[] | null;
+  // Dificultad SEO real (0-100) — solo disponible si la keyword llegó vía
+  // Sugerencias (DataForSEO Labs) o import de Competidores/Geogrid; "pegar
+  // lista" no la resuelve (el endpoint plano de volumen no la incluye).
+  difficulty?: number | null;
   priority: number;
 };
 
@@ -72,7 +76,18 @@ type Suggestion = {
   competition: string | null;
   cpc: number | null;
   intent: string | null;
+  difficulty: number | null;
+  monthlySearches: number[] | null;
 };
+
+// Mismo criterio que Competidores: dificultad SEO real (0-100), no el proxy
+// de competition/competitionIndex de Google Ads.
+function difficultyBadge(score: number | null | undefined): { label: string; cls: string } | null {
+  if (score == null) return null;
+  if (score >= 67) return { label: `${score} · Alta`, cls: "bg-red-50 text-red-700" };
+  if (score >= 34) return { label: `${score} · Media`, cls: "bg-amber-50 text-amber-700" };
+  return { label: `${score} · Baja`, cls: "bg-emerald-50 text-emerald-700" };
+}
 
 const INTENT_STYLES: Record<string, string> = {
   informacional: "bg-gray-100 text-gray-600",
@@ -604,12 +619,25 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
                           <td className="py-2 px-2 text-gray-600 tabular-nums w-20">
                             {s.searchVolume === null ? <span className="text-gray-300">—</span> : s.searchVolume.toLocaleString("es-ES")}
                           </td>
+                          <td className="py-2 px-2 w-14">
+                            <SeasonalitySparkline points={s.monthlySearches} />
+                          </td>
                           <td className="py-2 px-2 w-16">
                             <span className={cn("text-xs font-medium", COMPETITION_STYLES[s.competition ?? ""] ?? "text-gray-400")}>
                               {s.competition ?? "—"}
                             </span>
                           </td>
                           <td className="py-2 px-2 w-20 text-gray-600 tabular-nums">{fmtCpc(s.cpc)}</td>
+                          <td className="py-2 px-2 w-24">
+                            {(() => {
+                              const dif = difficultyBadge(s.difficulty);
+                              return dif ? (
+                                <span className={cn("text-[11px] px-1.5 py-0.5 rounded font-medium", dif.cls)}>{dif.label}</span>
+                              ) : (
+                                <span className="text-gray-300 text-xs">—</span>
+                              );
+                            })()}
+                          </td>
                           <td className="py-2 px-2 w-28">
                             {s.intent && (
                               <span className={cn("text-[11px] px-2 py-0.5 rounded-full", INTENT_STYLES[s.intent] ?? "bg-gray-100 text-gray-500")}>
@@ -694,6 +722,7 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
                     <th className="font-medium py-2 px-2">Tend.</th>
                     <th className="font-medium py-2 px-2">Comp.</th>
                     <th className="font-medium py-2 px-2">CPC</th>
+                    <th className="font-medium py-2 px-2">Dif.</th>
                     <th className="font-medium py-2 px-2">Intención</th>
                     <th className="font-medium py-2 px-2 text-right">Prio.</th>
                     <th className="py-2 px-2 w-10"></th>
@@ -715,6 +744,16 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
                         </span>
                       </td>
                       <td className="py-2 px-2 text-gray-600 tabular-nums">{fmtCpc(kw.cpc)}</td>
+                      <td className="py-2 px-2">
+                        {(() => {
+                          const dif = difficultyBadge(kw.difficulty);
+                          return dif ? (
+                            <span className={cn("text-[11px] px-1.5 py-0.5 rounded font-medium", dif.cls)}>{dif.label}</span>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          );
+                        })()}
+                      </td>
                       <td className="py-2 px-2">
                         {kw.intent ? (
                           <span className={cn("text-[11px] px-2 py-0.5 rounded-full", INTENT_STYLES[kw.intent] ?? "bg-gray-100 text-gray-500")}>

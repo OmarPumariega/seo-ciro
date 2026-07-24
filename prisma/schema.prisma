@@ -289,6 +289,10 @@ model Keyword {
   // llamada de search_volume que ya pagábamos (campo monthly_searches);
   // antes se descartaba. Vital para planificar contenido estacional.
   monthlySearches Json?
+  // Dificultad SEO real (keyword_properties.keyword_difficulty, 0-100) — solo
+  // disponible vía DataForSEO Labs (Sugerencias), no en el endpoint plano de
+  // volumen ("pegar lista"), así que null es un estado normal, no un fallo.
+  difficulty   Int?
   priority     Int // 0-100, cuota de volumen dentro del estudio
 
   @@unique([studyId, keyword])

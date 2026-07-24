@@ -10,6 +10,7 @@ export type ImportableKeyword = {
   competition: string | null;
   cpc: number | null;
   monthlySearches: number[] | null;
+  difficulty?: number | null;
 };
 
 export async function importKeywordsToNewStudy(
@@ -36,6 +37,7 @@ export async function importKeywordsToNewStudy(
         competition: k.competition,
         cpc: k.cpc,
         monthlySearches: k.monthlySearches,
+        difficulty: k.difficulty ?? null,
       })),
     }),
   });

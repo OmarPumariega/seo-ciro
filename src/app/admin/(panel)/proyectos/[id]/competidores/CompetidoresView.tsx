@@ -454,6 +454,7 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
     competition: string | null;
     cpc: number | null;
     monthlySearches: number[] | null;
+    difficulty: number | null;
   };
   function collectKeywords(c: Competitor): CollectedKeyword[] {
     const seen = new Set<string>();
@@ -470,6 +471,7 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
             competition: k.competition,
             cpc: k.cpc,
             monthlySearches: k.monthlySearches,
+            difficulty: k.difficulty,
           });
         }
       }

@@ -15,6 +15,12 @@ export type Suggestion = {
   competition: Competition | null;
   cpc: number | null;
   intent: IntentValue | null;
+  // keyword_properties.keyword_difficulty (0-100) — dificultad SEO real, ya
+  // venía en la misma respuesta y no se leía (mismo hueco que tenía
+  // Competidores). monthlySearches también venía y se calculaba solo para
+  // calentar el caché, nunca llegaba a la UI — ahora sí.
+  difficulty: number | null;
+  monthlySearches: number[] | null;
 };
 
 function isLevel(v: unknown): v is Competition {
@@ -49,6 +55,7 @@ export async function fetchSuggestions(params: {
     const kw = typeof item.keyword === "string" ? item.keyword : null;
     if (!kw) continue;
     const ki = (item.keyword_info ?? {}) as Record<string, unknown>;
+    const kp = (item.keyword_properties ?? {}) as Record<string, unknown>;
     const si = (item.search_intent_info ?? {}) as Record<string, unknown>;
     const intent = mapIntent(typeof si.main_intent === "string" ? si.main_intent : undefined);
     // monthly_searches también viene en keyword_info del endpoint de
@@ -60,6 +67,8 @@ export async function fetchSuggestions(params: {
       competition: isLevel(ki.competition_level) ? ki.competition_level : null,
       cpc: typeof ki.cpc === "number" ? round2(ki.cpc) : null,
       intent,
+      difficulty: typeof kp.keyword_difficulty === "number" ? kp.keyword_difficulty : null,
+      monthlySearches,
     };
     items.push(suggestion);
     cacheData.set(kw, {

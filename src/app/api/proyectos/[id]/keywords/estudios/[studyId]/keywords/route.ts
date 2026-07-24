@@ -13,6 +13,7 @@ type ItemIn = {
   cpc?: number | null;
   intent?: string | null;
   monthlySearches?: number[] | null;
+  difficulty?: number | null;
 };
 
 // Añade keywords al estudio con métricas ya conocidas (vienen de sugerencias,
@@ -70,6 +71,7 @@ export async function POST(
         cpc: i.cpc ?? null,
         intent: i.intent ?? null,
         monthlySearches: i.monthlySearches ?? undefined,
+        difficulty: i.difficulty ?? null,
         priority: 0, // se recalcula abajo
       })),
     });
