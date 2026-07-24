@@ -404,7 +404,7 @@ model GeogridRun {
   centerLng       Float
   zoom            Int       @default(15) // zoom fijo por punto (área ~vecinal)
   status          String    @default("pending") // pending | running | completed | failed
-  points          Json? // [{ row, col, lat, lng, position, title }]
+  points          Json? // [{ row, col, lat, lng, position, title, url, rating, reviewsCount, category, address, placeId, domain, top: [{position, title, rating, reviewsCount, url, category, address, lat, lng, placeId, domain, isMatch}] }]
   averagePosition Float? // media de posiciones (solo de los puntos donde apareció)
   foundCount      Int? // nº de puntos donde el negocio apareció (sobre gridSize²)
   errorMessage    String?

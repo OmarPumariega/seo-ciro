@@ -13,6 +13,7 @@ import {
   competitorAnalysisCostUsd,
   contentGapCostUsd,
 } from "@/lib/dataforseo/pricing";
+import { importKeywordsToNewStudy } from "@/lib/keywords/client-import";
 
 // Item enriquecido de keyword (visibilidad o content gap). Todos los campos
 // extra llegan GRATIS en la misma respuesta Labs que ya pagábamos — antes se
@@ -493,41 +494,18 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
       return;
     }
     setImportingId(c.id);
-    const createRes = await fetch(`/api/proyectos/${projectId}/keywords/estudios`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: `Competidor ${c.domain} — ${new Date().toLocaleDateString("es-ES")}`,
-        keywords: "",
-        locationCode: location?.code,
-      }),
-    });
-    const study = await createRes.json();
-    if (!createRes.ok) {
-      setImportingId(null);
-      showNotice(study.error ?? "Error al crear el estudio");
-      return;
-    }
-    const addRes = await fetch(`/api/proyectos/${projectId}/keywords/estudios/${study.id}/keywords`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        items: keywords.map((k) => ({
-          keyword: k.keyword,
-          searchVolume: k.volume,
-          competition: k.competition,
-          cpc: k.cpc,
-          monthlySearches: k.monthlySearches,
-        })),
-      }),
-    });
-    const d = await addRes.json();
+    const result = await importKeywordsToNewStudy(
+      projectId,
+      `Competidor ${c.domain} — ${new Date().toLocaleDateString("es-ES")}`,
+      keywords,
+      location?.code
+    );
     setImportingId(null);
-    if (!addRes.ok) {
-      showNotice(d.error ?? "Error al añadir las keywords al estudio");
+    if (!result.ok) {
+      showNotice(result.error);
       return;
     }
-    showNotice(`Estudio creado con ${d.added ?? keywords.length} keywords de ${c.domain} (sin coste adicional).`);
+    showNotice(`Estudio creado con ${result.added} keywords de ${c.domain} (sin coste adicional).`);
   }
 
   // Añade las keywords del competidor a Rank Tracking (frecuencia manual, no

@@ -1,13 +1,26 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Sparkles, XCircle, GitCompareArrows, Check, MapPin, Star, MousePointerClick, Trash2 } from "lucide-react";
+import { Loader2, Sparkles, XCircle, GitCompareArrows, Check, MapPin, Star, MousePointerClick, Trash2, Search, Send, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { geogridCostUsd } from "@/lib/dataforseo/pricing";
+import { geogridCostUsd, geogridBusinessKeywordsCostUsd } from "@/lib/dataforseo/pricing";
+import { importKeywordsToNewStudy } from "@/lib/keywords/client-import";
 import GeogridMap from "@/components/admin/GeogridMap";
 import UrlLink from "@/components/admin/UrlLink";
 import GbpPicker, { type GbpCandidate } from "@/components/admin/GbpPicker";
 import type { MapsTopItem } from "@/lib/geogrid/maps";
+
+// Item devuelto por "Ver keywords" — mismo shape que RankedKeyword de
+// Competidores (mismo endpoint, incluida la dificultad real).
+type BusinessKeyword = {
+  keyword: string;
+  position: number | null;
+  volume: number | null;
+  competition: string | null;
+  cpc: number | null;
+  monthlySearches: number[] | null;
+  difficulty: number | null;
+};
 
 type GridPoint = {
   row: number;
@@ -16,6 +29,13 @@ type GridPoint = {
   lng: number;
   position: number | null;
   title: string | null;
+  url?: string | null;
+  rating?: number | null;
+  reviewsCount?: number | null;
+  category?: string | null;
+  address?: string | null;
+  placeId?: string | null;
+  domain?: string | null;
   top?: MapsTopItem[];
 };
 
@@ -56,11 +76,109 @@ function badgeColor(position: number): string {
   return "bg-red-500";
 }
 
+// Tabla de keywords de un negocio (mismo detalle que Competidores: volumen,
+// posición, CPC, dificultad real) + botón para importarlas a un estudio de
+// Keywords, sin coste adicional (los datos ya se pagaron al pedirlas aquí).
+function BusinessKeywordsTable({
+  projectId,
+  domain,
+  items,
+}: {
+  projectId: string;
+  domain: string;
+  items: BusinessKeyword[];
+}) {
+  const [importing, setImporting] = useState(false);
+  const [notice, setNotice] = useState("");
+
+  async function handleImport() {
+    setImporting(true);
+    const result = await importKeywordsToNewStudy(
+      projectId,
+      `Geogrid: ${domain} — ${new Date().toLocaleDateString("es-ES")}`,
+      items,
+    );
+    setImporting(false);
+    setNotice(result.ok ? `Estudio creado con ${result.added} keywords.` : result.error);
+    setTimeout(() => setNotice(""), 5000);
+  }
+
+  if (items.length === 0) {
+    return <p className="text-xs text-gray-400 py-1">Sin keywords orgánicas encontradas para este dominio.</p>;
+  }
+
+  return (
+    <div className="mt-1.5 mb-1 bg-gray-50 rounded-lg p-2 space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] text-gray-500">{items.length} keywords</p>
+        <button
+          onClick={handleImport}
+          disabled={importing}
+          className="flex items-center gap-1 text-[11px] font-medium text-gray-700 hover:text-gray-900 disabled:opacity-50"
+        >
+          {importing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+          Importar a estudio
+        </button>
+      </div>
+      {notice && <p className="text-[11px] text-emerald-700">{notice}</p>}
+      <div className="max-h-40 overflow-y-auto space-y-1">
+        {items.slice(0, 50).map((k, i) => (
+          <div key={i} className="flex items-center justify-between gap-2 text-[11px]">
+            <span className="text-gray-700 truncate">{k.keyword}</span>
+            <span className="text-gray-400 shrink-0 tabular-nums">
+              {k.volume != null ? k.volume.toLocaleString("es-ES") : "—"}
+              {k.position != null && ` · #${k.position}`}
+              {k.difficulty != null && ` · dif. ${k.difficulty}`}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Panel lateral "quién gana aquí" (estilo LocalFalcon/DinoRank): el pack
 // local real de un punto concreto de la rejilla, con valoración y web —
 // mismos datos que ya trae la llamada pagada de ese punto, no cuesta nada
-// nuevo mostrarlos.
-function PointRankingPanel({ point }: { point: GridPoint | null }) {
+// nuevo mostrarlos. "Ver keywords" es la única acción de este panel que
+// gasta (bajo demanda, por negocio con dominio resuelto).
+function PointRankingPanel({
+  point,
+  projectId,
+  runId,
+}: {
+  point: GridPoint | null;
+  projectId: string;
+  runId: string | null;
+}) {
+  const [expandedDomain, setExpandedDomain] = useState<string | null>(null);
+  const [keywordsByDomain, setKeywordsByDomain] = useState<Record<string, BusinessKeyword[]>>({});
+  const [loadingDomain, setLoadingDomain] = useState<string | null>(null);
+  const [kwError, setKwError] = useState("");
+
+  async function toggleKeywords(domain: string) {
+    if (expandedDomain === domain) {
+      setExpandedDomain(null);
+      return;
+    }
+    setExpandedDomain(domain);
+    setKwError("");
+    if (keywordsByDomain[domain] || !runId) return; // ya en caché de esta sesión
+    setLoadingDomain(domain);
+    const res = await fetch(`/api/proyectos/${projectId}/geogrid/${runId}/keywords-negocio`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ domain }),
+    });
+    const data = await res.json();
+    setLoadingDomain(null);
+    if (!res.ok) {
+      setKwError(data.error ?? "Error al buscar las keywords");
+      return;
+    }
+    setKeywordsByDomain((prev) => ({ ...prev, [domain]: data.items }));
+  }
+
   if (!point) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-center gap-2 text-gray-400 py-10">
@@ -109,12 +227,90 @@ function PointRankingPanel({ point }: { point: GridPoint | null }) {
                   )}
                   {item.category && <span className="text-gray-400">· {item.category}</span>}
                 </p>
-                {item.url && <UrlLink url={item.url} className="text-xs mt-0.5" />}
+                {item.address && <p className="text-[11px] text-gray-400 truncate">{item.address}</p>}
+                <div className="flex items-center gap-2 mt-0.5">
+                  {item.url && <UrlLink url={item.url} className="text-xs" />}
+                  {item.domain && (
+                    <button
+                      onClick={() => toggleKeywords(item.domain as string)}
+                      className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-900 shrink-0"
+                      title={`Ver keywords de ${item.domain} (~$${geogridBusinessKeywordsCostUsd().toFixed(2)})`}
+                    >
+                      {loadingDomain === item.domain ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Search className="h-3 w-3" />
+                      )}
+                      Ver keywords
+                    </button>
+                  )}
+                </div>
+                {expandedDomain === item.domain && item.domain && (
+                  <>
+                    {kwError && <p className="text-[11px] text-red-600 mt-1">{kwError}</p>}
+                    {keywordsByDomain[item.domain] && (
+                      <BusinessKeywordsTable projectId={projectId} domain={item.domain} items={keywordsByDomain[item.domain]} />
+                    )}
+                  </>
+                )}
               </div>
             </li>
           ))}
         </ul>
       )}
+    </div>
+  );
+}
+
+// Resumen agregado "quién gana en toda la rejilla": no solo el punto
+// seleccionado, sino cuántos puntos del run entero gana cada competidor y su
+// posición media — agrupado por placeId (más fiable que el título) sobre
+// datos ya guardados, sin coste adicional.
+function GridWinnersSummary({ points, gridSize }: { points: GridPoint[]; gridSize: number }) {
+  const totals = points.length;
+  const byBusiness = new Map<
+    string,
+    { title: string; rating: number | null; points: number; posSum: number; isMatch: boolean }
+  >();
+  for (const p of points) {
+    for (const item of p.top ?? []) {
+      const key = item.placeId || item.title;
+      const cur = byBusiness.get(key) ?? { title: item.title, rating: item.rating, points: 0, posSum: 0, isMatch: item.isMatch };
+      cur.points += 1;
+      cur.posSum += item.position;
+      byBusiness.set(key, cur);
+    }
+  }
+  const ranked = [...byBusiness.values()]
+    .map((b) => ({ ...b, avgPosition: Math.round((b.posSum / b.points) * 10) / 10 }))
+    .sort((a, b) => b.points - a.points || a.avgPosition - b.avgPosition)
+    .slice(0, 10);
+
+  if (ranked.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
+      <div className="flex items-center gap-2">
+        <Trophy className="h-4 w-4 text-gray-500" />
+        <h3 className="text-sm font-semibold text-gray-900">Quién gana en toda la rejilla</h3>
+      </div>
+      <p className="text-xs text-gray-400">
+        En cuántos de los {totals} puntos ({gridSize}×{gridSize}) aparece cada negocio, y su posición
+        media — calculado sobre los datos ya guardados de este geogrid, sin coste adicional.
+      </p>
+      <ul className="divide-y divide-gray-50">
+        {ranked.map((b, i) => (
+          <li key={i} className={cn("py-2 flex items-center justify-between gap-2", b.isMatch && "bg-emerald-50 -mx-2 px-2 rounded-md")}>
+            <span className="text-sm text-gray-900 truncate flex items-center gap-1.5">
+              {b.title}
+              {b.isMatch && <span className="text-[10px] font-semibold text-emerald-700">· TÚ</span>}
+            </span>
+            <span className="text-xs text-gray-500 shrink-0 tabular-nums">
+              {b.points}/{totals} puntos · media #{b.avgPosition}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -417,7 +613,7 @@ export default function GeogridView({
               />
             </div>
             <div className="lg:w-72 shrink-0 lg:border-l lg:border-gray-100 lg:pl-4">
-              <PointRankingPanel point={selectedPointData} />
+              <PointRankingPanel point={selectedPointData} projectId={projectId} runId={current?.id ?? null} />
             </div>
           </div>
         )}
@@ -432,6 +628,10 @@ export default function GeogridView({
           </div>
         )}
       </div>
+
+      {current?.status === "completed" && current.points && !canCompare && (
+        <GridWinnersSummary points={current.points} gridSize={current.gridSize} />
+      )}
 
       <form onSubmit={handleTrigger} className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
         <GbpPicker

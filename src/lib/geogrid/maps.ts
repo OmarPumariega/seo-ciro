@@ -15,6 +15,12 @@ export type MapsRank = {
   position: number | null; // null = el negocio no apareció en el depth pedido
   title: string | null; // nombre del negocio tal cual aparece en Maps
   url: string | null;
+  rating: number | null;
+  reviewsCount: number | null;
+  category: string | null;
+  address: string | null;
+  placeId: string | null;
+  domain: string | null;
 };
 
 // Top real del pack local en ese punto — mismo item que ya devuelve la
@@ -28,10 +34,18 @@ export type MapsTopItem = {
   reviewsCount: number | null;
   url: string | null;
   category: string | null;
+  address: string | null;
+  lat: number | null;
+  lng: number | null;
+  placeId: string | null;
+  domain: string | null;
   isMatch: boolean; // true si es el negocio del proyecto
 };
 
-const TOP_ITEMS_LIMIT = 5;
+// Antes 5: recortaba el pack local pagado sin motivo. El array completo (10-20
+// negocios típicos) ya viene en la misma respuesta — capturarlo todo es coste
+// marginal cero y alimenta el resumen agregado "quién gana en toda la rejilla".
+const TOP_ITEMS_LIMIT = 20;
 
 export type MapsResult = {
   rank: MapsRank;
@@ -46,6 +60,9 @@ type MapsItem = {
   title?: string;
   url?: string | null;
   place_id?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
   rating?: { value?: number; votes_count?: number } | null;
   category?: string | null;
 };
@@ -84,9 +101,7 @@ export async function checkMapsRank(params: {
   const normGbpName = params.gbpName ? normalizeName(params.gbpName) : null;
   const wantPlaceId = params.gbpPlaceId?.trim() || null;
 
-  let bestPosition: number | null = null;
-  let bestTitle: string | null = null;
-  let bestUrl: string | null = null;
+  let match: MapsTopItem | null = null;
   const allRanked: MapsTopItem[] = [];
 
   for (const raw of items) {
@@ -108,27 +123,57 @@ export async function checkMapsRank(params: {
     const nameHit = Boolean(normBizName && itemTitle && normalizeName(itemTitle).includes(normBizName));
     const isMatch = placeHit || gbpHit || domainHit || nameHit;
 
-    allRanked.push({
+    const entry: MapsTopItem = {
       position: pos,
       title: itemTitle || "(sin nombre)",
       rating: typeof item.rating?.value === "number" ? item.rating.value : null,
       reviewsCount: typeof item.rating?.votes_count === "number" ? item.rating.votes_count : null,
       url: typeof item.url === "string" ? item.url : null,
       category: typeof item.category === "string" ? item.category : null,
+      address: typeof item.address === "string" ? item.address : null,
+      lat: typeof item.latitude === "number" ? item.latitude : null,
+      lng: typeof item.longitude === "number" ? item.longitude : null,
+      placeId: itemPlaceId || null,
+      domain: itemDomain || null,
       isMatch,
-    });
+    };
+    allRanked.push(entry);
 
-    if (isMatch && (bestPosition === null || pos < bestPosition)) {
-      bestPosition = pos;
-      bestTitle = itemTitle || null;
-      bestUrl = typeof item.url === "string" ? item.url : null;
+    // El negocio propio: el item completo (no solo posición/título/url como
+    // antes), y solo se guarda el de mejor posición si aparece más de una vez.
+    if (isMatch && (match === null || pos < match.position)) {
+      match = entry;
     }
   }
 
   allRanked.sort((a, b) => a.position - b.position);
 
+  const rank: MapsRank = match
+    ? {
+        position: match.position,
+        title: match.title,
+        url: match.url,
+        rating: match.rating,
+        reviewsCount: match.reviewsCount,
+        category: match.category,
+        address: match.address,
+        placeId: match.placeId,
+        domain: match.domain,
+      }
+    : {
+        position: null,
+        title: null,
+        url: null,
+        rating: null,
+        reviewsCount: null,
+        category: null,
+        address: null,
+        placeId: null,
+        domain: null,
+      };
+
   return {
-    rank: { position: bestPosition, title: bestTitle, url: bestUrl },
+    rank,
     costUsd: typeof task.cost === "number" ? task.cost : null,
     top: allRanked.slice(0, TOP_ITEMS_LIMIT),
   };

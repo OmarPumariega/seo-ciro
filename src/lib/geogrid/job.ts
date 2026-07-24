@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { Prisma } from "@prisma/client";
 import { assertWithinSpendLimit, DataForSeoSpendLimitError } from "@/lib/dataforseo/spend";
 import { generateGridPoints } from "@/lib/geogrid/grid";
-import { checkMapsRank, normalizeDomain, type MapsTopItem } from "@/lib/geogrid/maps";
+import { checkMapsRank, normalizeDomain, type MapsRank, type MapsTopItem } from "@/lib/geogrid/maps";
 
 const STALE_TIMEOUT_MIN = 15;
 
@@ -40,15 +40,13 @@ export async function runGeogridJob(): Promise<{ processed: number }> {
     const projectDomain = run.project.domain ? normalizeDomain(run.project.domain) : null;
     const points = generateGridPoints(run.centerLat, run.centerLng, run.gridSize, run.radiusKm);
 
-    const results: Array<{
-      row: number;
-      col: number;
-      lat: number;
-      lng: number;
-      position: number | null;
-      title: string | null;
-      top: MapsTopItem[];
-    }> = [];
+    // El negocio propio en cada punto — antes solo position/title, ahora
+    // todos los campos de MapsRank (rating, categoría, dirección, url,
+    // placeId, dominio) cuando aparece, sin coste adicional (misma
+    // respuesta ya pagada). Se guardan planos (no anidados) para no romper
+    // el acceso directo a position/title que ya usa el mapa de calor.
+    const results: Array<{ row: number; col: number; lat: number; lng: number } & MapsRank & { top: MapsTopItem[] }> =
+      [];
     let totalCost = 0;
     let found = 0;
     let posSum = 0;
@@ -69,7 +67,7 @@ export async function runGeogridJob(): Promise<{ processed: number }> {
           gbpName: run.project.gbpName ?? null,
           gbpPlaceId: run.project.gbpPlaceId ?? null,
         });
-        results.push({ row: p.row, col: p.col, lat: p.lat, lng: p.lng, position: rank.position, title: rank.title, top });
+        results.push({ row: p.row, col: p.col, lat: p.lat, lng: p.lng, ...rank, top });
         if (costUsd !== null) totalCost += costUsd;
         if (rank.position !== null) {
           found++;
@@ -77,7 +75,11 @@ export async function runGeogridJob(): Promise<{ processed: number }> {
         }
       } catch (e) {
         console.error(`[geogrid] error en punto (${p.row},${p.col}) del run ${run.id}:`, e);
-        results.push({ row: p.row, col: p.col, lat: p.lat, lng: p.lng, position: null, title: null, top: [] });
+        results.push({
+          row: p.row, col: p.col, lat: p.lat, lng: p.lng,
+          position: null, title: null, url: null, rating: null, reviewsCount: null,
+          category: null, address: null, placeId: null, domain: null, top: [],
+        });
       }
     }
 
