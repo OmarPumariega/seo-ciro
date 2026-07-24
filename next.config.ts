@@ -8,6 +8,12 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // El build corre en un VPS Contabo compartido y muy cargado. Limitar los
+  // CPUs de Next reduce los workers de Turbopack/SSG y, por tanto, el pico de
+  // RAM que disparaba el OOM kill del contenedor de build de Coolify.
+  experimental: {
+    cpus: 2,
+  },
   async headers() {
     return [
       {
