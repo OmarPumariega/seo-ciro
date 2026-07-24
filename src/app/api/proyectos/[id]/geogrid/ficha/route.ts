@@ -48,9 +48,11 @@ export async function GET(
 
 // PATCH — aplica la ficha elegida como referencia del negocio: place_id
 // (matching 1:1 en Maps SERP) + coordenadas verificadas por Google (centro
-// del geogrid). businessName/address solo se rellenan si el proyecto no
-// tenía ya uno propio — elegir una ficha no debe pisar un nombre/dirección
-// que el usuario ya haya escrito a mano.
+// del geogrid). businessName/address se sobrescriben siempre con los datos
+// de la ficha elegida — Google es la fuente de verdad una vez el usuario
+// selecciona una ficha concreta (antes: solo si estaban vacíos, pensado
+// para cuando este endpoint solo lo usaba Geogrid; ahora también es el
+// mecanismo principal de relleno en Perfil y en el wizard de creación).
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -85,8 +87,8 @@ export async function PATCH(
       gbpName: title,
       lat,
       lng,
-      businessName: project.businessName ?? title,
-      address: project.address ?? (address || null),
+      businessName: title,
+      address: address || project.address,
     },
   });
 

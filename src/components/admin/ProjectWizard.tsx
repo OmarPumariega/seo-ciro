@@ -69,6 +69,7 @@ export default function ProjectWizard() {
   const [lng, setLng] = useState("");
   const [gbpName, setGbpName] = useState("");
   const [gbpPlaceId, setGbpPlaceId] = useState("");
+  const [showAdvancedLocal, setShowAdvancedLocal] = useState(false);
 
   // --- Paso 3: Google ---
   const [propLoading, setPropLoading] = useState(false);
@@ -375,46 +376,14 @@ export default function ProjectWizard() {
             </label>
             {isLocalBusiness && (
               <>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className={LABEL}>Nombre del negocio</label>
-                    <input className={INPUT} value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className={LABEL}>Teléfono</label>
-                    <input className={INPUT} value={phone} onChange={(e) => setPhone(e.target.value)} />
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className={LABEL}>Dirección</label>
-                  <input className={INPUT} value={address} onChange={(e) => setAddress(e.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <label className={LABEL}>Horario (texto libre)</label>
-                  <input className={INPUT} value={hours} onChange={(e) => setHours(e.target.value)} placeholder="L-V 9:00-20:00, S 10:00-14:00" />
-                </div>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className={LABEL}>Latitud</label>
-                    <input className={INPUT} value={lat} onChange={(e) => setLat(e.target.value)} inputMode="decimal" placeholder="43.3623" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className={LABEL}>Longitud</label>
-                    <input className={INPUT} value={lng} onChange={(e) => setLng(e.target.value)} inputMode="decimal" placeholder="-5.8486" />
-                  </div>
-                </div>
-                <p className="text-xs text-gray-400">
-                  Las coordenadas son necesarias para el geogrid (mapa de calor de posicionamiento local).
-                  Si buscas tu ficha abajo, se rellenarán solas.
-                </p>
-                {projectId && (
+                {projectId ? (
                   <div className="space-y-2">
-                    <label className={LABEL}>Ficha de Google Business Profile</label>
                     <GbpPicker
                       projectId={projectId}
                       currentGbpName={gbpName || null}
                       currentPlaceId={gbpPlaceId || null}
                       onApplied={(c) => {
+                        setBusinessName(c.title);
                         setGbpName(c.title);
                         setGbpPlaceId(c.placeId);
                         if (c.lat != null) setLat(String(c.lat));
@@ -423,9 +392,57 @@ export default function ProjectWizard() {
                       }}
                     />
                     <p className="text-xs text-gray-400">
-                      Busca tu negocio por nombre y selecciónalo: rellena automáticamente el nombre,
-                      el Place ID y las coordenadas. La conexión automática con GBP está pendiente de
-                      aprobación de Google; estos datos mejoran el matching del geogrid.
+                      Busca tu negocio por nombre y selecciónalo: rellena automáticamente el nombre, la
+                      dirección, el Place ID y las coordenadas — necesarias para el geogrid (mapa de
+                      calor de posicionamiento local).
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400">
+                    Guarda el paso 1 primero para poder buscar la ficha de Google del negocio.
+                  </p>
+                )}
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className={LABEL}>Teléfono</label>
+                    <input className={INPUT} value={phone} onChange={(e) => setPhone(e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className={LABEL}>Horario (texto libre)</label>
+                    <input className={INPUT} value={hours} onChange={(e) => setHours(e.target.value)} placeholder="L-V 9:00-20:00, S 10:00-14:00" />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedLocal((v) => !v)}
+                  className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-900"
+                >
+                  <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showAdvancedLocal && "rotate-180")} />
+                  Avanzado: introducir dirección/coordenadas a mano
+                </button>
+                {showAdvancedLocal && (
+                  <div className="space-y-4 pt-1">
+                    <div className="space-y-1">
+                      <label className={LABEL}>Nombre del negocio</label>
+                      <input className={INPUT} value={businessName} onChange={(e) => setBusinessName(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className={LABEL}>Dirección</label>
+                      <input className={INPUT} value={address} onChange={(e) => setAddress(e.target.value)} />
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className={LABEL}>Latitud</label>
+                        <input className={INPUT} value={lat} onChange={(e) => setLat(e.target.value)} inputMode="decimal" placeholder="43.3623" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className={LABEL}>Longitud</label>
+                        <input className={INPUT} value={lng} onChange={(e) => setLng(e.target.value)} inputMode="decimal" placeholder="-5.8486" />
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-400">
+                      Solo necesario si el negocio no aparece en el buscador de arriba.
                     </p>
                   </div>
                 )}

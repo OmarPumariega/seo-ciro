@@ -54,6 +54,7 @@ export default function ProjectEditView({ project }: { project: ProjectRecord })
       <ProjectForm
         initial={project}
         showSlug={false}
+        projectId={project.id}
         submitLabel="Guardar cambios"
         onSubmit={handleSubmit}
       />

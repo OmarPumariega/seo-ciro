@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
-import { slugify } from "@/lib/utils";
+import { ChevronDown, Loader2 } from "lucide-react";
+import { slugify, cn } from "@/lib/utils";
+import GbpPicker, { type GbpCandidate } from "@/components/admin/GbpPicker";
 
 export type ProjectFormValues = {
   name: string;
@@ -44,11 +45,16 @@ export default function ProjectForm({
   initial,
   submitLabel,
   showSlug = true,
+  projectId,
   onSubmit,
 }: {
   initial?: Partial<ProjectFormValues>;
   submitLabel: string;
   showSlug?: boolean;
+  // ProjectForm solo se usa hoy en edición (proyecto ya existente), así que
+  // projectId siempre llega — opcional únicamente por si en el futuro se
+  // reutiliza en un flujo de creación sin id todavía.
+  projectId?: string;
   onSubmit: (values: ProjectFormValues) => Promise<string | void>;
 }) {
   const [form, setForm] = useState<ProjectFormValues>({ ...EMPTY_VALUES, ...initial });
@@ -57,6 +63,22 @@ export default function ProjectForm({
   // Marca si el usuario ha editado el slug a mano. Mientras no, el slug se
   // deriva automáticamente del nombre (autorelleno que sigue al nombre).
   const [slugTouched, setSlugTouched] = useState(Boolean(initial?.slug));
+  // "Avanzado" oculto por defecto: dirección/coordenadas manuales, solo para
+  // el caso de un negocio que no aparece en Google Maps — el buscador de
+  // ficha es el mecanismo principal de relleno.
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  function applyGbpCandidate(c: GbpCandidate) {
+    setForm((prev) => ({
+      ...prev,
+      businessName: c.title,
+      gbpName: c.title,
+      gbpPlaceId: c.placeId,
+      lat: c.lat != null ? String(c.lat) : prev.lat,
+      lng: c.lng != null ? String(c.lng) : prev.lng,
+      address: c.address ?? prev.address,
+    }));
+  }
 
   function set<K extends keyof ProjectFormValues>(key: K, value: ProjectFormValues[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -156,106 +178,98 @@ export default function ProjectForm({
           </label>
         </div>
         {form.isLocalBusiness && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">Nombre del negocio</label>
-              <input
-                type="text"
-                value={form.businessName}
-                onChange={(e) => set("businessName", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+          <div className="space-y-4">
+            {projectId && (
+              <GbpPicker
+                projectId={projectId}
+                currentGbpName={form.gbpName || null}
+                currentPlaceId={form.gbpPlaceId || null}
+                onApplied={applyGbpCandidate}
               />
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Teléfono</label>
+                <input
+                  type="text"
+                  value={form.phone}
+                  onChange={(e) => set("phone", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Horario</label>
+                <input
+                  type="text"
+                  value={form.hours}
+                  onChange={(e) => set("hours", e.target.value)}
+                  placeholder="Lunes a viernes 9:00-14:00 y 16:00-19:00"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+                />
+              </div>
             </div>
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">Teléfono</label>
-              <input
-                type="text"
-                value={form.phone}
-                onChange={(e) => set("phone", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
-              />
-            </div>
-            <div className="space-y-1 sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">Dirección</label>
-              <input
-                type="text"
-                value={form.address}
-                onChange={(e) => set("address", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">
-                Latitud <span className="text-gray-400 font-normal">(centro del geogrid)</span>
-              </label>
-              <input
-                type="number"
-                step="any"
-                value={form.lat}
-                onChange={(e) => set("lat", e.target.value)}
-                placeholder="40.4168"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">
-                Longitud <span className="text-gray-400 font-normal">(centro del geogrid)</span>
-              </label>
-              <input
-                type="number"
-                step="any"
-                value={form.lng}
-                onChange={(e) => set("lng", e.target.value)}
-                placeholder="-3.7038"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
-              />
-            </div>
-            <p className="text-xs text-gray-400 sm:col-span-2">
-              Obtén las coordenadas exactas en Google Maps: clic derecho en el pin → copiar. Necesarias
-              para el geogrid del Módulo 9.
-            </p>
-            <div className="space-y-1 sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Ficha Google Business Profile <span className="text-gray-400 font-normal">(nombre tal cual aparece en Google Maps)</span>
-              </label>
-              <input
-                type="text"
-                value={form.gbpName}
-                onChange={(e) => set("gbpName", e.target.value)}
-                placeholder="Pastelería La Mallorquina - Sol"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
-              />
-              <p className="text-xs text-gray-400">
-                Pega el nombre EXACTO de tu ficha de Google. El geogrid lo usa para localizar tu negocio
-                en los resultados de Maps. (Opcional pero recomendado para precisión.)
-              </p>
-            </div>
-            <div className="space-y-1 sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Place ID de Google <span className="text-gray-400 font-normal">(opcional, matching exacto)</span>
-              </label>
-              <input
-                type="text"
-                value={form.gbpPlaceId}
-                onChange={(e) => set("gbpPlaceId", e.target.value)}
-                placeholder="ChIJ..."
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 font-mono"
-              />
-              <p className="text-xs text-gray-400">
-                Si lo conoces, pégalo para un matching 1:1 en el geogrid. Encuéntralo en
-                developers.google.com/maps/documentation/places/web-service/place-id.
-              </p>
-            </div>
-            <div className="space-y-1 sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">Horario</label>
-              <textarea
-                value={form.hours}
-                onChange={(e) => set("hours", e.target.value)}
-                rows={2}
-                placeholder="Lunes a viernes 9:00-14:00 y 16:00-19:00"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
-              />
-            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((v) => !v)}
+              className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-900"
+            >
+              <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showAdvanced && "rotate-180")} />
+              Avanzado: introducir dirección/coordenadas a mano
+            </button>
+            {showAdvanced && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700">Nombre del negocio</label>
+                  <input
+                    type="text"
+                    value={form.businessName}
+                    onChange={(e) => set("businessName", e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+                  />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700">Dirección</label>
+                  <input
+                    type="text"
+                    value={form.address}
+                    onChange={(e) => set("address", e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Latitud <span className="text-gray-400 font-normal">(centro del geogrid)</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={form.lat}
+                    onChange={(e) => set("lat", e.target.value)}
+                    placeholder="40.4168"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Longitud <span className="text-gray-400 font-normal">(centro del geogrid)</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    value={form.lng}
+                    onChange={(e) => set("lng", e.target.value)}
+                    placeholder="-3.7038"
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+                  />
+                </div>
+                <p className="text-xs text-gray-400 sm:col-span-2">
+                  Solo necesario si el negocio no aparece en el buscador de arriba (ej. ficha de Google
+                  todavía no creada). Obtén las coordenadas exactas en Google Maps: clic derecho en el
+                  pin → copiar.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>

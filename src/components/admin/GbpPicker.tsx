@@ -86,8 +86,8 @@ export default function GbpPicker({
         </div>
       ) : (
         <div className="flex items-center gap-2 px-3 py-2 border border-amber-200 bg-amber-50 rounded-lg text-xs text-amber-700">
-          Sin ficha de Google seleccionada — el geogrid usa las coordenadas manuales del proyecto,
-          sin garantía de que sean las del negocio correcto.
+          Sin ficha de Google seleccionada — se usan las coordenadas guardadas del proyecto, sin
+          garantía de que sean las del negocio correcto.
         </div>
       )}
 
