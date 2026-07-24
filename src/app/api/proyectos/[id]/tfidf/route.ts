@@ -91,7 +91,14 @@ export async function POST(
 
   // Cálculo completo: términos TF-IDF + temas (H2/H3) + encabezados por página
   // + frecuencia de palabras en encabezados.
-  const tfidfResult = await computeTfidf(serp.results);
+  const tfidfResult = {
+    ...(await computeTfidf(serp.results)),
+    // PAA/related searches/featured snippet: misma respuesta ya pagada,
+    // antes se descartaban. Fuente de ideas de contenido directa.
+    peopleAlsoAsk: serp.peopleAlsoAsk,
+    relatedSearches: serp.relatedSearches,
+    featuredSnippet: serp.featuredSnippet,
+  };
 
   // Persiste el resultado (upsert por project+keyword).
   const normalized = normalizeKeyword(keyword);

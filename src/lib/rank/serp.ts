@@ -1,5 +1,5 @@
 import { postTask } from "@/lib/dataforseo/client";
-import { saveSerpCache, type CachedSerpItem } from "@/lib/dataforseo/serp-cache";
+import { saveSerpCache, parseSerpExtras, type CachedSerpItem } from "@/lib/dataforseo/serp-cache";
 
 // Cliente de SERP de DataForSEO (Módulo 5 — Rank Tracking). Llama al
 // endpoint Live Advanced de orgánicos de Google y localiza en qué posición
@@ -93,7 +93,13 @@ export async function checkSerpRank(params: {
   // Cadena a los orgánicos: tasks[0].result[0].items.
   const resultArr = Array.isArray(task.result) ? (task.result as Array<Record<string, unknown>>) : [];
   const resultObj = resultArr[0] ?? {};
-  const organicItems = Array.isArray(resultObj.items) ? (resultObj.items as Array<Record<string, unknown>>) : [];
+  const allItems = Array.isArray(resultObj.items) ? (resultObj.items as Array<Record<string, unknown>>) : [];
+  const organicItems = allItems;
+
+  // Funcionalidades del SERP más allá de los orgánicos — misma respuesta ya
+  // pagada, nunca se inspeccionaban (solo se miraba type:"organic"). Se
+  // guardan en el mismo SerpCache que ya escribe este chequeo, coste cero.
+  const { peopleAlsoAsk, relatedSearches, featuredSnippet } = parseSerpExtras(allItems);
 
   // Guarda el top-10 orgánico en la caché de SERP para que el TF-IDF (u otros
   // módulos) lo reutilice sin pagar otro SERP. CON await: el caller (check.ts)
@@ -119,7 +125,16 @@ export async function checkSerpRank(params: {
     if (topForCache.length >= 10) break;
   }
   if (topForCache.length > 0) {
-    await saveSerpCache({ keyword, locationCode, languageCode, device, results: topForCache });
+    await saveSerpCache({
+      keyword,
+      locationCode,
+      languageCode,
+      device,
+      results: topForCache,
+      peopleAlsoAsk,
+      relatedSearches,
+      featuredSnippet,
+    });
   }
 
   // El dominio puede aparecer varias veces (varias URLs del mismo dominio).

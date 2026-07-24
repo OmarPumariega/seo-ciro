@@ -1,5 +1,12 @@
 import { postTask, DataForSeoError } from "@/lib/dataforseo/client";
-import { getCachedSerp, saveSerpCache, type CachedSerpItem } from "@/lib/dataforseo/serp-cache";
+import {
+  getCachedSerpEntry,
+  saveSerpCache,
+  parseSerpExtras,
+  type CachedSerpItem,
+  type PeopleAlsoAskItem,
+  type FeaturedSnippet,
+} from "@/lib/dataforseo/serp-cache";
 
 // Obtiene las top URLs orgánicas de Google para una keyword, vía el mismo
 // endpoint Live Advanced que usa el Módulo 5 (rank tracking). Aquí no buscamos
@@ -25,6 +32,12 @@ export type SerpTopResult = {
 export type SerpTopOutcome = {
   results: SerpTopResult[];
   costUsd: number | null; // null = servido desde caché (gratis)
+  // Funcionalidades del SERP más allá de los orgánicos — misma respuesta ya
+  // pagada (por este análisis o por el rank tracking que la cacheó), antes
+  // ni se inspeccionaban. Fuente de ideas de contenido directa.
+  peopleAlsoAsk: PeopleAlsoAskItem[] | null;
+  relatedSearches: string[] | null;
+  featuredSnippet: FeaturedSnippet | null;
 };
 
 type OrganicItem = {
@@ -46,11 +59,14 @@ export async function fetchTopOrganic(params: {
   const device = params.device ?? "desktop";
 
   // 1) ¿Está en caché? (rank tracking ya pagó este SERP)
-  const cached = await getCachedSerp({ keyword, locationCode, languageCode, device });
-  if (cached && cached.length > 0) {
+  const cached = await getCachedSerpEntry({ keyword, locationCode, languageCode, device });
+  if (cached && cached.results.length > 0) {
     return {
-      results: cached.map((c) => ({ url: c.url, title: c.title, position: c.position, description: c.description })),
+      results: cached.results.map((c) => ({ url: c.url, title: c.title, position: c.position, description: c.description })),
       costUsd: null, // gratis — reutilizado del rank tracking
+      peopleAlsoAsk: cached.peopleAlsoAsk,
+      relatedSearches: cached.relatedSearches,
+      featuredSnippet: cached.featuredSnippet,
     };
   }
 
@@ -86,11 +102,12 @@ export async function fetchTopOrganic(params: {
     if (forCache.length >= 10) break;
   }
 
+  const extras = parseSerpExtras(items);
   if (forCache.length > 0) {
-    saveSerpCache({ keyword, locationCode, languageCode, device, results: forCache }).catch(() => {});
+    saveSerpCache({ keyword, locationCode, languageCode, device, results: forCache, ...extras }).catch(() => {});
   }
 
-  return { results, costUsd: typeof task.cost === "number" ? task.cost : null };
+  return { results, costUsd: typeof task.cost === "number" ? task.cost : null, ...extras };
 }
 
 export { DataForSeoError };

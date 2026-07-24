@@ -22,6 +22,9 @@ type CompetitorSerp = {
   description: string | null;
 };
 
+type PeopleAlsoAskItem = { question: string };
+type FeaturedSnippetData = { title: string | null; url: string | null; description: string | null };
+
 type FullResult = {
   terms: TfidfTerm[];
   topics: TopicGap[];
@@ -30,6 +33,11 @@ type FullResult = {
   sources: string[];
   competitors?: CompetitorSerp[];
   costUsd?: number | null;
+  // Funcionalidades del SERP más allá de los orgánicos — misma respuesta ya
+  // pagada, antes se descartaban. Fuente de ideas de contenido directa.
+  peopleAlsoAsk?: PeopleAlsoAskItem[] | null;
+  relatedSearches?: string[] | null;
+  featuredSnippet?: FeaturedSnippetData | null;
 };
 
 type StoredResult = {
@@ -313,6 +321,53 @@ export default function TfidfView({ projectId }: { projectId: string }) {
                   </li>
                 ))}
               </ol>
+            </div>
+          )}
+
+          {/* Preguntas frecuentes (PAA) y búsquedas relacionadas — misma
+              respuesta de Google ya pagada, antes se descartaban. Fuente
+              directa de ideas de contenido/FAQ. */}
+          {((result.peopleAlsoAsk && result.peopleAlsoAsk.length > 0) ||
+            (result.relatedSearches && result.relatedSearches.length > 0) ||
+            result.featuredSnippet) && (
+            <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+              <h3 className="text-sm font-semibold text-gray-900">Ideas de contenido desde el propio SERP</h3>
+              {result.featuredSnippet && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1">Featured snippet actual</p>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-sm font-medium text-gray-900">{result.featuredSnippet.title ?? "(sin título)"}</p>
+                    {result.featuredSnippet.description && (
+                      <p className="text-xs text-gray-600 mt-0.5">{result.featuredSnippet.description}</p>
+                    )}
+                    {result.featuredSnippet.url && (
+                      <p className="text-[11px] text-gray-400 mt-0.5 truncate">{result.featuredSnippet.url}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+              {result.peopleAlsoAsk && result.peopleAlsoAsk.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1">
+                    La gente también pregunta ({result.peopleAlsoAsk.length})
+                  </p>
+                  <ul className="space-y-1">
+                    {result.peopleAlsoAsk.map((q, i) => (
+                      <li key={i} className="text-sm text-gray-700">• {q.question}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {result.relatedSearches && result.relatedSearches.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1">Búsquedas relacionadas</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {result.relatedSearches.map((s, i) => (
+                      <span key={i} className="text-xs px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">{s}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

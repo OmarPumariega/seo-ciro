@@ -510,7 +510,14 @@ model SerpCache {
   locationCode Int
   languageCode String
   device       String
-  results      Json // [{url, title, domain}] top orgánico
+  results      Json // [{url, title, domain, position?, description?}] top orgánico
+  // Funcionalidades del SERP más allá de los resultados orgánicos — llegan en
+  // la misma respuesta ya pagada por rank tracking, antes se descartaban por
+  // completo (solo se inspeccionaban items type:"organic"). Null si esa
+  // funcionalidad no aparece para esa keyword (nunca fabricado).
+  peopleAlsoAsk   Json? // [{question, answer?}]
+  relatedSearches Json? // string[]
+  featuredSnippet Json? // {title, url, description} | null
   fetchedAt    DateTime @default(now())
 
   @@unique([keyword, locationCode, languageCode, device])
