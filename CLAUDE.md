@@ -196,11 +196,19 @@ Google, Contenido, TF-IDF, Auditoría, Enlaces, Canibalizaciones, Competidores, 
   el estudio: "Generar estructura de URLs" (vía OpenRouter). Solo DataForSEO como
   fuente por ahora (Google Ads, fuente alternativa, pendiente).
 - **Arquitectura**: visualiza `KeywordStudy.structure` (la misma "Generar estructura de
-  URLs" del Módulo 1) como árbol en abanico horizontal — clic en una rama despliega sus
-  páginas hijas con la URL completa propuesta. `src/lib/keywords/structure-tree.ts`
-  agrupa las `slug` (rutas planas tipo "servicios/cambio-cerradura") por segmento de
-  ruta y calcula el volumen de cada rama sumando el `searchVolume` real de las keywords
-  que reclama (cruzado contra `Keyword`, nunca estimado), ordenando cada nivel por ese
+  URLs" del Módulo 1) como árbol vertical colapsable (`StructureTreeView.tsx`) — clic en
+  una rama la expande con la URL completa propuesta. La AGRUPACIÓN es determinista, no
+  la decide el LLM: `src/lib/keywords/keyword-hierarchy.ts` construye la jerarquía real a
+  partir de longitud de keyword + volumen (la keyword más corta y con más volumen es el
+  padre; cada keyword más larga cuelga de la más corta "contenida" en ella, sin límite de
+  niveles — aplica igual a variantes geográficas que a cualquier otro atributo long-tail).
+  `src/lib/keywords/structure.ts` decide con esa misma jerarquía qué nodos merecen página
+  propia (cabeceras siempre; hojas con volumen real, con un tope de hermanas de bajo
+  volumen por padre que se pliegan como keywords secundarias) — el LLM ya solo escribe
+  h1/headings/navLabel de las páginas ya decididas, con fallback determinista si falla.
+  `src/lib/keywords/structure-tree.ts` agrupa las `slug` resultantes por segmento de ruta
+  y calcula el volumen de cada rama sumando el `searchVolume` real de las keywords que
+  reclama (cruzado contra `Keyword`, nunca estimado), ordenando cada nivel por ese
   volumen. Sin estructura generada todavía, permite generarla desde aquí (mismo
   endpoint del Módulo 1).
 - **Título y Meta** (Módulo 3): URL → scraping real → 3 variantes de título/meta

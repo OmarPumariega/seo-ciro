@@ -442,20 +442,34 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
     load();
   }
 
-  // Recoge las keywords únicas de un competidor (content gap优先, complementado
-  // con sus top keywords). Es la materia prima para "importar a estudio" o
-  // "añadir a seguimiento": fricción cero para llevar la inteligencia del
+  // Recoge las keywords únicas de un competidor (content gap優先, complementado
+  // con sus top keywords), con todas sus métricas ya resueltas — no solo el
+  // texto. Es la materia prima para "importar a estudio" (gratis, ver abajo)
+  // o "añadir a seguimiento": fricción cero para llevar la inteligencia del
   // competidor a los módulos donde se trabaja, sin copiar a mano.
-  function collectKeywords(c: Competitor): string[] {
+  type CollectedKeyword = {
+    keyword: string;
+    volume: number | null;
+    competition: string | null;
+    cpc: number | null;
+    monthlySearches: number[] | null;
+  };
+  function collectKeywords(c: Competitor): CollectedKeyword[] {
     const seen = new Set<string>();
-    const out: string[] = [];
+    const out: CollectedKeyword[] = [];
     const sources = [c.contentGap ?? [], c.snapshot?.topKeywords ?? []];
     for (const arr of sources) {
       for (const k of arr) {
         const kw = k.keyword?.trim();
         if (kw && !seen.has(kw)) {
           seen.add(kw);
-          out.push(kw);
+          out.push({
+            keyword: kw,
+            volume: k.volume,
+            competition: k.competition,
+            cpc: k.cpc,
+            monthlySearches: k.monthlySearches,
+          });
         }
       }
     }
@@ -468,8 +482,10 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
   }
 
   // Crea un estudio del Módulo 1 con las keywords del competidor (content gap
-  // + top). Reutiliza el mismo endpoint que "pegar lista" / GSC → resuelve
-  // volumen/intención gratis desde caché cuando ya se conoce.
+  // + top), en dos pasos: estudio vacío + añadir con las métricas YA
+  // resueltas (volumen/competencia/CPC/estacionalidad, pagadas por el
+  // análisis de competidores) — a diferencia de antes, no se vuelve a
+  // consultar DataForSEO: coste cero.
   async function handleImportToStudy(c: Competitor) {
     const keywords = collectKeywords(c);
     if (keywords.length === 0) {
@@ -477,22 +493,41 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
       return;
     }
     setImportingId(c.id);
-    const res = await fetch(`/api/proyectos/${projectId}/keywords/estudios`, {
+    const createRes = await fetch(`/api/proyectos/${projectId}/keywords/estudios`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: `Competidor ${c.domain} — ${new Date().toLocaleDateString("es-ES")}`,
-        keywords: keywords.join("\n"),
+        keywords: "",
         locationCode: location?.code,
       }),
     });
-    const d = await res.json();
-    setImportingId(null);
-    if (!res.ok) {
-      showNotice(d.error ?? "Error al crear el estudio");
+    const study = await createRes.json();
+    if (!createRes.ok) {
+      setImportingId(null);
+      showNotice(study.error ?? "Error al crear el estudio");
       return;
     }
-    showNotice(`Estudio creado con ${d.keywords?.length ?? keywords.length} keywords de ${c.domain}.`);
+    const addRes = await fetch(`/api/proyectos/${projectId}/keywords/estudios/${study.id}/keywords`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: keywords.map((k) => ({
+          keyword: k.keyword,
+          searchVolume: k.volume,
+          competition: k.competition,
+          cpc: k.cpc,
+          monthlySearches: k.monthlySearches,
+        })),
+      }),
+    });
+    const d = await addRes.json();
+    setImportingId(null);
+    if (!addRes.ok) {
+      showNotice(d.error ?? "Error al añadir las keywords al estudio");
+      return;
+    }
+    showNotice(`Estudio creado con ${d.added ?? keywords.length} keywords de ${c.domain} (sin coste adicional).`);
   }
 
   // Añade las keywords del competidor a Rank Tracking (frecuencia manual, no
@@ -508,7 +543,7 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        keywords: keywords.join("\n"),
+        keywords: keywords.map((k) => k.keyword).join("\n"),
         device: "desktop",
         frequency: "manual",
         depth: 10,

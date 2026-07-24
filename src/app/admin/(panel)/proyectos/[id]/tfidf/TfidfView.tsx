@@ -56,6 +56,7 @@ export default function TfidfView({ projectId }: { projectId: string }) {
   const [copied, setCopied] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [expandedPage, setExpandedPage] = useState<string | null>(null);
+  const [addingToKeywords, setAddingToKeywords] = useState(false);
 
   const loadStored = useCallback(() => {
     fetch(`/api/proyectos/${projectId}/tfidf`)
@@ -142,6 +143,38 @@ export default function TfidfView({ projectId }: { projectId: string }) {
       /* sessionStorage puede fallar en modo privado; nada crítico */
     }
     window.location.href = `/admin/proyectos/${projectId}/contenido`;
+  }
+
+  // Crea un estudio nuevo del Módulo 1 con los mismos temas/términos que ya
+  // se ofrecen a Contenido. A diferencia de los términos de competidores
+  // (que ya traen volumen real), un término TF-IDF es un score de relevancia
+  // en el top-10, no demanda de búsqueda — así que aquí SÍ hace falta
+  // resolver volumen real (caché o llamada nueva a DataForSEO), igual que
+  // pegar cualquier otra lista nueva de keywords.
+  async function sendToKeywords() {
+    if (!result) return;
+    const lines = [
+      ...result.topics.slice(0, 20).map((t) => t.text),
+      ...result.terms.slice(0, 10).map((t) => t.term),
+    ];
+    setAddingToKeywords(true);
+    setError("");
+    const res = await fetch(`/api/proyectos/${projectId}/keywords/estudios`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: `TF-IDF: ${keyword} — ${new Date().toLocaleDateString("es-ES")}`,
+        keywords: lines.join("\n"),
+        locationCode: location?.code,
+      }),
+    });
+    const d = await res.json();
+    setAddingToKeywords(false);
+    if (!res.ok) {
+      setError(d.error ?? "Error al crear el estudio de Keywords");
+      return;
+    }
+    window.location.href = `/admin/proyectos/${projectId}/keywords`;
   }
 
   const maxHeadingTermCount = result?.headingTerms[0]?.count ?? 1;
@@ -296,6 +329,12 @@ export default function TfidfView({ projectId }: { projectId: string }) {
                     className="flex items-center gap-1.5 px-2.5 py-1 border border-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50">
                     {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <ClipboardCopy className="h-3.5 w-3.5" />}
                     {copied ? "Copiado" : "Copiar temas"}
+                  </button>
+                  <button onClick={sendToKeywords} disabled={addingToKeywords}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 border border-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                    title="Crear un estudio de Keywords con estos temas/términos (resuelve volumen real)">
+                    {addingToKeywords ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                    Añadir a Keywords
                   </button>
                   <button onClick={sendToContent}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-900 text-white text-xs font-medium rounded-lg hover:bg-gray-800"
