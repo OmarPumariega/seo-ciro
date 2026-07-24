@@ -97,7 +97,7 @@ reutiliza llamadas ya pagadas).
 ## Esquema de base de datos (Prisma)
 
 Ver [`docs/04-modelo-de-datos.md`](./docs/04-modelo-de-datos.md) para el detalle
-completo (24 modelos). Resumen: `User` (login agencia), `Project` (cliente/dominio, con
+completo (26 modelos). Resumen: `User` (login agencia), `Project` (cliente/dominio, con
 NAP, perfil de marca, propiedad de Google seleccionada y tope de gasto opcional),
 `TitleMetaGeneration` y `SchemaGeneration` (historial de los Módulos 3 y 4),
 `ApiUsageLog` (coste por llamada a OpenRouter/DataForSEO, base del control de gasto),
@@ -108,7 +108,8 @@ on-page/robots/sitemap), `KeywordStudy` + `Keyword` + `KeywordDataCache` (Módul
 + auto-generado desde auditoría), `NotificationLog` (dedupe de avisos por email),
 `CopilotThread`, `SerpCache` (compartida entre Rank Tracking y TF-IDF), `Competitor` +
 `VisibilitySnapshot` (módulo Competidores), `BacklinkSnapshot` (módulo Backlinks,
-mismo criterio que `VisibilitySnapshot`), `AppSetting` (secrets cifrados,
+mismo criterio que `VisibilitySnapshot`), `GscSnapshot` y `Ga4Snapshot` (paneles de
+Search Console/Analytics, Módulo 6), `AppSetting` (secrets cifrados,
 cascada BD→.env) y `GlobalSetting` (config JSON no sensible — p.ej. el default del
 informe para todos los proyectos).
 
@@ -256,7 +257,14 @@ sitio; ver el apartado "Copilot" más abajo.
   conexión ni coste: misma API. Cada apertura persiste un **`GscSnapshot`** (dedupe por
   proyecto+mes) con totales, top queries/páginas y desgloses — lo lee el Copilot
   (`src/lib/copilot/context.ts`) y queda disponible para cruzar con otros módulos sin
-  volver a llamar a la API.
+  volver a llamar a la API. Análogo para GA4: un **panel de Analytics**
+  (`src/components/admin/Ga4Panel.tsx`, ruta `/api/proyectos/[id]/google/analytics`)
+  explota `runReport` con dimensiones reales (antes el dashboard general solo pedía
+  sesiones/conversiones totales, sin ninguna) — canal de tráfico por defecto, páginas de
+  aterrizaje, dispositivo y evolución mensual (12 meses), mismo periodo configurable.
+  Cada apertura persiste un **`Ga4Snapshot`** (dedupe por proyecto+mes), también leído
+  por el Copilot — cruza comportamiento on-site real (GA4) con lo que ya sabe de SERP
+  (GSC). Cuota gratuita de Google, sin coste nuevo.
 - **Contenido** (Módulo 7): tema + tipo (Blog/Página/Producto/Novedad GBP) + longitud
   objetivo → texto vía OpenRouter con encabezados en Markdown, usando el tono de marca
   del proyecto (`Project.toneOfVoice`). Keyword objetivo y enlaces internos a incluir

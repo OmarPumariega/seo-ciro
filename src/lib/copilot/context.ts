@@ -13,7 +13,7 @@ export async function buildProjectContext(projectId: string): Promise<string> {
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const [latestAudit, rankKeywords, studyCount, monthCostAgg, gscSnapshot] = await Promise.all([
+  const [latestAudit, rankKeywords, studyCount, monthCostAgg, gscSnapshot, ga4Snapshot] = await Promise.all([
     prisma.auditRun.findFirst({
       where: { projectId, status: "completed" },
       orderBy: { completedAt: "desc" },
@@ -38,12 +38,22 @@ export async function buildProjectContext(projectId: string): Promise<string> {
       orderBy: { createdAt: "desc" },
       select: { month: true, rangeDays: true, totals: true, topQueries: true },
     }),
+    prisma.ga4Snapshot.findFirst({
+      where: { projectId },
+      orderBy: { createdAt: "desc" },
+      select: { month: true, rangeDays: true, totals: true, byChannel: true },
+    }),
   ]);
 
   const monthCost = monthCostAgg._sum.costUsd ? Number(monthCostAgg._sum.costUsd) : 0;
 
   const hasData =
-    latestAudit !== null || rankKeywords.length > 0 || studyCount > 0 || monthCost > 0 || gscSnapshot !== null;
+    latestAudit !== null ||
+    rankKeywords.length > 0 ||
+    studyCount > 0 ||
+    monthCost > 0 ||
+    gscSnapshot !== null ||
+    ga4Snapshot !== null;
   if (!hasData) return "El proyecto aún no tiene datos suficientes.";
 
   const lines: string[] = [];
@@ -107,6 +117,32 @@ export async function buildProjectContext(projectId: string): Promise<string> {
         .map((q) => `${q.query} (${Math.round(q.clicks)} clics, pos. ${q.position.toFixed(1)})`)
         .join("; ");
       lines.push(`Top queries reales que traen tráfico: ${topQ}.`);
+    }
+  }
+
+  // Comportamiento on-site real de GA4 (del snapshot persistido al abrir el
+  // panel) — antes ausente por completo del contexto del Copilot, que solo
+  // veía el lado SERP (GSC). Permite cruzar "impresiones altas en GSC" con
+  // "poco engagement en GA4", por ejemplo.
+  if (ga4Snapshot) {
+    const totals = ga4Snapshot.totals as {
+      sessions: number;
+      conversions: number;
+      engagementRate: number;
+      averageSessionDuration: number;
+    };
+    lines.push(
+      `Google Analytics (snapshot ${ga4Snapshot.month}, últimos ${ga4Snapshot.rangeDays} días): ` +
+        `${Math.round(totals.sessions)} sesiones, ${Math.round(totals.conversions)} conversiones, ` +
+        `engagement rate ${(totals.engagementRate * 100).toFixed(1)}%, duración media ${Math.round(totals.averageSessionDuration)}s.`
+    );
+    const channels = (ga4Snapshot.byChannel as Array<{ channel: string; sessions: number }> | null) ?? [];
+    if (channels.length > 0) {
+      const topChannels = channels
+        .slice(0, 5)
+        .map((c) => `${c.channel} (${Math.round(c.sessions)} sesiones)`)
+        .join("; ");
+      lines.push(`Canales de tráfico principales: ${topChannels}.`);
     }
   }
 

@@ -99,6 +99,7 @@ model Project {
   visibilitySnapshots  VisibilitySnapshot[]
   backlinkSnapshots    BacklinkSnapshot[]
   gscSnapshots         GscSnapshot[]
+  ga4Snapshots         Ga4Snapshot[]
   tfidfResults         TfidfResult[]
 }
 
@@ -620,6 +621,30 @@ model GscSnapshot {
   monthly     Json? // [{ month, clicks, impressions }] evolución 12 meses
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@unique([projectId, month])
+  @@index([projectId, createdAt])
+}
+
+// Mismo criterio que GscSnapshot, aplicado a GA4: antes solo se pedían 2
+// métricas totales (sessions/conversions) sin ninguna dimensión — GSC tenía
+// panel completo, GA4 se quedaba en 2 números. Un snapshot por proyecto y
+// mes (dedupe) al abrir el panel; lo lee también el Copilot para cruzar
+// comportamiento on-site con lo que ya sabe de SERP (GSC). Cuota gratuita de
+// Google, no facturación por llamada — sin coste nuevo.
+model Ga4Snapshot {
+  id              String   @id @default(cuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  month           String // YYYY-MM del momento de la captura (clave de dedupe)
+  rangeDays       Int
+  totals          Json // { sessions, conversions, engagementRate, averageSessionDuration }
+  byChannel       Json? // [{ channel, sessions, conversions }]
+  topLandingPages Json? // [{ landingPage, sessions, conversions, engagementRate }]
+  byDevice        Json? // [{ device, sessions }]
+  monthly         Json? // [{ month, sessions, conversions }] evolución 12 meses
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@unique([projectId, month])
   @@index([projectId, createdAt])

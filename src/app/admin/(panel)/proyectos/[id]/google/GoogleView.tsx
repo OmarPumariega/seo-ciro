@@ -5,6 +5,7 @@ import Link from "next/link";
 import * as Select from "@radix-ui/react-select";
 import { Loader2, ChevronDown, Check } from "lucide-react";
 import GscPanel from "@/components/admin/GscPanel";
+import Ga4Panel from "@/components/admin/Ga4Panel";
 
 type GscSite = { siteUrl: string; permissionLevel: string };
 type Ga4Property = { propertyId: string; displayName: string; accountName: string };
@@ -44,6 +45,7 @@ export default function GoogleView({
   // monta sobre el valor guardado (no sobre la selección sin guardar) y se
   // refresca al guardar una nueva.
   const [savedGsc, setSavedGsc] = useState(initialGscSiteUrl);
+  const [savedGa4, setSavedGa4] = useState(initialGa4PropertyId);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
@@ -96,6 +98,7 @@ export default function GoogleView({
     }
     setSaveError("");
     setSavedGsc(gscSiteUrl || null);
+    setSavedGa4(ga4PropertyId || null);
     setLoadingDashboard(true);
     fetch(`/api/proyectos/${projectId}/google/dashboard`)
       .then((r) => r.json())
@@ -251,6 +254,7 @@ export default function GoogleView({
       )}
 
       {savedGsc && <GscPanel key={savedGsc} projectId={projectId} />}
+      {savedGa4 && <Ga4Panel key={savedGa4} projectId={projectId} />}
     </div>
   );
 }
