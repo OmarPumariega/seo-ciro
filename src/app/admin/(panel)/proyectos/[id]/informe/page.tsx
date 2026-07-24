@@ -8,6 +8,7 @@ import { loadGlobalReportConfig } from "@/lib/informe/global-config";
 import { getGoogleClient, GoogleNotConnectedError } from "@/lib/google/client";
 import { listCannibalizations } from "@/lib/google/search-console";
 import { normalizeDomain } from "@/lib/competitors/dataforseo";
+import type { PositionBuckets } from "@/components/admin/PositionDistribution";
 
 function capitalizeFirst(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -217,13 +218,15 @@ export default async function InformePage({
     ? await prisma.visibilitySnapshot.findFirst({
         where: { projectId: id, domain: ownDomain },
         orderBy: { fetchedAt: "desc" },
-        select: { organicTraffic: true, organicKeywords: true, topKeywords: true, fetchedAt: true },
+        select: { organicTraffic: true, organicKeywords: true, positionBuckets: true, avgPosition: true, topKeywords: true, fetchedAt: true },
       })
     : null;
   const ownVisibility: ReportData["competitors"]["own"] = ownSnapshot
     ? {
         organicTraffic: ownSnapshot.organicTraffic,
         organicKeywords: ownSnapshot.organicKeywords,
+        positionBuckets: (ownSnapshot.positionBuckets ?? null) as PositionBuckets | null,
+        avgPosition: ownSnapshot.avgPosition,
         topKeywords: ownSnapshot.topKeywords as TopKeyword[] | null,
         fetchedAt: ownSnapshot.fetchedAt,
       }
@@ -234,12 +237,14 @@ export default async function InformePage({
       const snap = await prisma.visibilitySnapshot.findFirst({
         where: { projectId: id, domain: c.domain },
         orderBy: { fetchedAt: "desc" },
-        select: { organicTraffic: true, organicKeywords: true, topKeywords: true, fetchedAt: true },
+        select: { organicTraffic: true, organicKeywords: true, positionBuckets: true, avgPosition: true, topKeywords: true, fetchedAt: true },
       });
       return {
         domain: c.domain,
         organicTraffic: snap?.organicTraffic ?? null,
         organicKeywords: snap?.organicKeywords ?? null,
+        positionBuckets: (snap?.positionBuckets ?? null) as PositionBuckets | null,
+        avgPosition: snap?.avgPosition ?? null,
         topKeywords: (snap?.topKeywords ?? null) as ReportData["competitors"]["items"][number]["topKeywords"],
         contentGap: (c.contentGap ?? null) as ReportData["competitors"]["items"][number]["contentGap"],
         contentGapAt: c.contentGapAt,
@@ -262,6 +267,10 @@ export default async function InformePage({
       topics?: { text: string; coverage: number; urls: string[] }[];
       headingTerms?: { term: string; count: number }[];
       sources?: string[];
+      // top-10 orgánico tal cual lo muestra Google — llega gratis con el SERP
+      // que ya pagó el TF-IDF/rank. Se volcaba en BD desde hace poco pero no
+      // llegaba al informe; ahora sí (ver renderTfidf en InformeBuilder).
+      competitors?: { url: string; title: string; position: number | null; description: string | null }[];
     };
     return {
       keyword: row.keyword,
@@ -269,6 +278,7 @@ export default async function InformePage({
       topics: Array.isArray(r.topics) ? r.topics : [],
       headingTerms: Array.isArray(r.headingTerms) ? r.headingTerms : [],
       sources: Array.isArray(r.sources) ? r.sources : [],
+      competitors: Array.isArray(r.competitors) ? r.competitors : [],
       updatedAt: row.updatedAt,
     };
   });

@@ -7,6 +7,8 @@ import {
   MapPin, Wallet, ClipboardCheck, Network, Type, Code2, PenLine, Globe, GitBranch, Hash,
 } from "lucide-react";
 import GeogridMap from "@/components/admin/GeogridMap";
+import PositionDistribution, { type PositionBuckets } from "@/components/admin/PositionDistribution";
+import { cn } from "@/lib/utils";
 import PrintButton from "./PrintButton";
 import { splitManualTask } from "@/lib/tasks";
 import { ISSUE_META } from "@/lib/audit/issue-meta";
@@ -27,7 +29,22 @@ export type CategoryScores = {
   accesibilidadImagenes: CategoryScore;
 };
 
-export type TopKeyword = { keyword: string; position: number | null; volume: number | null };
+// Item enriquecido de keyword (visibilidad o content gap). Los campos extra
+// llegan gratis en el mismo SERP/Labs que ya se pagó; vienen de snapshots
+// nuevos. Los opcionales (? ) cubren los snapshots/items viejos que solo
+// tenían {keyword, position, volume}.
+export type TopKeyword = {
+  keyword: string;
+  position: number | null;
+  volume: number | null;
+  competition?: string | null; // HIGH | MEDIUM | LOW
+  competitionIndex?: number | null; // 0-100
+  cpc?: number | null;
+  monthlySearches?: number[] | null;
+  title?: string | null;
+  url?: string | null;
+  description?: string | null;
+};
 
 export type ReportData = {
   project: { name: string; domain: string | null; isLocalBusiness: boolean };
@@ -60,11 +77,13 @@ export type ReportData = {
   costs: { monthCost: number };
   links: { pages: { url: string; pagerank: number; incoming: number; outgoing: number }[]; orphans: string[]; topHubs: string[]; auditDate: Date | null } | null;
   competitors: {
-    own: { organicTraffic: number | null; organicKeywords: number | null; topKeywords: TopKeyword[] | null; fetchedAt: Date | null } | null;
+    own: { organicTraffic: number | null; organicKeywords: number | null; positionBuckets: PositionBuckets | null; avgPosition: number | null; topKeywords: TopKeyword[] | null; fetchedAt: Date | null } | null;
     items: {
       domain: string;
       organicTraffic: number | null;
       organicKeywords: number | null;
+      positionBuckets: PositionBuckets | null;
+      avgPosition: number | null;
       topKeywords: TopKeyword[] | null;
       contentGap: TopKeyword[] | null;
       contentGapAt: Date | null;
@@ -77,6 +96,9 @@ export type ReportData = {
     topics: { text: string; coverage: number; urls: string[] }[];
     headingTerms: { term: string; count: number }[];
     sources: string[];
+    // top-10 orgánico tal cual lo muestra Google (título + snippet). Llega
+    // gratis con el SERP ya pagado; clave para mostrar "cómo posicionan".
+    competitors: { url: string; title: string; position: number | null; description: string | null }[];
     updatedAt: Date;
   }[];
 };
@@ -102,6 +124,29 @@ function fmtTraffic(v: number | null): string {
   if (v === null) return "—";
   if (v >= 1000) return `${(v / 1000).toFixed(1)}k`;
   return v.toFixed(0);
+}
+// nullish (== null) cubre null y undefined — los items/snapshots viejos no
+// tienen estos campos (ausentes → undefined), no null.
+function fmtCpc(v: number | null | undefined): string {
+  if (v == null) return "—";
+  return `${(v as number).toFixed(2)}$`;
+}
+// Dificultad unificada: etiqueta legible (Alta/Media/Baja) priorizando
+// competition (HIGH/MEDIUM/LOW) y cayendo al índice 0-100 si no viene.
+function difficulty(
+  competition: string | null | undefined,
+  index: number | null | undefined
+): { label: string; cls: string } {
+  if (competition === "HIGH" || (competition == null && index != null && index >= 67)) {
+    return { label: "Alta", cls: "bg-red-50 text-red-700" };
+  }
+  if (competition === "LOW" || (competition == null && index != null && index < 34)) {
+    return { label: "Baja", cls: "bg-emerald-50 text-emerald-700" };
+  }
+  if (competition === "MEDIUM" || index != null) {
+    return { label: "Media", cls: "bg-amber-50 text-amber-700" };
+  }
+  return { label: "—", cls: "bg-gray-100 text-gray-400" };
 }
 function fmtInt(n: number): string {
   return Math.round(n).toLocaleString("es-ES");
@@ -540,13 +585,19 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
               value={data.competitors.own.organicKeywords?.toLocaleString("es-ES") ?? "—"}
               sub={`Análisis del ${fmtDate(data.competitors.own.fetchedAt)}`}
             />
+            {data.competitors.own.positionBuckets ? (
+              <div className="space-y-1">
+                <div className="text-xs text-gray-500">Fuerza del dominio</div>
+                <PositionDistribution buckets={data.competitors.own.positionBuckets} avgPosition={data.competitors.own.avgPosition} />
+              </div>
+            ) : null}
           </div>
           {data.competitors.own.topKeywords && data.competitors.own.topKeywords.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {data.competitors.own.topKeywords.map((k, i) => (
                 <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-gray-50 text-gray-600">
                   {k.keyword}
-                  {k.position !== null && <span className="text-gray-400">· #{k.position}</span>}
+                  {k.position != null && <span className="text-gray-400">· #{k.position}</span>}
                 </span>
               ))}
             </div>
@@ -577,42 +628,76 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
             </table>
           </div>
 
-          {data.competitors.items.map((c) => (
-            <div key={c.domain} className="space-y-3 break-inside-avoid">
-              {c.topKeywords && c.topKeywords.length > 0 && (
-                <div>
-                  <p className="text-xs text-gray-500 mb-1.5">
-                    Top keywords de {c.domain} ({c.topKeywords.length})
-                    {c.fetchedAt ? ` · ${fmtDate(c.fetchedAt)}` : ""}
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {c.topKeywords.map((k, i) => (
-                      <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-gray-50 text-gray-600">
-                        {k.keyword}
-                        {k.position !== null && <span className="text-gray-400">· #{k.position}</span>}
-                      </span>
-                    ))}
+          {data.competitors.items.map((c) => {
+            // Content gap: top 15 por volumen. Acotado para que el PDF sea
+            // legible (un dominio puede tener cientos de keywords en el gap).
+            // Se muestra con CPC, dificultad y snippet (cómo lo posiciona el
+            // competidor) — todo dato que ya estaba pagado en BD.
+            const gap = (c.contentGap ?? [])
+              .slice()
+              .sort((a, b) => (b.volume ?? -1) - (a.volume ?? -1))
+              .slice(0, 15);
+            return (
+              <div key={c.domain} className="space-y-2 break-inside-avoid">
+                {c.topKeywords && c.topKeywords.length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1.5">
+                      Top keywords de {c.domain} ({c.topKeywords.length})
+                      {c.fetchedAt ? ` · ${fmtDate(c.fetchedAt)}` : ""}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {c.topKeywords.map((k, i) => (
+                        <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-gray-50 text-gray-600">
+                          {k.keyword}
+                          {k.position != null && <span className="text-gray-400">· #{k.position}</span>}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-              {c.contentGap && c.contentGap.length > 0 && (
-                <div>
-                  <p className="text-xs text-gray-500 mb-1.5">
-                    Content gap con {c.domain} ({c.contentGap.length}) — ranquea por estas y tú no
-                    {c.contentGapAt ? ` · ${fmtDate(c.contentGapAt)}` : ""}
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {c.contentGap.map((k, i) => (
-                      <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">
-                        {k.keyword}
-                        {k.volume !== null && <span className="text-emerald-500">· {k.volume.toLocaleString("es-ES")}</span>}
-                      </span>
-                    ))}
+                )}
+                {gap.length > 0 && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1.5">
+                      Content gap con {c.domain} ({c.contentGap?.length ?? 0}) — ranquea por estas y tú no
+                      {c.contentGapAt ? ` · ${fmtDate(c.contentGapAt)}` : ""}
+                      {(c.contentGap?.length ?? 0) > 15 ? " · top 15 por volumen" : ""}
+                    </p>
+                    <table className="w-full text-xs">
+                      <thead><tr className="text-left text-gray-300 border-b border-gray-100">
+                        <th className="py-1.5 pr-2 font-medium">Keyword</th>
+                        <th className="py-1.5 px-2 font-medium text-right">Vol.</th>
+                        <th className="py-1.5 px-2 font-medium text-right">CPC</th>
+                        <th className="py-1.5 px-2 font-medium text-right">Dif.</th>
+                        <th className="py-1.5 px-2 font-medium">Snippet con el que posiciona</th>
+                      </tr></thead>
+                      <tbody>
+                        {gap.map((k, i) => {
+                          const dif = difficulty(k.competition, k.competitionIndex);
+                          return (
+                            <tr key={i} className="border-b border-gray-50 align-top">
+                              <td className="py-1.5 pr-2 text-gray-900 font-medium">{k.keyword}</td>
+                              <td className="py-1.5 px-2 text-right tabular-nums text-gray-600">{k.volume != null ? k.volume.toLocaleString("es-ES") : "—"}</td>
+                              <td className="py-1.5 px-2 text-right tabular-nums text-gray-600">{fmtCpc(k.cpc)}</td>
+                              <td className="py-1.5 px-2 text-right">
+                                <span className={cn("inline-block px-1.5 py-0.5 rounded font-medium", dif.cls)}>{dif.label}</span>
+                              </td>
+                              <td className="py-1.5 px-2 text-gray-500">
+                                {k.description ? (
+                                  <span className="line-clamp-2">{k.description}</span>
+                                ) : (
+                                  <span className="text-gray-300">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                </div>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </section>
@@ -630,6 +715,25 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
               <p className="text-sm font-medium text-gray-700">
                 «{t.keyword}» <span className="text-gray-400 font-normal">· {fmtDate(t.updatedAt)}</span>
               </p>
+
+              {t.competitors.length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-500 mb-1.5">Cómo lo muestran tus competidores en Google (top-10) — referencia de copy</p>
+                  <table className="w-full text-xs">
+                    <tbody>
+                      {t.competitors.map((c, i) => (
+                        <tr key={i} className="border-b border-gray-50 align-top">
+                          <td className="py-1.5 pr-2 text-gray-400 tabular-nums w-8 shrink-0">#{c.position ?? i + 1}</td>
+                          <td className="py-1.5 pr-2 space-y-0.5">
+                            <p className="text-gray-900 font-medium line-clamp-1">{c.title || c.url}</p>
+                            {c.description && <p className="text-gray-500 line-clamp-2">{c.description}</p>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               {t.terms.length > 0 && (
                 <div>
