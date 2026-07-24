@@ -98,18 +98,19 @@ export function computeScore(
 
   // Rendimiento — solo si hay dato de PSI (home). Si no, la categoría queda
   // null y el overall se renormaliza sobre las otras 3 en vez de contar como 0.
-  const rendimiento: CategoryScore | null = psi
-    ? {
-        score: Math.round(WEIGHTS.rendimiento * psi.performanceScore),
-        max: WEIGHTS.rendimiento,
-        detail: {
-          performanceScorePct: Math.round(psi.performanceScore * 100),
-          lcpMs: psi.lcpMs ?? -1,
-          clsX1000: psi.cls !== null ? Math.round(psi.cls * 1000) : -1,
-          inpMs: psi.inpMs ?? -1,
-        },
-      }
-    : null;
+  const rendimiento: CategoryScore | null =
+    psi && psi.scores.performance !== null
+      ? {
+          score: Math.round(WEIGHTS.rendimiento * psi.scores.performance),
+          max: WEIGHTS.rendimiento,
+          detail: {
+            performanceScorePct: Math.round(psi.scores.performance * 100),
+            lcpMs: psi.lcpMs ?? -1,
+            clsX1000: psi.cls !== null ? Math.round(psi.cls * 1000) : -1,
+            inpMs: psi.inpMs ?? -1,
+          },
+        }
+      : null;
 
   // Accesibilidad de imágenes
   const imagesTotal = pages.reduce((sum, p) => sum + p.imagesTotal, 0);

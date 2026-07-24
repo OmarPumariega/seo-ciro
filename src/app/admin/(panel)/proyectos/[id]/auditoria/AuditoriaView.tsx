@@ -42,6 +42,30 @@ type AuditPage = {
   wordCount: number | null;
 };
 
+// Shape de src/lib/audit/psi.ts#PsiResult — duplicado aquí (no server-only)
+// porque psiData llega tal cual en AuditRun.psiData (Json), sin transformar.
+type PsiFieldMetric = { percentile: number | null; category: string | null };
+type PsiFieldData = {
+  overallCategory: string | null;
+  lcp: PsiFieldMetric | null;
+  cls: PsiFieldMetric | null;
+  inp: PsiFieldMetric | null;
+  ttfb: PsiFieldMetric | null;
+  source: "page" | "origin";
+};
+type PsiOpportunity = {
+  id: string;
+  title: string;
+  description: string;
+  displayValue: string | null;
+  score: number | null;
+};
+type PsiData = {
+  scores: { performance: number | null; accessibility: number | null; bestPractices: number | null; seo: number | null };
+  opportunities: PsiOpportunity[];
+  fieldData: PsiFieldData | null;
+};
+
 type AuditRun = {
   id: string;
   status: "pending" | "running" | "completed" | "failed";
@@ -55,6 +79,7 @@ type AuditRun = {
   gscChecked: boolean;
   errorMessage: string | null;
   pages?: AuditPage[];
+  psiData?: PsiData | null;
 };
 
 type Tab = "resumen" | "tecnica" | "onpage";
@@ -116,7 +141,22 @@ function CwvTile({ label, value, status }: { label: string; value: string; statu
   );
 }
 
-function CwvPanel({ detail }: { detail: Record<string, number> }) {
+// Categoría 0-100 (accessibility/best-practices/seo, 0-1 → 0-100) con el
+// mismo semáforo de status que ya usan las CWV tiles.
+function scoreStatus(pct: number): string {
+  return pct >= 90 ? "good" : pct >= 50 ? "warn" : "bad";
+}
+
+// LCP/CLS/INP reales (CrUX), no simulados — Google los etiqueta directamente
+// como GOOD/NEEDS_IMPROVEMENT/POOR, no hace falta recalcular umbrales.
+function fieldStatus(category: string | null): string | null {
+  if (category === "FAST" || category === "GOOD") return "good";
+  if (category === "AVERAGE" || category === "NEEDS_IMPROVEMENT") return "warn";
+  if (category === "SLOW" || category === "POOR") return "bad";
+  return null;
+}
+
+function CwvPanel({ detail, psiData }: { detail: Record<string, number>; psiData?: PsiData | null }) {
   const perf = detail.performanceScorePct;
   const lcp = detail.lcpMs;
   const clsX = detail.clsX1000;
@@ -126,19 +166,95 @@ function CwvPanel({ detail }: { detail: Record<string, number> }) {
   const clsStatus = clsX < 0 ? null : clsX <= 100 ? "good" : clsX <= 250 ? "warn" : "bad";
   const inpStatus = inp < 0 ? null : inp <= 200 ? "good" : inp <= 500 ? "warn" : "bad";
 
+  const extraScores = [
+    { label: "Accesibilidad", value: psiData?.scores.accessibility },
+    { label: "Best Practices", value: psiData?.scores.bestPractices },
+    { label: "SEO (Lighthouse)", value: psiData?.scores.seo },
+  ].filter((s) => s.value != null) as { label: string; value: number }[];
+
+  const field = psiData?.fieldData;
+
   return (
-    <div className="bg-white rounded-xl border border-gray-100 p-5">
+    <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
       <div className="flex items-center justify-between mb-1">
         <h3 className="text-sm font-semibold text-gray-900">Core Web Vitals (PageSpeed)</h3>
         <span className="text-[10px] uppercase tracking-wide text-gray-400">Home · móvil</span>
       </div>
-      <p className="text-xs text-gray-400 mb-4">Medido con Google PageSpeed Insights sobre la página de inicio.</p>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <CwvTile label="Performance" value={perf >= 0 ? String(perf) : "—"} status={String(perfStatus)} />
-        <CwvTile label="LCP" value={lcp >= 0 ? `${(lcp / 1000).toFixed(1)}s` : "—"} status={lcpStatus} />
-        <CwvTile label="CLS" value={clsX >= 0 ? (clsX / 1000).toFixed(2) : "—"} status={clsStatus} />
-        <CwvTile label="INP" value={inp >= 0 ? `${inp}ms` : "—"} status={inpStatus} />
+      <div>
+        <p className="text-xs text-gray-400 mb-2">
+          Datos de laboratorio (Lighthouse) — simulación, no visitantes reales.
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <CwvTile label="Performance" value={perf >= 0 ? String(perf) : "—"} status={String(perfStatus)} />
+          <CwvTile label="LCP" value={lcp >= 0 ? `${(lcp / 1000).toFixed(1)}s` : "—"} status={lcpStatus} />
+          <CwvTile label="CLS" value={clsX >= 0 ? (clsX / 1000).toFixed(2) : "—"} status={clsStatus} />
+          <CwvTile label="INP" value={inp >= 0 ? `${inp}ms` : "—"} status={inpStatus} />
+        </div>
       </div>
+
+      {extraScores.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {extraScores.map((s) => (
+            <CwvTile key={s.label} label={s.label} value={String(Math.round(s.value * 100))} status={scoreStatus(Math.round(s.value * 100))} />
+          ))}
+        </div>
+      )}
+
+      <div>
+        <p className="text-xs text-gray-400 mb-2">
+          Datos reales de usuarios (Chrome UX Report) — la señal que Google usa como ranking factor.
+        </p>
+        {!field ? (
+          <p className="text-xs text-gray-400">Sin cobertura de CrUX suficiente para esta URL/dominio (tráfico bajo).</p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <CwvTile
+              label="LCP real"
+              value={field.lcp?.percentile != null ? `${(field.lcp.percentile / 1000).toFixed(1)}s` : "—"}
+              status={fieldStatus(field.lcp?.category ?? null)}
+            />
+            <CwvTile
+              label="CLS real"
+              value={field.cls?.percentile != null ? (field.cls.percentile / 1000).toFixed(2) : "—"}
+              status={fieldStatus(field.cls?.category ?? null)}
+            />
+            <CwvTile
+              label="INP real"
+              value={field.inp?.percentile != null ? `${field.inp.percentile}ms` : "—"}
+              status={fieldStatus(field.inp?.category ?? null)}
+            />
+            <CwvTile
+              label="TTFB real"
+              value={field.ttfb?.percentile != null ? `${field.ttfb.percentile}ms` : "—"}
+              status={fieldStatus(field.ttfb?.category ?? null)}
+            />
+          </div>
+        )}
+        {field && (
+          <p className="text-[10px] text-gray-400 mt-1">
+            {field.source === "page" ? "De esta URL exacta" : "Del dominio completo (sin datos suficientes de esta URL)"}
+          </p>
+        )}
+      </div>
+
+      {psiData && psiData.opportunities.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-gray-600 mb-2">Oportunidades de mejora detectadas</p>
+          <ul className="space-y-2">
+            {psiData.opportunities.slice(0, 6).map((o) => (
+              <li key={o.id} className="bg-gray-50 rounded-lg p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm text-gray-900 font-medium">{o.title}</span>
+                  {o.displayValue && <span className="text-xs text-gray-500 shrink-0">{o.displayValue}</span>}
+                </div>
+                {o.description && (
+                  <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">{o.description.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -579,7 +695,7 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
               {/* Core Web Vitals (PageSpeed Insights) — los datos ya los captura el
                   crawl en categoryScores.rendimiento.detail; aquí se muestran. */}
               {current.categoryScores?.rendimiento?.detail && (
-                <CwvPanel detail={current.categoryScores.rendimiento.detail} />
+                <CwvPanel detail={current.categoryScores.rendimiento.detail} psiData={current.psiData} />
               )}
 
               <div className="grid md:grid-cols-2 gap-4">
