@@ -31,6 +31,14 @@ export const ISSUE_META: Record<string, IssueMeta> = {
     passText: "Ninguna página está marcada como noindex.",
     tab: "tecnica",
   },
+  x_robots_noindex: {
+    label: "X-Robots-Tag: noindex",
+    description:
+      "La cabecera HTTP X-Robots-Tag desindexa la página, aunque su meta robots en HTML no lo diga — puede pasar desapercibido en una revisión manual del código fuente.",
+    fix: null,
+    passText: "Ninguna página envía X-Robots-Tag: noindex.",
+    tab: "tecnica",
+  },
   no_https: {
     label: "Sin HTTPS",
     description: "La página se sirve sin cifrado HTTPS.",

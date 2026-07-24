@@ -16,6 +16,7 @@ function buildIssues(page: CrawledPage, inSearchConsole: boolean | null): string
   // Indexabilidad
   if (!page.canonicalUrl) issues.push("missing_canonical");
   if (page.metaRobots?.toLowerCase().includes("noindex")) issues.push("noindex");
+  if (page.xRobotsTag?.toLowerCase().includes("noindex")) issues.push("x_robots_noindex");
   if (!page.isHttps) issues.push("no_https");
   if (page.isRedirect) issues.push("redirect");
   // Enlaces
@@ -197,6 +198,11 @@ export async function runAuditJob(): Promise<{ processed: number }> {
             externalDomains: page.externalDomains as Prisma.InputJsonValue,
             inSearchConsole,
             issues: issues as Prisma.InputJsonValue,
+            xRobotsTag: page.xRobotsTag,
+            hreflangCount: page.hreflangCount,
+            hasStructuredData: page.hasStructuredData,
+            structuredDataTypes: page.structuredDataTypes as Prisma.InputJsonValue,
+            hasOpenGraph: page.hasOpenGraph,
           };
         }),
       }),

@@ -249,6 +249,14 @@ model AuditPage {
   wordCount          Int? // nº de palabras del cuerpo (detección de thin content)
   inSearchConsole    Boolean? // null si gscChecked=false en el AuditRun padre
   issues             Json? // ["missing_canonical", "noindex", "no_https", "title_long"...]
+  // Cabecera HTTP X-Robots-Tag — puede desindexar aunque el meta robots en
+  // HTML diga lo contrario. hreflang/structured data/Open Graph: ya se
+  // descargaba el HTML para todo lo demás, esto no cuesta una petición extra.
+  xRobotsTag          String?
+  hreflangCount       Int      @default(0)
+  hasStructuredData   Boolean  @default(false)
+  structuredDataTypes Json? // ["Organization", "FAQPage", ...]
+  hasOpenGraph        Boolean  @default(false)
   createdAt          DateTime @default(now())
 
   @@unique([auditRunId, url])

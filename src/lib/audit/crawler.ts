@@ -38,6 +38,18 @@ export type CrawledPage = {
   wordCount: number | null;
   externalLinksCount: number;
   externalDomains: string[];
+  // Checks nuevos sobre datos que ya se descargan (HTML/cabeceras HTTP ya
+  // obtenidos), antes ni se miraban:
+  // Cabecera HTTP que puede desindexar la página aunque el meta robots en
+  // HTML diga lo contrario — hueco real de indexabilidad.
+  xRobotsTag: string | null;
+  // Nº de <link rel="alternate" hreflang="..."> — señal de SEO internacional.
+  hreflangCount: number;
+  // Presencia de datos estructurados (JSON-LD) y qué tipos schema.org declara.
+  hasStructuredData: boolean;
+  structuredDataTypes: string[];
+  // Presencia de Open Graph (afecta la apariencia al compartir en redes).
+  hasOpenGraph: boolean;
 };
 
 export type CrawlResult = {
@@ -108,6 +120,11 @@ async function fetchAndAnalyzePage(url: string, origin: string): Promise<PageAna
     wordCount: null,
     externalLinksCount: 0,
     externalDomains: [],
+    xRobotsTag: null,
+    hreflangCount: 0,
+    hasStructuredData: false,
+    structuredDataTypes: [],
+    hasOpenGraph: false,
   };
 
   let res: Response;
@@ -123,6 +140,7 @@ async function fetchAndAnalyzePage(url: string, origin: string): Promise<PageAna
 
   base.statusCode = res.status;
   base.isRedirect = res.redirected; // fetch sigue la redirección; esto marca que hubo 3xx
+  base.xRobotsTag = res.headers.get("x-robots-tag");
 
   const contentType = res.headers.get("content-type") ?? "";
   if (!res.ok || !contentType.includes("text/html")) {
@@ -147,6 +165,29 @@ async function fetchAndAnalyzePage(url: string, origin: string): Promise<PageAna
 
   base.canonicalUrl = $('link[rel="canonical"]').attr("href")?.trim() || null;
   base.metaRobots = $('meta[name="robots"]').attr("content")?.trim() || null;
+
+  base.hreflangCount = $('link[rel="alternate"][hreflang]').length;
+  base.hasOpenGraph = $('meta[property^="og:"]').length > 0;
+
+  const structuredDataTypes = new Set<string>();
+  $('script[type="application/ld+json"]').each((_, el) => {
+    const raw = $(el).contents().text().trim();
+    if (!raw) return;
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      const nodes = Array.isArray(parsed) ? parsed : [parsed];
+      for (const node of nodes) {
+        const type = (node as Record<string, unknown>)?.["@type"];
+        if (typeof type === "string") structuredDataTypes.add(type);
+        else if (Array.isArray(type)) type.forEach((t) => typeof t === "string" && structuredDataTypes.add(t));
+      }
+    } catch {
+      // JSON-LD mal formado: cuenta como "tiene structured data" (hay un
+      // intento) pero sin tipo resoluble — no se rompe el resto del crawl.
+    }
+  });
+  base.hasStructuredData = $('script[type="application/ld+json"]').length > 0;
+  base.structuredDataTypes = [...structuredDataTypes];
 
   // Thin content: cuenta palabras del cuerpo visible (script/style fuera).
   $("script, style, noscript").remove();
