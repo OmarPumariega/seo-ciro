@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { checkRankKeyword } from "@/lib/rank/check";
 import { notify } from "@/lib/notifications/notify";
+import { FREQUENCY_MS } from "@/lib/rank/constants";
 
 // Job de fondo del Módulo 5: procesa las keywords de seguimiento cuya
 // frecuencia programada (daily/weekly/monthly/quarterly) se ha vencido. Las
@@ -37,13 +38,6 @@ import { notify } from "@/lib/notifications/notify";
 // las pendientes quedan "más vencidas" y el mismo proyecto vuelve a salir
 // elegido en el siguiente tick.
 const MAX_KEYWORDS_PER_PROJECT_TICK = 50;
-
-const FREQUENCY_MS: Record<string, number> = {
-  daily: 24 * 60 * 60 * 1000,
-  weekly: 7 * 24 * 60 * 60 * 1000,
-  monthly: 30 * 24 * 60 * 60 * 1000,
-  quarterly: 91 * 24 * 60 * 60 * 1000,
-};
 
 export async function runRankJob(): Promise<{ processed: number }> {
   try {

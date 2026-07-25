@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { normalizeKeyword } from "@/lib/keywords/normalize";
 import { ALLOWED_DEPTHS } from "@/lib/rank/serp";
 import { checkRankKeyword } from "@/lib/rank/check";
-import { RANK_FREQUENCIES } from "@/lib/rank/constants";
+import { RANK_FREQUENCIES, computeNextScanAt } from "@/lib/rank/constants";
 import { resolveLocationName } from "@/lib/rank/locations";
 
 const DEVICES = ["desktop", "mobile"] as const;
@@ -19,13 +19,19 @@ export async function GET(
   if (!session) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const { id } = await params;
-  const keywords = await prisma.rankKeyword.findMany({
-    where: { projectId: id },
-    orderBy: [{ lastCheckedAt: "asc" }],
-    // últimas 10 posiciones → la UI pinta la tabla tipo calendario
-    // (una columna por fecha de chequeo) sin una llamada extra por keyword.
-    include: { positions: { orderBy: { checkedAt: "desc" }, take: 10 } },
-  });
+  const [keywords, project] = await Promise.all([
+    prisma.rankKeyword.findMany({
+      where: { projectId: id },
+      orderBy: [{ lastCheckedAt: "asc" }],
+      // últimas 10 posiciones → la UI pinta la tabla tipo calendario
+      // (una columna por fecha de chequeo) sin una llamada extra por keyword.
+      include: { positions: { orderBy: { checkedAt: "desc" }, take: 10 } },
+    }),
+    prisma.project.findUnique({
+      where: { id },
+      select: { rankScanFrequency: true, rankNextScanAt: true },
+    }),
+  ]);
 
   // Volumen de búsqueda: se lee de KeywordDataCache (Módulo 1) si existe,
   // sin volver a pagar por él aquí — es solo lectura de un dato ya conocido.
@@ -59,6 +65,10 @@ export async function GET(
     // vez de "Nacional" sin necesidad de migrar las filas antiguas.
     locationName:
       kw.locationName ?? resolveLocationName(kw.locationCode),
+    // Próximo escaneo automático — misma fórmula que usa el cron
+    // (findMostOverdueProject) para decidir cuándo está vencida, así la
+    // fecha mostrada nunca miente sobre lo que realmente hará el job.
+    nextScanAt: project ? computeNextScanAt(kw, project) : null,
   }));
 
   return NextResponse.json(withVolume);

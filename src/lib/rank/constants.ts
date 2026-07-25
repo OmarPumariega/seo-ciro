@@ -21,3 +21,39 @@ export const RANK_FREQUENCY_LABELS: Record<string, string> = {
 // conjunto de todas las keywords de un proyecto.
 export const RANK_SCAN_FREQUENCIES = ["weekly", "monthly", "quarterly"] as const;
 export type RankScanFrequency = (typeof RANK_SCAN_FREQUENCIES)[number];
+
+// Duración de cada frecuencia programada — antes vivía solo dentro de
+// src/lib/rank/job.ts; se comparte aquí para que la UI pueda calcular
+// "próximo escaneo" con la MISMA fórmula que usa el cron para decidir
+// cuándo una keyword está vencida (ver findMostOverdueProject).
+export const FREQUENCY_MS: Record<string, number> = {
+  daily: 24 * 60 * 60 * 1000,
+  weekly: 7 * 24 * 60 * 60 * 1000,
+  monthly: 30 * 24 * 60 * 60 * 1000,
+  quarterly: 91 * 24 * 60 * 60 * 1000,
+};
+
+// Fecha del próximo escaneo automático de una keyword — la más próxima entre
+// su propio vencimiento por rueda (lastCheckedAt + frequency) y el escaneo
+// conjunto explícito del proyecto (rankNextScanAt), si aplica a su
+// frecuencia. null = sin auto-escaneo (frecuencia "manual").
+export function computeNextScanAt(
+  keyword: { frequency: string; lastCheckedAt: Date | null },
+  project: { rankScanFrequency: string | null; rankNextScanAt: Date | null }
+): Date | null {
+  const interval = FREQUENCY_MS[keyword.frequency];
+  if (!interval) return null; // "manual"
+
+  const ownDue = keyword.lastCheckedAt
+    ? new Date(keyword.lastCheckedAt.getTime() + interval)
+    : new Date(); // nunca comprobada → vencida desde ya
+
+  const appliesProjectSchedule =
+    project.rankNextScanAt !== null &&
+    (RANK_SCAN_FREQUENCIES as readonly string[]).includes(keyword.frequency);
+
+  if (appliesProjectSchedule && project.rankNextScanAt! < ownDue) {
+    return project.rankNextScanAt;
+  }
+  return ownDue;
+}

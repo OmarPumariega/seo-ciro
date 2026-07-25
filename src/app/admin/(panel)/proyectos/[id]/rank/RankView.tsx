@@ -58,6 +58,9 @@ type RankKeyword = {
   positions: RankPosition[];
   searchVolume: number | null;
   group: string | null;
+  // Próximo escaneo automático calculado por el servidor (misma fórmula que
+  // el cron) — null si la frecuencia es "manual" (sin auto-escaneo).
+  nextScanAt: string | null;
 };
 
 type SortKey = "keyword" | "volume" | "position" | "best" | "delta" | (string & {});
@@ -193,7 +196,6 @@ export default function RankView({ projectId }: { projectId: string }) {
   const [newDevice, setNewDevice] = useState("desktop");
   const [newFrequency, setNewFrequency] = useState("monthly");
   const [newDepth, setNewDepth] = useState("30");
-  const [newGroup, setNewGroup] = useState("");
   const [newLocation, setNewLocation] = useState<LocationValue>(null);
   const [adding, setAdding] = useState(false);
 
@@ -224,10 +226,11 @@ export default function RankView({ projectId }: { projectId: string }) {
   const [copyExpanded, setCopyExpanded] = useState<string | null>(null);
 
   // Programación explícita del escaneo conjunto (Project.rankScanFrequency /
-  // rankNextScanAt) — unificada con el selector "Frecuencia" de arriba (mismo
-  // <Select> de newFrequency, sin duplicar el control): al guardar se usa la
-  // frecuencia elegida ahí. scheduleDate en formato "YYYY-MM-DD" (lo que
-  // da/espera <input type="date">).
+  // rankNextScanAt) — tarjeta propia junto a la tabla (antes vivía escondida
+  // dentro del formulario de "Añadir keyword", con un selector de frecuencia
+  // propio en vez de compartir el del alta). scheduleDate en formato
+  // "YYYY-MM-DD" (lo que da/espera <input type="date">).
+  const [scheduleFrequency, setScheduleFrequency] = useState<string>("weekly");
   const [scheduleDate, setScheduleDate] = useState<string>("");
   const [savedSchedule, setSavedSchedule] = useState<{ frequency: string; date: string } | null>(null);
   const [scheduleSaving, setScheduleSaving] = useState(false);
@@ -250,6 +253,7 @@ export default function RankView({ projectId }: { projectId: string }) {
       if (p && p.rankScanFrequency && p.rankNextScanAt) {
         const date = String(p.rankNextScanAt).slice(0, 10);
         setScheduleDate(date);
+        setScheduleFrequency(p.rankScanFrequency);
         setSavedSchedule({ frequency: p.rankScanFrequency, date });
       }
       setLoading(false);
@@ -264,7 +268,7 @@ export default function RankView({ projectId }: { projectId: string }) {
     const res = await fetch(`/api/proyectos/${projectId}/rank/schedule`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ frequency: newFrequency, nextScanAt: scheduleDate }),
+      body: JSON.stringify({ frequency: scheduleFrequency, nextScanAt: scheduleDate }),
     });
     const data = await res.json();
     setScheduleSaving(false);
@@ -272,7 +276,7 @@ export default function RankView({ projectId }: { projectId: string }) {
       setError(data.error ?? "Error al guardar la programación");
       return;
     }
-    setSavedSchedule({ frequency: newFrequency, date: scheduleDate });
+    setSavedSchedule({ frequency: scheduleFrequency, date: scheduleDate });
   }
 
   async function handleClearSchedule() {
@@ -350,7 +354,6 @@ export default function RankView({ projectId }: { projectId: string }) {
         device: newDevice,
         frequency: newFrequency,
         depth: Number(newDepth),
-        group: newGroup,
         locationCode: newLocation?.code,
         locationName: newLocation?.name,
       }),
@@ -725,15 +728,12 @@ export default function RankView({ projectId }: { projectId: string }) {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">
-                Grupo <span className="text-gray-400 font-normal">(opcional)</span>
+                Ubicación <span className="text-gray-400 font-normal">(opcional)</span>
               </label>
-              <input
-                type="text"
-                value={newGroup}
-                onChange={(e) => setNewGroup(e.target.value)}
-                placeholder="Servicios, Blog..."
-                maxLength={60}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+              <LocationPicker
+                value={newLocation}
+                onChange={setNewLocation}
+                placeholder="España (nacional)"
               />
             </div>
             <div className="space-y-1">
@@ -791,64 +791,10 @@ export default function RankView({ projectId }: { projectId: string }) {
             </div>
           </div>
         </div>
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-gray-700">
-            Ubicación de la búsqueda <span className="text-gray-400 font-normal">(opcional)</span>
-          </label>
-          <LocationPicker value={newLocation} onChange={setNewLocation} />
-          <p className="text-xs text-gray-400">
-            Simula la búsqueda desde ese punto (ej. &laquo;Gijón&raquo;) en vez de España entera —
-            más fiable para negocios locales. Sin elegir nada, se usa España (nacional).
-          </p>
-        </div>
-
-        {/* Programación del escaneo conjunto — usa la misma Frecuencia de
-            arriba (sin duplicar el selector); solo aplica a semanal/mensual/
-            trimestral. Disparador adicional al criterio por keyword, ver
-            src/lib/rank/job.ts — se auto-reprograma solo tras cada escaneo. */}
-        {(RANK_SCAN_FREQUENCIES as readonly string[]).includes(newFrequency) && (
-          <div className="pt-3 border-t border-gray-100 space-y-2">
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-gray-400" />
-              <label className="text-sm font-medium text-gray-700">
-                Próximo escaneo programado
-                <span className="text-gray-400 font-normal"> (todas las keywords {RANK_FREQUENCY_LABELS[newFrequency].toLowerCase()}es del proyecto)</span>
-              </label>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <input
-                type="date"
-                value={scheduleDate}
-                onChange={(e) => setScheduleDate(e.target.value)}
-                className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
-              />
-              <button
-                type="button"
-                onClick={handleSaveSchedule}
-                disabled={scheduleSaving || !scheduleDate}
-                className="px-3 py-1.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
-              >
-                {scheduleSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Guardar programación"}
-              </button>
-              {savedSchedule && (
-                <button
-                  type="button"
-                  onClick={handleClearSchedule}
-                  disabled={scheduleSaving}
-                  className="text-gray-500 text-sm hover:text-red-600 disabled:opacity-50"
-                >
-                  Quitar
-                </button>
-              )}
-            </div>
-            {savedSchedule && (
-              <p className="text-xs text-emerald-600">
-                Próximo escaneo programado: {new Date(savedSchedule.date).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" })}
-                {" "}· cada {RANK_FREQUENCY_LABELS[savedSchedule.frequency].toLowerCase()}
-              </p>
-            )}
-          </div>
-        )}
+        <p className="text-xs text-gray-400">
+          La ubicación simula la búsqueda desde ese punto (ej. &laquo;Gijón&raquo;) en vez de
+          España entera — más fiable para negocios locales. Sin elegir nada, España (nacional).
+        </p>
 
         {error && <p className="text-sm text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg">{error}</p>}
         <button
@@ -866,6 +812,69 @@ export default function RankView({ projectId }: { projectId: string }) {
           {" "}Total del proyecto al añadirlas: ~${(projectMonthlyCost + newKeywordMonthlyCost).toFixed(2)}/mes.
         </p>
       </form>
+
+      {/* Escaneo programado del proyecto — antes vivía escondido dentro del
+          formulario de alta; tarjeta propia para que sea fácil de encontrar
+          y quede claro que es la palanca que sincroniza al mismo día TODAS
+          las keywords con frecuencia automática del proyecto (ver
+          src/lib/rank/job.ts). */}
+      <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-gray-400" />
+          <h3 className="text-sm font-semibold text-gray-900">Escaneo programado del proyecto</h3>
+        </div>
+        <p className="text-xs text-gray-400">
+          Fija una fecha para que TODAS las keywords con frecuencia automática (no manual) del
+          proyecto se comprueben el mismo día, y se sigan repitiendo cada cierto tiempo a partir de ahí.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <Select.Root value={scheduleFrequency} onValueChange={setScheduleFrequency}>
+            <Select.Trigger className="flex items-center justify-between px-3 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 bg-white gap-2 w-36">
+              <Select.Value />
+              <Select.Icon><ChevronDown className="h-4 w-4 text-gray-400" /></Select.Icon>
+            </Select.Trigger>
+            <Select.Portal>
+              <Select.Content className="bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-50">
+                <Select.Viewport>
+                  {RANK_SCAN_FREQUENCIES.map((v) => (
+                    <Select.Item key={v} value={v} className="px-3 py-2 text-sm text-gray-900 outline-none cursor-pointer data-[highlighted]:bg-gray-100"><Select.ItemText>{RANK_FREQUENCY_LABELS[v]}</Select.ItemText></Select.Item>
+                  ))}
+                </Select.Viewport>
+              </Select.Content>
+            </Select.Portal>
+          </Select.Root>
+          <input
+            type="date"
+            value={scheduleDate}
+            onChange={(e) => setScheduleDate(e.target.value)}
+            className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+          />
+          <button
+            type="button"
+            onClick={handleSaveSchedule}
+            disabled={scheduleSaving || !scheduleDate}
+            className="px-3 py-1.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+          >
+            {scheduleSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Guardar programación"}
+          </button>
+          {savedSchedule && (
+            <button
+              type="button"
+              onClick={handleClearSchedule}
+              disabled={scheduleSaving}
+              className="text-gray-500 text-sm hover:text-red-600 disabled:opacity-50"
+            >
+              Quitar
+            </button>
+          )}
+        </div>
+        {savedSchedule && (
+          <p className="text-xs text-emerald-600">
+            Próximo escaneo programado: {new Date(savedSchedule.date).toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" })}
+            {" "}· cada {RANK_FREQUENCY_LABELS[savedSchedule.frequency].toLowerCase()}
+          </p>
+        )}
+      </div>
 
       {/* Importar desde estudio */}
       {studies.length > 0 && (
@@ -1236,6 +1245,15 @@ export default function RankView({ projectId }: { projectId: string }) {
                                     onChange={(loc) => handleLocation(kw.id, loc)}
                                   />
                                 </div>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-xs">
+                                <Calendar className="h-3.5 w-3.5 text-gray-400" />
+                                <span className="text-gray-500">Próximo escaneo:</span>
+                                <span className="text-gray-700 font-medium">
+                                  {kw.nextScanAt
+                                    ? new Date(kw.nextScanAt).toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" })
+                                    : "Manual — sin auto-escaneo"}
+                                </span>
                               </div>
                             </div>
 
