@@ -43,6 +43,28 @@ function startOfToday(): Date {
   return d;
 }
 
+// Filtro de fecha de la lista — "Todas" no toca nada; el resto acota por
+// mes/año. Se aplica a createdAt en Pendientes (cuándo se creó/detectó) y a
+// completedAt en Completadas (cuándo se resolvió) — cada pestaña usa el
+// campo que tiene sentido para ella.
+type DateFilter = "all" | "this-month" | "last-month" | `year:${number}`;
+
+function monthKey(d: Date): string {
+  return `${d.getFullYear()}-${d.getMonth()}`;
+}
+
+// Años reales presentes en los datos (createdAt + completedAt de todas las
+// tareas) — nunca hardcodeados, así sigue funcionando sin tocar código
+// pase el tiempo que pase.
+function availableYears(todos: Todo[]): number[] {
+  const years = new Set<number>();
+  for (const t of todos) {
+    years.add(new Date(t.createdAt).getFullYear());
+    if (t.completedAt) years.add(new Date(t.completedAt).getFullYear());
+  }
+  return Array.from(years).sort((a, b) => b - a);
+}
+
 // Tarea auto-generada desde un hallazgo de auditoría (issueType no null) —
 // misma idea visual que "Problemas a corregir" en Auditoría: título +
 // contador, colapsable, con el "cómo arreglarlo" y la lista de páginas
@@ -226,6 +248,7 @@ export default function TareasView({ projectId }: { projectId: string }) {
   const [error, setError] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [tab, setTab] = useState<"pendientes" | "completadas">("pendientes");
+  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
 
   // Añadir tarea: dos modos dentro de la misma tarjeta — manual (título/
   // detalle/prioridad/fecha) o desde el catálogo de plantillas.
@@ -346,7 +369,21 @@ export default function TareasView({ projectId }: { projectId: string }) {
   const today = startOfToday();
   const pendingCount = todos.filter((t) => !t.done).length;
   const completedCount = todos.filter((t) => t.done).length;
-  const tabTodos = todos.filter((t) => (tab === "pendientes" ? !t.done : t.done));
+  const tabTodosUnfiltered = todos.filter((t) => (tab === "pendientes" ? !t.done : t.done));
+
+  const now = new Date();
+  const thisMonthKey = monthKey(now);
+  const lastMonthKey = monthKey(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+  function matchesDateFilter(todo: Todo): boolean {
+    if (dateFilter === "all") return true;
+    const raw = tab === "completadas" ? todo.completedAt : todo.createdAt;
+    if (!raw) return false;
+    const d = new Date(raw);
+    if (dateFilter === "this-month") return monthKey(d) === thisMonthKey;
+    if (dateFilter === "last-month") return monthKey(d) === lastMonthKey;
+    return d.getFullYear() === Number(dateFilter.slice(5));
+  }
+  const tabTodos = tabTodosUnfiltered.filter(matchesDateFilter);
   const autoTodos = tabTodos.filter((t) => t.issueType !== null);
   // Pendientes manuales ordenadas por prioridad (alta → media → baja); las
   // completadas respetan el orden del servidor (createdAt desc).
@@ -544,29 +581,50 @@ export default function TareasView({ projectId }: { projectId: string }) {
         <TodoTemplatesCard />
       </Modal>
 
-      <div className="flex items-center gap-1 border-b border-gray-200">
-        <button
-          onClick={() => setTab("pendientes")}
-          className={cn(
-            "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
-            tab === "pendientes"
-              ? "border-gray-900 text-gray-900"
-              : "border-transparent text-gray-500 hover:text-gray-800"
+      <div className="flex items-center justify-between gap-3 flex-wrap border-b border-gray-200">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setTab("pendientes")}
+            className={cn(
+              "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+              tab === "pendientes"
+                ? "border-gray-900 text-gray-900"
+                : "border-transparent text-gray-500 hover:text-gray-800"
+            )}
+          >
+            Pendientes ({pendingCount})
+          </button>
+          <button
+            onClick={() => setTab("completadas")}
+            className={cn(
+              "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+              tab === "completadas"
+                ? "border-gray-900 text-gray-900"
+                : "border-transparent text-gray-500 hover:text-gray-800"
+            )}
+          >
+            Completadas ({completedCount})
+          </button>
+        </div>
+        <div className="flex items-center gap-2 mb-1.5">
+          {dateFilter !== "all" && (
+            <span className="text-xs text-gray-400">
+              {tabTodos.length} de {tabTodosUnfiltered.length}
+            </span>
           )}
-        >
-          Pendientes ({pendingCount})
-        </button>
-        <button
-          onClick={() => setTab("completadas")}
-          className={cn(
-            "px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
-            tab === "completadas"
-              ? "border-gray-900 text-gray-900"
-              : "border-transparent text-gray-500 hover:text-gray-800"
-          )}
-        >
-          Completadas ({completedCount})
-        </button>
+          <select
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value as DateFilter)}
+            className="px-2 py-1 border border-gray-200 rounded-lg text-xs outline-none focus:border-gray-400 bg-white text-gray-600"
+          >
+            <option value="all">Todas las fechas</option>
+            <option value="this-month">Este mes</option>
+            <option value="last-month">Mes anterior</option>
+            {availableYears(todos).map((y) => (
+              <option key={y} value={`year:${y}`}>{y}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {loading ? (
