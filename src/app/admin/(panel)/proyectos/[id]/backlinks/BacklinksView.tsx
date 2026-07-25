@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Loader2, Sparkles, ChevronDown, ChevronUp, ExternalLink, ShieldAlert, Filter } from "lucide-react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { Loader2, Sparkles, ChevronDown, ChevronUp, ExternalLink, ShieldAlert, Filter, Link2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { backlinkAnalysisCostUsd } from "@/lib/dataforseo/pricing";
 
@@ -108,6 +108,115 @@ function topReferringPages(items: TopBacklink[]): TopBacklink[] {
     .filter((b) => b.pageFromRank !== null)
     .sort((a, b) => (b.pageFromRank ?? 0) - (a.pageFromRank ?? 0))
     .slice(0, 10);
+}
+
+type GapDomain = { domain: string; rank: number | null; count: number; exampleUrlFrom: string | null };
+
+// Gap de dominios de referencia — mismo concepto que el content gap de
+// Competidores (keywords que rankea el competidor y el proyecto no), pero
+// para enlaces: dominios que enlazan al competidor y no al proyecto. Se
+// calcula por completo a partir de los backlinks YA analizados y guardados
+// (topBacklinks de ambos snapshots) — sin ninguna llamada nueva a
+// DataForSEO, tal como se pidió explícitamente.
+function backlinkGap(own: Snapshot, competitor: Snapshot): GapDomain[] {
+  if (!own?.topBacklinks || !competitor?.topBacklinks) return [];
+  const ownDomains = new Set(
+    own.topBacklinks.map((b) => b.domainFrom).filter((d): d is string => d !== null)
+  );
+  const byDomain = new Map<string, GapDomain>();
+  for (const b of competitor.topBacklinks) {
+    if (!b.domainFrom || ownDomains.has(b.domainFrom)) continue;
+    const existing = byDomain.get(b.domainFrom);
+    if (existing) {
+      existing.count++;
+      if ((b.domainFromRank ?? -1) > (existing.rank ?? -1)) {
+        existing.rank = b.domainFromRank;
+        existing.exampleUrlFrom = b.urlFrom;
+      }
+    } else {
+      byDomain.set(b.domainFrom, {
+        domain: b.domainFrom,
+        rank: b.domainFromRank,
+        count: 1,
+        exampleUrlFrom: b.urlFrom,
+      });
+    }
+  }
+  return Array.from(byDomain.values()).sort((a, b) => (b.rank ?? -1) - (a.rank ?? -1));
+}
+
+function BacklinkGapCard({
+  ownSnapshot,
+  competitorSnapshot,
+  competitorDomain,
+}: {
+  ownSnapshot: Snapshot;
+  competitorSnapshot: Snapshot;
+  competitorDomain: string;
+}) {
+  const gap = useMemo(
+    () => backlinkGap(ownSnapshot, competitorSnapshot),
+    [ownSnapshot, competitorSnapshot]
+  );
+
+  if (!ownSnapshot || !competitorSnapshot) return null; // falta analizar alguno de los dos — sin ruido
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-2">
+      <div className="flex items-center gap-2">
+        <Link2 className="h-4 w-4 text-gray-400" />
+        <h3 className="text-sm font-semibold text-gray-900">
+          Dominios que enlazan a {competitorDomain} y no a ti ({gap.length})
+        </h3>
+      </div>
+      {gap.length === 0 ? (
+        <p className="text-xs text-gray-500">
+          Sin dominios exclusivos de {competitorDomain} entre los backlinks ya analizados.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-gray-400 border-b border-gray-100">
+                <th className="py-1.5 pr-2 font-medium">Dominio</th>
+                <th className="py-1.5 pr-2 font-medium text-right">Autoridad</th>
+                <th className="py-1.5 pr-2 font-medium text-right">Backlinks encontrados</th>
+                <th className="py-1.5 pr-2 font-medium">Ejemplo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {gap.map((g) => (
+                <tr key={g.domain} className="border-b border-gray-50 last:border-0">
+                  <td className="py-1.5 pr-2 text-gray-900">{g.domain}</td>
+                  <td className="py-1.5 pr-2 text-right tabular-nums text-gray-600">{g.rank ?? "—"}</td>
+                  <td className="py-1.5 pr-2 text-right tabular-nums text-gray-500">{g.count}</td>
+                  <td className="py-1.5 pr-2">
+                    {g.exampleUrlFrom ? (
+                      <a
+                        href={g.exampleUrlFrom}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-indigo-700 hover:underline"
+                      >
+                        <span className="truncate max-w-[220px] inline-block align-bottom">{g.exampleUrlFrom}</span>
+                        <ExternalLink className="h-3 w-3 shrink-0" />
+                      </a>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="text-[11px] text-gray-400">
+        Basado en los backlinks ya analizados de cada dominio (hasta el límite elegido al
+        analizar) — no es necesariamente el listado completo.
+      </p>
+    </div>
+  );
 }
 
 function BacklinkRow({ b }: { b: TopBacklink }) {
@@ -528,14 +637,20 @@ export default function BacklinksView({ projectId }: { projectId: string }) {
         </div>
       ) : (
         data?.competitors.map((c) => (
-          <DomainDetail
-            key={c.domain}
-            label="Competidor"
-            domain={c.domain}
-            snapshot={c.snapshot}
-            analyzing={analyzingDomain === c.domain}
-            onAnalyze={(limit) => handleAnalyze(c.domain, limit)}
-          />
+          <Fragment key={c.domain}>
+            <DomainDetail
+              label="Competidor"
+              domain={c.domain}
+              snapshot={c.snapshot}
+              analyzing={analyzingDomain === c.domain}
+              onAnalyze={(limit) => handleAnalyze(c.domain, limit)}
+            />
+            <BacklinkGapCard
+              ownSnapshot={data.projectSnapshot}
+              competitorSnapshot={c.snapshot}
+              competitorDomain={c.domain}
+            />
+          </Fragment>
         ))
       )}
     </div>

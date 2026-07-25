@@ -363,9 +363,15 @@ sitio; ver el apartado "Copilot" más abajo.
   tabla por autoridad mínima, última vez visto y dofollow/nofollow, fila expandible con
   el resto de campos, y dos agregaciones: páginas propias con más enlaces entrantes y
   páginas de origen con más autoridad (a nivel de página, no de dominio). Tabla
-  comparativa de autoridad entre el proyecto y sus competidores arriba de todo. Ver
-  histórico ya calculado es gratis, solo "Analizar" paga (guard de tope de gasto,
-  re-comprobado antes de cada página en el modo "Todos").
+  comparativa de autoridad entre el proyecto y sus competidores arriba de todo. **Gap de
+  dominios de referencia** (por competidor, junto a su ficha): qué dominios enlazan al
+  competidor y no al proyecto — igual que el content gap de keywords de Competidores,
+  pero calculado 100% a partir de los backlinks ya analizados de ambos (`domainFrom` de
+  `topBacklinks`), sin ninguna llamada nueva a DataForSEO. Solo aparece cuando ambos
+  (proyecto y ese competidor) ya tienen análisis; su alcance depende de cuántos
+  backlinks se pidieran al analizar cada uno. Ver histórico ya calculado es gratis,
+  solo "Analizar" paga (guard de tope de gasto, re-comprobado antes de cada página en
+  el modo "Todos").
 - **Geogrid** (Módulo 9, solo negocios locales): keyword + rejilla (3×3/5×5/7×7) + radio
   → crea `GeogridRun` pending → se procesa de inmediato y también vía el cron →
   Maps SERP en cada punto con coordenada exacta, localiza la posición del negocio
