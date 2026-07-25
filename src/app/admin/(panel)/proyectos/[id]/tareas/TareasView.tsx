@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Plus, Trash2, ChevronDown, ChevronUp, Calendar, AlertCircle, CheckCircle2, ListChecks } from "lucide-react";
+import { Loader2, Plus, Trash2, ChevronDown, ChevronUp, Calendar, AlertCircle, CheckCircle2, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConfirmDialog from "@/components/admin/ConfirmDialog";
+import Modal from "@/components/admin/Modal";
 import UrlLink from "@/components/admin/UrlLink";
 import TodoTemplatesCard from "@/components/admin/TodoTemplatesCard";
 import { ISSUE_META } from "@/lib/audit/issue-meta";
-import { splitManualTask } from "@/lib/tasks";
+import { splitManualTask, type TodoTemplateItem } from "@/lib/tasks";
 
 type Todo = {
   id: string;
@@ -226,34 +227,30 @@ export default function TareasView({ projectId }: { projectId: string }) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [tab, setTab] = useState<"pendientes" | "completadas">("pendientes");
 
-  // Aplicador de plantillas (catálogo global de tareas preestablecidas).
-  const [tplOpen, setTplOpen] = useState(false);
-  const [templates, setTemplates] = useState<TemplateItem[]>([]);
+  // Añadir tarea: dos modos dentro de la misma tarjeta — manual (título/
+  // detalle/prioridad/fecha) o desde el catálogo de plantillas.
+  const [addMode, setAddMode] = useState<"manual" | "template">("manual");
+  const [templates, setTemplates] = useState<TodoTemplateItem[]>([]);
   const [tplLoading, setTplLoading] = useState(false);
   const [selectedTpls, setSelectedTpls] = useState<Set<string>>(new Set());
   const [applying, setApplying] = useState(false);
-  // Gestión del catálogo (crear/editar/borrar plantillas) — dentro del módulo
-  // de Tareas, ya no en Configuración.
+  // Gestión del catálogo (crear/editar/borrar plantillas) — modal aparte,
+  // accesible desde el modo "Desde plantilla", no una sección propia.
   const [manageOpen, setManageOpen] = useState(false);
-
-  type TemplateItem = { id: string; title: string; detail: string | null; priority: string; category: string | null };
 
   function loadTemplates() {
     setTplLoading(true);
     fetch("/api/tareas-plantillas")
       .then((r) => r.json())
-      .then((d: TemplateItem[]) => {
+      .then((d: TodoTemplateItem[]) => {
         if (Array.isArray(d)) setTemplates(d);
       })
       .finally(() => setTplLoading(false));
   }
 
-  function openTemplates() {
-    setTplOpen((v) => {
-      const next = !v;
-      if (next && templates.length === 0) loadTemplates();
-      return next;
-    });
+  function selectTemplateMode() {
+    setAddMode("template");
+    if (templates.length === 0) loadTemplates();
   }
 
   function toggleTpl(id: string) {
@@ -276,7 +273,7 @@ export default function TareasView({ projectId }: { projectId: string }) {
     setApplying(false);
     if (res.ok) {
       setSelectedTpls(new Set());
-      setTplOpen(false);
+      setAddMode("manual");
       loadTodos();
     }
   }
@@ -370,27 +367,143 @@ export default function TareasView({ projectId }: { projectId: string }) {
         </p>
       </div>
 
-      {/* Aplicar tareas preestablecidas desde el catálogo (Configuración) */}
-      <div className="bg-white rounded-xl border border-gray-100 p-4">
-        <button
-          type="button"
-          onClick={openTemplates}
-          className="flex items-center gap-2 text-sm font-medium text-gray-900"
-        >
-          <ListChecks className="h-4 w-4 text-gray-500" />
-          Aplicar tareas preestablecidas
-          <ChevronDown className={cn("h-4 w-4 text-gray-400 transition-transform", tplOpen ? "rotate-180" : "")} />
-        </button>
-        {tplOpen && (
-          <div className="mt-3 space-y-3">
-            <p className="text-xs text-gray-500">
-              Selecciona tareas del catálogo para añadirlas a este proyecto. Puedes crear y editar el
-              catálogo más abajo, en &ldquo;Gestionar catálogo de plantillas&rdquo;.
-            </p>
+      {/* Añadir tarea: un único card con dos modos (manual / desde plantilla) */}
+      <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 w-fit">
+          <button
+            type="button"
+            onClick={() => setAddMode("manual")}
+            className={cn(
+              "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+              addMode === "manual" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-800"
+            )}
+          >
+            Manual
+          </button>
+          <button
+            type="button"
+            onClick={selectTemplateMode}
+            className={cn(
+              "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+              addMode === "template" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-800"
+            )}
+          >
+            Desde plantilla
+          </button>
+        </div>
+
+        {addMode === "manual" ? (
+          <form onSubmit={handleCreate} className="space-y-3">
+            <div className="flex items-end gap-3">
+              <div className="flex-1 space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Título de la tarea</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  maxLength={200}
+                  placeholder="Revisar títulos de la home"
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={creating || !title.trim()}
+                className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50"
+              >
+                {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Añadir tarea
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Detalle (opcional)</label>
+              <textarea
+                value={detail}
+                onChange={(e) => setDetail(e.target.value)}
+                maxLength={2000}
+                rows={3}
+                placeholder="Notas, contexto o pasos adicionales"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 resize-y"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Prioridad</label>
+              <div className="flex items-center gap-2">
+                {(["baja", "media", "alta"] as Priority[]).map((p) => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPriority(p)}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors",
+                      priority === p
+                        ? cn(PRIORITY_META[p].badge, "border-transparent font-medium")
+                        : "border-gray-200 text-gray-500 hover:text-gray-900 hover:border-gray-300"
+                    )}
+                  >
+                    <span className={cn("h-2 w-2 rounded-full", PRIORITY_META[p].dot)} />
+                    {PRIORITY_META[p].button}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowDate((v) => !v)}
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"
+            >
+              <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showDate && "rotate-180")} />
+              Fecha de vencimiento (opcional)
+            </button>
+            {showDate && (
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-gray-400" />
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
+                />
+                {dueDate && (
+                  <button
+                    type="button"
+                    onClick={() => setDueDate("")}
+                    className="text-xs text-gray-400 hover:text-gray-900"
+                  >
+                    Quitar fecha
+                  </button>
+                )}
+              </div>
+            )}
+
+            {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+          </form>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs text-gray-500">Selecciona tareas del catálogo para añadirlas a este proyecto.</p>
+              <button
+                type="button"
+                onClick={() => setManageOpen(true)}
+                className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-900 shrink-0"
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+                Gestionar plantillas →
+              </button>
+            </div>
             {tplLoading ? (
               <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
             ) : templates.length === 0 ? (
-              <p className="text-sm text-gray-500">No hay plantillas creadas todavía.</p>
+              <p className="text-sm text-gray-500">
+                No hay plantillas creadas todavía —{" "}
+                <button type="button" onClick={() => setManageOpen(true)} className="underline hover:text-gray-900">
+                  crea la primera
+                </button>
+                .
+              </p>
             ) : (
               <ul className="space-y-1.5">
                 {templates.map((t) => (
@@ -427,112 +540,9 @@ export default function TareasView({ projectId }: { projectId: string }) {
         )}
       </div>
 
-      {/* Gestión del catálogo de plantillas (crear/editar/borrar) */}
-      <div className="bg-white rounded-xl border border-gray-100 p-4">
-        <button
-          type="button"
-          onClick={() => setManageOpen((v) => !v)}
-          className="flex items-center gap-2 text-sm font-medium text-gray-900"
-        >
-          <ListChecks className="h-4 w-4 text-gray-500" />
-          Gestionar catálogo de plantillas
-          <ChevronDown className={cn("h-4 w-4 text-gray-400 transition-transform", manageOpen ? "rotate-180" : "")} />
-        </button>
-        {manageOpen && (
-          <div className="mt-4">
-            <TodoTemplatesCard />
-          </div>
-        )}
-      </div>
-
-      <form onSubmit={handleCreate} className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
-        <div className="flex items-end gap-3">
-          <div className="flex-1 space-y-1">
-            <label className="block text-sm font-medium text-gray-700">Título de la tarea</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              maxLength={200}
-              placeholder="Revisar títulos de la home"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={creating || !title.trim()}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50"
-          >
-            {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            Añadir tarea
-          </button>
-        </div>
-
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-gray-700">Detalle (opcional)</label>
-          <textarea
-            value={detail}
-            onChange={(e) => setDetail(e.target.value)}
-            maxLength={2000}
-            rows={3}
-            placeholder="Notas, contexto o pasos adicionales"
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400 resize-y"
-          />
-        </div>
-
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-gray-700">Prioridad</label>
-          <div className="flex items-center gap-2">
-            {(["baja", "media", "alta"] as Priority[]).map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setPriority(p)}
-                className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors",
-                  priority === p
-                    ? cn(PRIORITY_META[p].badge, "border-transparent font-medium")
-                    : "border-gray-200 text-gray-500 hover:text-gray-900 hover:border-gray-300"
-                )}
-              >
-                <span className={cn("h-2 w-2 rounded-full", PRIORITY_META[p].dot)} />
-                {PRIORITY_META[p].button}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setShowDate((v) => !v)}
-          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900"
-        >
-          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showDate && "rotate-180")} />
-          Fecha de vencimiento (opcional)
-        </button>
-        {showDate && (
-          <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-gray-400" />
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
-            />
-            {dueDate && (
-              <button
-                type="button"
-                onClick={() => setDueDate("")}
-                className="text-xs text-gray-400 hover:text-gray-900"
-              >
-                Quitar fecha
-              </button>
-            )}
-          </div>
-        )}
-
-        {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
-      </form>
+      <Modal open={manageOpen} title="Catálogo de plantillas" onClose={() => { setManageOpen(false); loadTemplates(); }}>
+        <TodoTemplatesCard />
+      </Modal>
 
       <div className="flex items-center gap-1 border-b border-gray-200">
         <button

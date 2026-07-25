@@ -3,18 +3,12 @@
 import { useEffect, useState } from "react";
 import { ListChecks, Loader2, Plus, Trash2, Pencil, X, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { TodoTemplateItem as Template } from "@/lib/tasks";
 
 // Catálogo global de tareas preestablecidas (CRUD), común a toda la agencia
-// (single-tenant) — embebido dentro de la pestaña Tareas de cada proyecto
-// (no en Configuración), desde donde también se aplican a un proyecto concreto.
-
-type Template = {
-  id: string;
-  title: string;
-  detail: string | null;
-  priority: string;
-  category: string | null;
-};
+// (single-tenant) — accesible desde el selector "Desde plantilla" del módulo
+// Tareas de cada proyecto (modal "Gestionar plantillas"), desde donde también
+// se aplican a un proyecto concreto.
 
 const PRIORITY_BADGE: Record<string, string> = {
   alta: "bg-red-50 text-red-600",
