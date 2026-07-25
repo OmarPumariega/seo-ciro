@@ -117,6 +117,21 @@ function difficulty(score: number | null | undefined): { label: string; cls: str
   return { label: `${score} · Baja`, cls: "bg-emerald-50 text-emerald-700" };
 }
 
+// Un snapshot puede existir en BD (el "Analizar" se pidió y respondió con
+// éxito) pero venir vacío de señal real — dominios muy pequeños/nuevos sin
+// presencia orgánica medible en DataForSEO. Sin esto, "Analizar todos" nunca
+// volvía a incluirlos (contaba como "ya analizado" para siempre) y la
+// tarjeta no mostraba ningún aviso, indistinguible a simple vista de "nunca
+// se ha tocado".
+function hasUsefulSnapshot(snapshot: Snapshot): boolean {
+  if (!snapshot) return false;
+  return (
+    snapshot.organicTraffic != null ||
+    snapshot.organicKeywords != null ||
+    (snapshot.topKeywords != null && snapshot.topKeywords.length > 0)
+  );
+}
+
 function TrafficSparkline({ points }: { points: number[] }) {
   if (points.length < 2) return null;
   const W = 200;
@@ -452,27 +467,40 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
   }
 
   async function handleAnalyzeAll() {
-    const pending = (data?.competitors ?? []).filter((c) => !c.snapshot);
+    const pending = (data?.competitors ?? []).filter((c) => !hasUsefulSnapshot(c.snapshot));
     if (pending.length === 0 || bulkAnalyzing) return;
     setError("");
     setBulkAnalyzing(true);
     setBulkAnalyzeProgress({ done: 0, total: pending.length });
 
+    let failures = 0;
+    let stoppedForSpend = false;
     for (const c of pending) {
       setAnalyzingDomain(c.domain);
-      const res = await fetch(`/api/proyectos/${projectId}/competidores/analizar`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ domain: c.domain, locationCode: location?.code }),
-      });
-      if (!res.ok) {
-        if (res.status === 422) {
-          const d = await res.json().catch(() => ({}));
-          setError(d.error ?? "Tope de gasto alcanzado — se detiene «Analizar todos».");
-          break; // tope de gasto — seguir repetiría el mismo fallo en los demás
+      try {
+        const res = await fetch(`/api/proyectos/${projectId}/competidores/analizar`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ domain: c.domain, locationCode: location?.code }),
+        });
+        if (!res.ok) {
+          if (res.status === 422) {
+            stoppedForSpend = true;
+            break; // tope de gasto — seguir repetiría el mismo fallo en los demás
+          }
+          failures++;
         }
+      } catch {
+        // Fallo de red: no dejamos el botón bloqueado, se cuenta como error
+        // y se sigue con el siguiente competidor.
+        failures++;
       }
       setBulkAnalyzeProgress((p) => (p ? { ...p, done: p.done + 1 } : p));
+    }
+    if (stoppedForSpend) {
+      setError("Tope de gasto alcanzado — se detiene «Analizar todos». Lo ya completado se ha guardado.");
+    } else if (failures > 0) {
+      setError(`${failures} competidor(es) fallaron al analizar — puedes reintentar con «Analizar todos» o su botón individual.`);
     }
 
     setAnalyzingDomain(null);
@@ -489,21 +517,32 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
     setBulkGapping(true);
     setBulkGapProgress({ done: 0, total: pending.length });
 
+    let failures = 0;
+    let stoppedForSpend = false;
     for (const c of pending) {
       setGapId(c.id);
-      const res = await fetch(`/api/proyectos/${projectId}/competidores/${c.id}/content-gap`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ locationCode: location?.code }),
-      });
-      if (!res.ok) {
-        if (res.status === 422) {
-          const d = await res.json().catch(() => ({}));
-          setError(d.error ?? "Tope de gasto alcanzado — se detiene «Gap todos».");
-          break;
+      try {
+        const res = await fetch(`/api/proyectos/${projectId}/competidores/${c.id}/content-gap`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ locationCode: location?.code }),
+        });
+        if (!res.ok) {
+          if (res.status === 422) {
+            stoppedForSpend = true;
+            break;
+          }
+          failures++;
         }
+      } catch {
+        failures++;
       }
       setBulkGapProgress((p) => (p ? { ...p, done: p.done + 1 } : p));
+    }
+    if (stoppedForSpend) {
+      setError("Tope de gasto alcanzado — se detiene «Gap todos». Lo ya completado se ha guardado.");
+    } else if (failures > 0) {
+      setError(`${failures} competidor(es) fallaron al calcular el gap — puedes reintentar con «Gap todos» o su botón individual.`);
     }
 
     setGapId(null);
@@ -713,7 +752,7 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
           sin gap hecho, en bucle secuencial. Los botones por fila de abajo
           siguen disponibles para reanalizar uno suelto en cualquier momento. */}
       {data && data.competitors.length > 0 && (() => {
-        const pendingAnalyze = data.competitors.filter((c) => !c.snapshot).length;
+        const pendingAnalyze = data.competitors.filter((c) => !hasUsefulSnapshot(c.snapshot)).length;
         const pendingGap = data.competitors.filter((c) => !c.contentGap || c.contentGap.length === 0).length;
         return (
           <div className="bg-white rounded-xl border border-gray-100 p-4 flex flex-wrap items-center gap-3">
@@ -759,6 +798,14 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
                     Aún sin analizar. Pulsa <strong>Analizar</strong> a la derecha (cuesta{' '}
                     {analyzeCost.toFixed(2)}$) o <strong>Analizar todos</strong> arriba para
                     procesar de una vez todos los competidores pendientes.
+                  </p>
+                )}
+                {c.snapshot && !hasUsefulSnapshot(c.snapshot) && (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1 mt-2">
+                    Analizado el {new Date(c.snapshot.fetchedAt).toLocaleDateString("es-ES")}, pero
+                    DataForSEO no encontró presencia orgánica medible para este dominio (puede ser
+                    normal en dominios muy pequeños o nuevos). Cuenta como pendiente en
+                    <strong> Analizar todos</strong> por si cambia con el tiempo.
                   </p>
                 )}
               </div>
