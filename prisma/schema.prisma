@@ -62,6 +62,14 @@ model Project {
   spendLimitUsd Float?
   reportConfig Json? // { sections: { audit: bool, rank: bool, ... }, order: SectionKey[] } — config del informe por proyecto (ver src/lib/informe/sections.ts)
 
+  // Estudio "General" del proyecto: todas las importaciones (Competidores,
+  // TF-IDF, Geogrid) caen aquí en vez de crear un estudio nuevo cada vez —
+  // un solo sitio para revisar/limpiar las keywords importadas. Null hasta
+  // la primera importación (se crea de forma perezosa). La creación manual
+  // de estudios nuevos sigue disponible para investigar un tema aparte.
+  defaultKeywordStudyId String?       @unique
+  defaultKeywordStudy   KeywordStudy? @relation("ProjectDefaultStudy", fields: [defaultKeywordStudyId], references: [id], onDelete: SetNull)
+
   // Reparto justo del cron de Rank Tracking (Módulo 5): marca cuándo se le
   // sirvió turno por última vez, independientemente de si se vació todo su
   // backlog. Sin esto, un proyecto con muchas keywords vencidas podía acaparar
@@ -275,6 +283,9 @@ model KeywordStudy {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   keywords       Keyword[]
+  // Lado inverso de Project.defaultKeywordStudyId — permite que Prisma
+  // resuelva el onDelete: SetNull cuando se borra este estudio.
+  defaultForProject Project? @relation("ProjectDefaultStudy")
 
   @@index([projectId, createdAt])
 }
@@ -298,6 +309,11 @@ model Keyword {
   // volumen ("pegar lista"), así que null es un estado normal, no un fallo.
   difficulty   Int?
   priority     Int // 0-100, cuota de volumen dentro del estudio
+  // Procedencia legible ("Competidor x.com", "TF-IDF: keyword", "Geogrid:
+  // dominio") — null si se añadió a mano (sugerencias/pegar lista). Con el
+  // estudio "General" único acumulando todas las importaciones, esto es lo
+  // que permite distinguir de dónde vino cada keyword.
+  source       String?
 
   @@unique([studyId, keyword])
   @@index([studyId, priority])

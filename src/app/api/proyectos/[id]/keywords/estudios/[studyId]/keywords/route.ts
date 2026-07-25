@@ -14,6 +14,7 @@ type ItemIn = {
   intent?: string | null;
   monthlySearches?: number[] | null;
   difficulty?: number | null;
+  source?: string | null;
 };
 
 // Añade keywords al estudio con métricas ya conocidas (vienen de sugerencias,
@@ -72,6 +73,7 @@ export async function POST(
         intent: i.intent ?? null,
         monthlySearches: i.monthlySearches ?? undefined,
         difficulty: i.difficulty ?? null,
+        source: i.source ?? null,
         priority: 0, // se recalcula abajo
       })),
     });

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import KeywordsView from "./KeywordsView";
 
 export default async function KeywordsPage({
@@ -6,5 +7,9 @@ export default async function KeywordsPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <KeywordsView projectId={id} />;
+  return (
+    <Suspense>
+      <KeywordsView projectId={id} />
+    </Suspense>
+  );
 }

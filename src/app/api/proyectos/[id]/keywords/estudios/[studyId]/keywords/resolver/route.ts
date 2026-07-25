@@ -32,6 +32,7 @@ export async function POST(
   }
 
   const raw = typeof body.keywords === "string" ? body.keywords : "";
+  const source = typeof body.source === "string" ? body.source : null;
   const seen = new Set<string>();
   const keywords: string[] = [];
   for (const line of raw.split("\n")) {
@@ -78,6 +79,7 @@ export async function POST(
           cpc: d?.cpc ?? null,
           intent: d?.intent ?? null,
           monthlySearches: d?.monthlySearches ?? undefined,
+          source,
           priority: 0,
         };
       }),

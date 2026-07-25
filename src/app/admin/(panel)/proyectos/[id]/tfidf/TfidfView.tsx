@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LocationPicker, { type LocationValue } from "@/components/admin/LocationPicker";
+import ImportSuccessNotice from "@/components/admin/ImportSuccessNotice";
 
 type TfidfTerm = { term: string; tfidf: number; docs: number };
 type TopicGap = { text: string; coverage: number; urls: string[] };
@@ -65,6 +66,7 @@ export default function TfidfView({ projectId }: { projectId: string }) {
   const [showTerms, setShowTerms] = useState(false);
   const [expandedPage, setExpandedPage] = useState<string | null>(null);
   const [addingToKeywords, setAddingToKeywords] = useState(false);
+  const [importedStudyId, setImportedStudyId] = useState<string | null>(null);
 
   const loadStored = useCallback(() => {
     fetch(`/api/proyectos/${projectId}/tfidf`)
@@ -153,12 +155,12 @@ export default function TfidfView({ projectId }: { projectId: string }) {
     window.location.href = `/admin/proyectos/${projectId}/contenido`;
   }
 
-  // Crea un estudio nuevo del Módulo 1 con los mismos temas/términos que ya
-  // se ofrecen a Contenido. A diferencia de los términos de competidores
-  // (que ya traen volumen real), un término TF-IDF es un score de relevancia
-  // en el top-10, no demanda de búsqueda — así que aquí SÍ hace falta
-  // resolver volumen real (caché o llamada nueva a DataForSEO), igual que
-  // pegar cualquier otra lista nueva de keywords.
+  // Lleva los mismos temas/términos que ya se ofrecen a Contenido al estudio
+  // "General" único del proyecto. A diferencia de los términos de
+  // competidores (que ya traen volumen real), un término TF-IDF es un score
+  // de relevancia en el top-10, no demanda de búsqueda — así que aquí SÍ
+  // hace falta resolver volumen real (caché o llamada nueva a DataForSEO),
+  // igual que pegar cualquier otra lista nueva de keywords.
   async function sendToKeywords() {
     if (!result) return;
     const lines = [
@@ -167,22 +169,25 @@ export default function TfidfView({ projectId }: { projectId: string }) {
     ];
     setAddingToKeywords(true);
     setError("");
-    const res = await fetch(`/api/proyectos/${projectId}/keywords/estudios`, {
+    const defaultRes = await fetch(`/api/proyectos/${projectId}/keywords/estudios/default`, { method: "POST" });
+    const defaultData = await defaultRes.json();
+    if (!defaultRes.ok) {
+      setAddingToKeywords(false);
+      setError(defaultData.error ?? "Error al obtener el estudio General");
+      return;
+    }
+    const res = await fetch(`/api/proyectos/${projectId}/keywords/estudios/${defaultData.studyId}/keywords/resolver`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: `TF-IDF: ${keyword} — ${new Date().toLocaleDateString("es-ES")}`,
-        keywords: lines.join("\n"),
-        locationCode: location?.code,
-      }),
+      body: JSON.stringify({ keywords: lines.join("\n"), source: `TF-IDF: ${keyword}` }),
     });
     const d = await res.json();
     setAddingToKeywords(false);
     if (!res.ok) {
-      setError(d.error ?? "Error al crear el estudio de Keywords");
+      setError(d.error ?? "Error al añadir las keywords al estudio General");
       return;
     }
-    window.location.href = `/admin/proyectos/${projectId}/keywords`;
+    setImportedStudyId(defaultData.studyId);
   }
 
   const maxHeadingTermCount = result?.headingTerms[0]?.count ?? 1;
@@ -387,7 +392,7 @@ export default function TfidfView({ projectId }: { projectId: string }) {
                   </button>
                   <button onClick={sendToKeywords} disabled={addingToKeywords}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 border border-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                    title="Crear un estudio de Keywords con estos temas/términos (resuelve volumen real)">
+                    title="Añadir estos temas/términos al estudio General de Keywords (resuelve volumen real)">
                     {addingToKeywords ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                     Añadir a Keywords
                   </button>
@@ -399,6 +404,16 @@ export default function TfidfView({ projectId }: { projectId: string }) {
                   </button>
                 </div>
               </div>
+              {importedStudyId && (
+                <div className="mb-4">
+                  <ImportSuccessNotice
+                    message="Términos añadidos al estudio General (con volumen real resuelto)."
+                    projectId={projectId}
+                    studyId={importedStudyId}
+                    onDismiss={() => setImportedStudyId(null)}
+                  />
+                </div>
+              )}
               <p className="text-xs text-gray-400 mb-4">
                 Encabezados H2/H3 de {totalSources} páginas. {result.costUsd != null && <>Coste: {result.costUsd.toFixed(4)} $.</>}
               </p>

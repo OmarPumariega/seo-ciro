@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, Sparkles, XCircle, GitCompareArrows, Check, MapPin, Star, MousePointerClick, Trash2, Search, Send, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { geogridCostUsd, geogridBusinessKeywordsCostUsd } from "@/lib/dataforseo/pricing";
-import { importKeywordsToNewStudy } from "@/lib/keywords/client-import";
+import { importKeywordsToDefaultStudy } from "@/lib/keywords/client-import";
 import GeogridMap from "@/components/admin/GeogridMap";
 import UrlLink from "@/components/admin/UrlLink";
 import GbpPicker, { type GbpCandidate } from "@/components/admin/GbpPicker";
@@ -93,13 +93,9 @@ function BusinessKeywordsTable({
 
   async function handleImport() {
     setImporting(true);
-    const result = await importKeywordsToNewStudy(
-      projectId,
-      `Geogrid: ${domain} — ${new Date().toLocaleDateString("es-ES")}`,
-      items,
-    );
+    const result = await importKeywordsToDefaultStudy(projectId, `Geogrid: ${domain}`, items);
     setImporting(false);
-    setNotice(result.ok ? `Estudio creado con ${result.added} keywords.` : result.error);
+    setNotice(result.ok ? `${result.added} keywords añadidas al estudio General.` : result.error);
     setTimeout(() => setNotice(""), 5000);
   }
 

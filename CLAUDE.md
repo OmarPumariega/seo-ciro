@@ -202,7 +202,18 @@ sitio; ver el apartado "Copilot" más abajo.
   respuesta y se muestra como mini-sparkline "Tend." por keyword. Alternativa de
   "pegar lista" (resuelve vía caché + volumen/intención) sigue disponible. Sobre
   el estudio: "Generar estructura de URLs" (vía OpenRouter). Solo DataForSEO como
-  fuente por ahora (Google Ads, fuente alternativa, pendiente).
+  fuente por ahora (Google Ads, fuente alternativa, pendiente). Además del alta
+  manual (siembra o pegar lista, que sigue creando estudios nuevos para
+  investigar un tema aparte), **todas las importaciones automáticas**
+  (Competidores, TF-IDF, Geogrid) caen siempre en un único estudio **"General"**
+  por proyecto (`Project.defaultKeywordStudyId`, creado de forma perezosa en la
+  primera importación vía `POST /keywords/estudios/default`) — un solo sitio
+  para revisar y limpiar lo importado, en vez de un estudio nuevo por cada
+  competidor/keyword de TF-IDF. Cada `Keyword` guarda su procedencia
+  (`source`, p.ej. "Competidor x.com", "TF-IDF: keyword") para poder
+  distinguirlas dentro del estudio. Tras importar, un aviso con enlaces
+  directos a "Ver en Keywords"/"Ver en Arquitectura" (`?estudio=<id>`) evita
+  tener que buscar el estudio a mano.
 - **Arquitectura**: visualiza `KeywordStudy.structure` (la misma "Generar estructura de
   URLs" del Módulo 1) como árbol vertical colapsable (`StructureTreeView.tsx`) — clic en
   una rama la expande con la URL completa propuesta. La AGRUPACIÓN es determinista, no
@@ -308,10 +319,11 @@ sitio; ver el apartado "Copilot" más abajo.
   volumen, CPC, dificultad, posición, mini-sparkline de estacionalidad y, al
   expandir, el **snippet + título + URL** con la que el competidor posiciona
   (ejemplo de copy). Todo ese detalle llega gratis en el mismo ítem que ya se pagaba
-  (antes se tiraba). Cada competidor tiene botones **"Importar a estudio"** (crea un
-  estudio del Módulo 1 con su gap + top) y **"Añadir a seguimiento"** (Rank Tracking,
-  manual), reutilizando los endpoints bulk existentes. Ver histórico ya calculado es
-  gratis, solo "Analizar"/recalcular gap paga.
+  (antes se tiraba). Cada competidor tiene botones **"Importar a estudio"** (lleva su
+  gap + top al estudio **"General"** único del Módulo 1 — ver más abajo, no crea un
+  estudio nuevo por competidor) y **"Añadir a seguimiento"** (Rank Tracking, manual),
+  reutilizando los endpoints bulk existentes. Ver histórico ya calculado es gratis,
+  solo "Analizar"/recalcular gap paga.
 - **Backlinks** (Tier 3, antes bloqueado): enlazado externo — qué dominios enlazan al
   proyecto (y a cada competidor ya trackeado en Competidores, misma lista reutilizada,
   sin duplicarla) y cuánta autoridad tienen. A diferencia de Competidores, usa un

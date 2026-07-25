@@ -7,13 +7,14 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConfirmDialog from "@/components/admin/ConfirmDialog";
+import ImportSuccessNotice from "@/components/admin/ImportSuccessNotice";
 import LocationPicker, { type LocationValue } from "@/components/admin/LocationPicker";
 import PositionDistribution, { type PositionBuckets } from "@/components/admin/PositionDistribution";
 import {
   competitorAnalysisCostUsd,
   contentGapCostUsd,
 } from "@/lib/dataforseo/pricing";
-import { importKeywordsToNewStudy } from "@/lib/keywords/client-import";
+import { importKeywordsToDefaultStudy } from "@/lib/keywords/client-import";
 
 // Item enriquecido de keyword (visibilidad o content gap). Todos los campos
 // extra llegan GRATIS en la misma respuesta Labs que ya pagábamos — antes se
@@ -322,6 +323,7 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
   const [importingId, setImportingId] = useState<string | null>(null);
   const [trackingId, setTrackingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string>("");
+  const [importNotice, setImportNotice] = useState<{ message: string; studyId: string } | null>(null);
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
   // Series de tendencia agrupadas por dominio (proyecto + competidores). Una
@@ -484,11 +486,11 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
     setTimeout(() => setNotice(""), 5000);
   }
 
-  // Crea un estudio del Módulo 1 con las keywords del competidor (content gap
-  // + top), en dos pasos: estudio vacío + añadir con las métricas YA
-  // resueltas (volumen/competencia/CPC/estacionalidad, pagadas por el
-  // análisis de competidores) — a diferencia de antes, no se vuelve a
-  // consultar DataForSEO: coste cero.
+  // Lleva las keywords del competidor (content gap + top) al estudio
+  // "General" único del proyecto, con las métricas YA resueltas
+  // (volumen/competencia/CPC/estacionalidad, pagadas por el análisis de
+  // competidores) — a diferencia de antes, no se vuelve a consultar
+  // DataForSEO: coste cero.
   async function handleImportToStudy(c: Competitor) {
     const keywords = collectKeywords(c);
     if (keywords.length === 0) {
@@ -496,18 +498,16 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
       return;
     }
     setImportingId(c.id);
-    const result = await importKeywordsToNewStudy(
-      projectId,
-      `Competidor ${c.domain} — ${new Date().toLocaleDateString("es-ES")}`,
-      keywords,
-      location?.code
-    );
+    const result = await importKeywordsToDefaultStudy(projectId, `Competidor ${c.domain}`, keywords);
     setImportingId(null);
     if (!result.ok) {
       showNotice(result.error);
       return;
     }
-    showNotice(`Estudio creado con ${result.added} keywords de ${c.domain} (sin coste adicional).`);
+    setImportNotice({
+      message: `${result.added} keywords de ${c.domain} añadidas al estudio General (sin coste adicional).`,
+      studyId: result.studyId,
+    });
   }
 
   // Añade las keywords del competidor a Rank Tracking (frecuencia manual, no
@@ -571,6 +571,14 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
 
       {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
       {notice && <p className="text-sm text-emerald-700 bg-emerald-50 px-3 py-2 rounded-lg">{notice}</p>}
+      {importNotice && (
+        <ImportSuccessNotice
+          message={importNotice.message}
+          projectId={projectId}
+          studyId={importNotice.studyId}
+          onDismiss={() => setImportNotice(null)}
+        />
+      )}
 
       {/* Aviso de coste estimado por acción (como en geogrid/rank tracking) */}
       <div className="bg-white rounded-xl border border-gray-100 p-4 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-gray-600">

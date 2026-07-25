@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import ArquitecturaView from "./ArquitecturaView";
@@ -14,5 +15,9 @@ export default async function ArquitecturaPage({
   });
   if (!project) notFound();
 
-  return <ArquitecturaView projectId={project.id} domain={project.domain} />;
+  return (
+    <Suspense>
+      <ArquitecturaView projectId={project.id} domain={project.domain} />
+    </Suspense>
+  );
 }

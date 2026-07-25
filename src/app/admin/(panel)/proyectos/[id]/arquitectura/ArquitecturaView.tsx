@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import * as Select from "@radix-ui/react-select";
 import { Loader2, ChevronDown, Sparkles, GitFork, RefreshCw } from "lucide-react";
 import { normalizeKeyword } from "@/lib/keywords/normalize";
@@ -42,12 +43,22 @@ export default function ArquitecturaView({
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
 
+  // Deep-link (?estudio=<id>) desde Competidores/TF-IDF tras importar — si
+  // apunta a un estudio real, gana sobre el fallback de "primero con
+  // keywords".
+  const searchParams = useSearchParams();
+  const deepLinkStudyId = searchParams.get("estudio");
+
   useEffect(() => {
     fetch(`/api/proyectos/${projectId}/keywords/estudios`)
       .then((r) => r.json())
       .then((list: StudyListItem[]) => {
         if (Array.isArray(list)) {
           setStudies(list);
+          if (deepLinkStudyId && list.some((s) => s.id === deepLinkStudyId)) {
+            setStudyId(deepLinkStudyId);
+            return;
+          }
           // Preselecciona el primer estudio que ya tenga keywords — el
           // usuario puede cambiarlo, esto solo evita una pantalla vacía.
           const withKeywords = list.find((s) => s._count.keywords > 0);
@@ -55,6 +66,7 @@ export default function ArquitecturaView({
         }
       })
       .finally(() => setLoadingStudies(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   // Reset del estudio cargado y del error al cambiar/vaciar la selección —

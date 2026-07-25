@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Loader2,
   Sparkles,
@@ -326,8 +327,14 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
     loadStudies();
   }
 
+  // Deep-link (?estudio=<id>) desde Competidores/TF-IDF tras importar — abre
+  // ese estudio directamente en vez de mostrar el listado.
+  const searchParams = useSearchParams();
+  const deepLinkStudyId = searchParams.get("estudio");
+
   useEffect(() => {
     loadStudies().finally(() => setLoadingStudies(false));
+    if (deepLinkStudyId) openStudy(deepLinkStudyId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
