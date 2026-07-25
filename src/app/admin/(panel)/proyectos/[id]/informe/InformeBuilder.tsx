@@ -3,17 +3,17 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
-  ChevronLeft, ChevronRight, ChevronUp, ChevronDown, FileText, Gauge, Target, Search,
+  ChevronLeft, ChevronRight, FileText, Gauge, Target, Search,
   MapPin, Wallet, ClipboardCheck, Network, Type, Code2, PenLine, Globe, GitBranch, Hash, Anchor,
 } from "lucide-react";
 import GeogridMap from "@/components/admin/GeogridMap";
 import PositionDistribution, { type PositionBuckets } from "@/components/admin/PositionDistribution";
+import SectionOrderList from "@/components/admin/SectionOrderList";
 import { cn } from "@/lib/utils";
 import PrintButton from "./PrintButton";
 import { splitManualTask } from "@/lib/tasks";
 import { ISSUE_META } from "@/lib/audit/issue-meta";
 import {
-  SECTION_LABELS,
   type ReportSections, type SectionKey,
 } from "@/lib/informe/sections";
 import type { StructureTreeNode } from "@/lib/keywords/structure-tree";
@@ -207,18 +207,10 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
     setConfig((c) => ({ ...c, [key]: !c[key] }));
     setSaved(false);
   }
-  function move(key: SectionKey, dir: -1 | 1) {
-    setOrder((prev) => {
-      const i = prev.indexOf(key);
-      const j = i + dir;
-      if (i < 0 || j < 0 || j >= prev.length) return prev;
-      const next = [...prev];
-      [next[i], next[j]] = [next[j], next[i]];
-      return next;
-    });
+  function reorder(next: SectionKey[]) {
+    setOrder(next);
     setSaved(false);
   }
-
   async function save() {
     setSaving(true);
     try {
@@ -1026,19 +1018,16 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
               </button>
             </div>
           </div>
-          <p className="text-xs text-gray-400 mb-3">Activa o desactiva cada sección y reordénala con las flechas ↑ ↓.</p>
-          <ul className="space-y-1 max-h-72 overflow-y-auto">
-            {order.map((key, i) => (
-              <li key={key} className="flex items-center gap-2 text-sm">
-                <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
-                  <input type="checkbox" checked={config[key]} onChange={() => toggle(key)} className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-400" />
-                  <span className="text-gray-700 truncate">{SECTION_LABELS[key]}</span>
-                </label>
-                <button type="button" onClick={() => move(key, -1)} disabled={i === 0} className="p-1 text-gray-300 hover:text-gray-900 disabled:opacity-30" title="Subir"><ChevronUp className="h-3.5 w-3.5" /></button>
-                <button type="button" onClick={() => move(key, 1)} disabled={i === order.length - 1} className="p-1 text-gray-300 hover:text-gray-900 disabled:opacity-30" title="Bajar"><ChevronDown className="h-3.5 w-3.5" /></button>
-              </li>
-            ))}
-          </ul>
+          <p className="text-xs text-gray-400 mb-3">
+            Activa o desactiva cada sección y reordénala con las flechas ↑ ↓ — las activadas se
+            agrupan siempre arriba.
+          </p>
+          <SectionOrderList
+            order={order}
+            enabledMap={config}
+            onToggle={toggle}
+            onReorder={reorder}
+          />
           <button
             type="button"
             onClick={reset}

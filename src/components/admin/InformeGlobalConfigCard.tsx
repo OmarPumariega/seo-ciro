@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronUp, ChevronDown, Loader2, FileBarChart2, RotateCcw } from "lucide-react";
+import { Loader2, FileBarChart2, RotateCcw } from "lucide-react";
 import {
   type SectionKey,
   type ReportSections,
   SECTION_KEYS,
-  SECTION_LABELS,
 } from "@/lib/informe/sections";
+import SectionOrderList from "@/components/admin/SectionOrderList";
 
 type ApiResponse = {
   sections: ReportSections;
@@ -51,15 +51,8 @@ export default function InformeGlobalConfigCard() {
     setSections((c) => ({ ...c, [key]: !c[key] }));
     setSaved(false);
   }
-  function move(key: SectionKey, dir: -1 | 1) {
-    setOrder((prev) => {
-      const i = prev.indexOf(key);
-      const j = i + dir;
-      if (i < 0 || j < 0 || j >= prev.length) return prev;
-      const next = [...prev];
-      [next[i], next[j]] = [next[j], next[i]];
-      return next;
-    });
+  function reorder(next: SectionKey[]) {
+    setOrder(next);
     setSaved(false);
   }
 
@@ -134,43 +127,17 @@ export default function InformeGlobalConfigCard() {
       ) : (
         <>
           {error && <p className="text-xs text-red-600 bg-red-50 rounded-lg p-2">{error}</p>}
-          <p className="text-xs text-gray-500">Activa o desactiva cada sección y reordénala con las flechas ↑ ↓.</p>
-          <ul className="space-y-1 max-h-72 overflow-y-auto">
-            {order.map((key, i) => (
-              <li
-                key={key}
-                className="flex items-center gap-2 text-sm bg-gray-50 rounded-lg px-2 py-1.5"
-              >
-                <label className="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
-                  <input
-                    type="checkbox"
-                    checked={sections[key]}
-                    onChange={() => toggle(key)}
-                    className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-400"
-                  />
-                  <span className="text-gray-700 truncate">{SECTION_LABELS[key]}</span>
-                </label>
-                <button
-                  type="button"
-                  onClick={() => move(key, -1)}
-                  disabled={i === 0}
-                  className="p-1 text-gray-400 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed"
-                  title="Subir"
-                >
-                  <ChevronUp className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => move(key, 1)}
-                  disabled={i === order.length - 1}
-                  className="p-1 text-gray-400 hover:text-gray-900 disabled:opacity-30 disabled:cursor-not-allowed"
-                  title="Bajar"
-                >
-                  <ChevronDown className="h-3.5 w-3.5" />
-                </button>
-              </li>
-            ))}
-          </ul>
+          <p className="text-xs text-gray-500">
+            Activa o desactiva cada sección y reordénala con las flechas ↑ ↓ — las activadas se
+            agrupan siempre arriba.
+          </p>
+          <SectionOrderList
+            order={order}
+            enabledMap={sections}
+            onToggle={toggle}
+            onReorder={reorder}
+            variant="boxed"
+          />
           <div className="flex items-center justify-between gap-2 pt-1">
             <button
               type="button"
