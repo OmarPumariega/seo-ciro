@@ -98,7 +98,7 @@ reutiliza llamadas ya pagadas).
 
 Ver [`docs/04-modelo-de-datos.md`](./docs/04-modelo-de-datos.md) para el detalle
 completo (26 modelos). Resumen: `User` (login agencia), `Project` (cliente/dominio, con
-NAP, perfil de marca, propiedad de Google seleccionada y tope de gasto opcional),
+NAP, propiedad de Google seleccionada y tope de gasto opcional),
 `TitleMetaGeneration` y `SchemaGeneration` (historial de los Módulos 3 y 4),
 `ApiUsageLog` (coste por llamada a OpenRouter/DataForSEO, base del control de gasto),
 `GoogleConnection` (OAuth2 único de la agencia, Módulo 6), `ContentGeneration` (Módulo 7,
@@ -134,8 +134,8 @@ proyecto.
 
 ### Proyectos (`/admin/proyectos`) — Módulo 2
 Listar, crear y editar proyectos: nombre, dominio, NAP (si es negocio local, con
-lat/lng para geogrid), perfil de marca (tono de voz, notas) y tope de gasto mensual
-opcional. La lista de To-do vive en la pestaña **Tareas** de cada proyecto, no aquí.
+lat/lng para geogrid) y tope de gasto mensual opcional. La lista de To-do vive en la
+pestaña **Tareas** de cada proyecto, no aquí.
 
 ### Costes (`/admin/costes`)
 Panel de consumo de API del mes en curso (sección 5 del spec): gasto de DataForSEO
@@ -266,8 +266,8 @@ sitio; ver el apartado "Copilot" más abajo.
   por el Copilot — cruza comportamiento on-site real (GA4) con lo que ya sabe de SERP
   (GSC). Cuota gratuita de Google, sin coste nuevo.
 - **Contenido** (Módulo 7): tema + tipo (Blog/Página/Producto/Novedad GBP) + longitud
-  objetivo → texto vía OpenRouter con encabezados en Markdown, usando el tono de marca
-  del proyecto (`Project.toneOfVoice`). Keyword objetivo y enlaces internos a incluir
+  objetivo → texto vía OpenRouter con encabezados en Markdown, con un tono profesional y
+  cercano por defecto. Keyword objetivo y enlaces internos a incluir
   son manuales — si no se aportan, nunca se inventan. El botón **"Usar en Contenido"**
   del módulo TF-IDF inyecta vía `sessionStorage` los temas/términos del top-10, que el
   generador recibe (`tfidfTerms`) y pasa al prompt como guía de cobertura (cero coste:

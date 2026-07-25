@@ -102,7 +102,7 @@ export async function POST(
       model,
       temperature: 0.7,
       messages: [
-        { role: "system", content: buildSystemPrompt(type, targetWords, project.toneOfVoice) },
+        { role: "system", content: buildSystemPrompt(type, targetWords) },
         { role: "user", content: buildUserMessage({ topic, keyword, targetUrl, internalLinks, tfidfTerms }) },
       ],
     });

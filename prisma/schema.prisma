@@ -43,11 +43,6 @@ model Project {
   gbpName    String?
   gbpPlaceId String?
 
-  // Perfil de marca, usado por el generador de contenido (Módulo 7) y de
-  // títulos/metas (Módulo 3).
-  toneOfVoice String?
-  notes       String?
-
   // Módulo 6 — propiedad de Search Console / GA4 seleccionada para este
   // proyecto. String simple (no FK): son identificadores que vienen
   // directos de la API de Google, no filas locales.

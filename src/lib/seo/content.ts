@@ -19,14 +19,13 @@ export const DEFAULT_TARGET_WORDS: Record<ContentType, number> = {
 
 export function buildSystemPrompt(
   type: ContentType,
-  targetWords: number,
-  toneOfVoice: string | null
+  targetWords: number
 ): string {
   return `Eres un redactor SEO senior escribiendo contenido en español para una agencia de marketing digital.
 
 Tipo de contenido: ${CONTENT_TYPE_LABELS[type]}
 Longitud objetivo: aproximadamente ${targetWords} palabras (±15%).
-${toneOfVoice ? `Tono de marca del cliente: ${toneOfVoice}` : "Tono de marca: no especificado — usa un tono profesional y cercano por defecto."}
+Tono de marca: usa un tono profesional y cercano por defecto.
 
 FORMATO DE SALIDA:
 - Texto plano con la jerarquía de encabezados marcada en Markdown (# para H1, ## para H2, ### para H3).

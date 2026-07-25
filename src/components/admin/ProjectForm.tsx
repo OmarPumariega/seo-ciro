@@ -19,8 +19,6 @@ export type ProjectFormValues = {
   gbpName: string;
   gbpPlaceId: string;
   spendLimitUsd: string;
-  toneOfVoice: string;
-  notes: string;
 };
 
 const EMPTY_VALUES: ProjectFormValues = {
@@ -37,8 +35,6 @@ const EMPTY_VALUES: ProjectFormValues = {
   gbpName: "",
   gbpPlaceId: "",
   spendLimitUsd: "",
-  toneOfVoice: "",
-  notes: "",
 };
 
 export default function ProjectForm({
@@ -272,29 +268,6 @@ export default function ProjectForm({
             )}
           </div>
         )}
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-gray-900">Perfil de marca</h2>
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-gray-700">Tono de voz</label>
-          <textarea
-            value={form.toneOfVoice}
-            onChange={(e) => set("toneOfVoice", e.target.value)}
-            rows={2}
-            placeholder="Cercano, directo, sin tecnicismos..."
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
-          />
-        </div>
-        <div className="space-y-1">
-          <label className="block text-sm font-medium text-gray-700">Notas internas</label>
-          <textarea
-            value={form.notes}
-            onChange={(e) => set("notes", e.target.value)}
-            rows={3}
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-gray-400"
-          />
-        </div>
       </div>
 
       {error && <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}

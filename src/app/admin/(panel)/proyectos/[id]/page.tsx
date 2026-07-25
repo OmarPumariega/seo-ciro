@@ -30,8 +30,6 @@ export default async function ProjectDetailPage({
         gbpName: project.gbpName ?? "",
         gbpPlaceId: project.gbpPlaceId ?? "",
         spendLimitUsd: project.spendLimitUsd !== null ? String(project.spendLimitUsd) : "",
-        toneOfVoice: project.toneOfVoice ?? "",
-        notes: project.notes ?? "",
       }}
     />
   );

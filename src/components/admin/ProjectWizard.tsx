@@ -56,8 +56,6 @@ export default function ProjectWizard() {
   const [slugTouched, setSlugTouched] = useState(false);
   const [domain, setDomain] = useState("");
   const [spendLimit, setSpendLimit] = useState("");
-  const [toneOfVoice, setToneOfVoice] = useState("");
-  const [notes, setNotes] = useState("");
 
   // --- Paso 2: negocio local ---
   const [isLocalBusiness, setIsLocalBusiness] = useState(false);
@@ -155,8 +153,6 @@ export default function ProjectWizard() {
           slug: effectiveSlug,
           domain,
           spendLimitUsd: spendLimit,
-          toneOfVoice,
-          notes,
         };
         if (projectId) {
           await patchProject(body);
@@ -326,35 +322,14 @@ export default function ProjectWizard() {
                 añadirlo luego, pero sin él la auditoría no puede lanzarse.
               </p>
             </div>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className={LABEL}>Tope de gasto mensual (USD, opcional)</label>
-                <input
-                  className={INPUT}
-                  value={spendLimit}
-                  onChange={(e) => setSpendLimit(e.target.value)}
-                  placeholder="Vacío = sin tope"
-                  inputMode="decimal"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className={LABEL}>Tono de voz (opcional)</label>
-                <input
-                  className={INPUT}
-                  value={toneOfVoice}
-                  onChange={(e) => setToneOfVoice(e.target.value)}
-                  placeholder="Profesional, cercero, técnico…"
-                />
-              </div>
-            </div>
             <div className="space-y-1">
-              <label className={LABEL}>Notas internas (opcional)</label>
-              <textarea
+              <label className={LABEL}>Tope de gasto mensual (USD, opcional)</label>
+              <input
                 className={INPUT}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-                placeholder="Contexto del cliente, objetivos…"
+                value={spendLimit}
+                onChange={(e) => setSpendLimit(e.target.value)}
+                placeholder="Vacío = sin tope"
+                inputMode="decimal"
               />
             </div>
           </div>

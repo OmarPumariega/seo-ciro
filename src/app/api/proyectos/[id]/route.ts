@@ -93,8 +93,6 @@ export async function PATCH(
         // horario anterior quedaría huérfano si el usuario lo vacía.
         hours:
           "hours" in body ? (hoursText ? { text: hoursText } : Prisma.DbNull) : undefined,
-        toneOfVoice: "toneOfVoice" in body ? normalizeText(body.toneOfVoice, MAX_LONG) : undefined,
-        notes: "notes" in body ? normalizeText(body.notes, MAX_LONG) : undefined,
         lat,
         lng,
         gbpName: "gbpName" in body ? normalizeText(body.gbpName) : undefined,

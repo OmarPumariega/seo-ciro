@@ -62,8 +62,6 @@ export async function POST(req: NextRequest) {
       address: normalizeText(body.address, MAX_LONG),
       phone: normalizeText(body.phone),
       hours: hoursText ? { text: hoursText } : undefined,
-      toneOfVoice: normalizeText(body.toneOfVoice, MAX_LONG),
-      notes: normalizeText(body.notes, MAX_LONG),
       lat,
       lng,
       gbpName: normalizeText(body.gbpName),
