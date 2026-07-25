@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Loader2, Search, ChevronDown, ChevronUp, FileSearch,
-  CheckCircle2, XCircle, ClipboardCopy, Check, Clock, List, ExternalLink, Send,
+  ClipboardCopy, Check, Clock, List, ExternalLink, Send,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LocationPicker, { type LocationValue } from "@/components/admin/LocationPicker";
@@ -60,8 +60,6 @@ export default function TfidfView({ projectId }: { projectId: string }) {
   const [stored, setStored] = useState<StoredResult[]>([]);
   const [loadingStored, setLoadingStored] = useState(true);
 
-  const [myContent, setMyContent] = useState("");
-  const [checkContent, setCheckContent] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [expandedPage, setExpandedPage] = useState<string | null>(null);
@@ -120,10 +118,6 @@ export default function TfidfView({ projectId }: { projectId: string }) {
     setError("");
   }
 
-  function normalize(s: string): string {
-    return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\s]/g, " ");
-  }
-  const normalizedContent = checkContent ? normalize(myContent) : "";
   const totalSources = result?.sources.length ?? 0;
 
   function copyTopics() {
@@ -420,13 +414,9 @@ export default function TfidfView({ projectId }: { projectId: string }) {
               <ul className="space-y-1.5">
                 {result.topics.slice(0, 40).map((t, i) => {
                   const pct = totalSources > 0 ? Math.round((t.coverage / totalSources) * 100) : 0;
-                  const present = checkContent && normalizedContent.includes(normalize(t.text.toLowerCase()));
                   return (
                     <li key={i} className="flex items-center justify-between gap-2 py-1.5 px-3 rounded-lg hover:bg-gray-50">
                       <div className="flex items-center gap-2 min-w-0">
-                        {checkContent && (present
-                          ? <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
-                          : <XCircle className="h-4 w-4 text-amber-500 shrink-0" />)}
                         <span className="text-sm text-gray-900 truncate">{t.text}</span>
                       </div>
                       <span className={cn("text-[10px] font-semibold px-1.5 py-0.5 rounded tabular-nums shrink-0",
@@ -490,21 +480,6 @@ export default function TfidfView({ projectId }: { projectId: string }) {
               </div>
             </div>
           )}
-
-          {/* Comparador de contenido */}
-          <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-3">
-            <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-              <input type="checkbox" checked={checkContent} onChange={(e) => setCheckContent(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-400" />
-              Comparar con mi contenido
-            </label>
-            <p className="text-xs text-gray-400">Pega tu borrador para marcar qué temas faltan en tu texto.</p>
-            {checkContent && (
-              <textarea value={myContent} onChange={(e) => setMyContent(e.target.value)} rows={5}
-                placeholder="Pega aquí el texto de tu contenido..."
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-brand resize-y" />
-            )}
-          </div>
 
           {/* Términos TF-IDF (colapsable) */}
           {result.terms.length > 0 && (
