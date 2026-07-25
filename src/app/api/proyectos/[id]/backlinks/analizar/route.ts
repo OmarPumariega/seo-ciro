@@ -5,14 +5,26 @@ import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { DataForSeoError } from "@/lib/dataforseo/client";
 import { DataForSeoSpendLimitError, assertWithinSpendLimit } from "@/lib/dataforseo/spend";
-import { fetchBacklinkSummary, fetchTopBacklinks, normalizeDomain } from "@/lib/backlinks/dataforseo";
+import {
+  fetchBacklinkSummary,
+  fetchTopBacklinks,
+  normalizeDomain,
+  BACKLINKS_MAX_PER_REQUEST,
+  BACKLINKS_MAX_PAGES_SAFETY,
+  type TopBacklink,
+} from "@/lib/backlinks/dataforseo";
 import { BACKLINKS_LIST_DEFAULT_LIMIT } from "@/lib/dataforseo/pricing";
 
+// Rangos ofrecidos en la UI — "all" pagina hasta cubrir el total real del
+// dominio (backlinksTotal del summary), siempre priorizado por autoridad
+// (domain_from_rank desc) primero.
+const LIMIT_OPTIONS = [20, 50, 100, 200, 500] as const;
+
 // Analiza el perfil de backlinks de un dominio (el del proyecto o un
-// competidor). PAGA (dos llamadas a la API de Backlinks de DataForSEO, un
-// producto separado del resto de la app — ver dataforseo.ts). Crea un
-// BacklinkSnapshot (acumula tendencia). Ver los resultados después es
-// gratis (lee el último snapshot).
+// competidor). PAGA (summary + backlinks, un producto de DataForSEO aparte
+// del resto de la app — ver dataforseo.ts). Crea un BacklinkSnapshot
+// (acumula tendencia). Ver los resultados después es gratis (lee el último
+// snapshot).
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -34,9 +46,11 @@ export async function POST(
   const domain = normalizeDomain(typeof body.domain === "string" ? body.domain : "");
   if (!domain) return NextResponse.json({ error: "Dominio inválido" }, { status: 400 });
 
+  // limit: uno de LIMIT_OPTIONS, o "all" para paginar hasta el total real.
+  const wantsAll = body.limit === "all";
   const rawLimit = Number(body.limit);
   const limit =
-    Number.isInteger(rawLimit) && rawLimit > 0 && rawLimit <= 100 ? rawLimit : BACKLINKS_LIST_DEFAULT_LIMIT;
+    !wantsAll && (LIMIT_OPTIONS as readonly number[]).includes(rawLimit) ? rawLimit : BACKLINKS_LIST_DEFAULT_LIMIT;
 
   try {
     await assertWithinSpendLimit(id);
@@ -48,10 +62,39 @@ export async function POST(
   }
 
   try {
-    const [summary, top] = await Promise.all([
-      fetchBacklinkSummary(domain),
-      fetchTopBacklinks(domain, limit),
-    ]);
+    const summary = await fetchBacklinkSummary(domain);
+    const costs: { endpoint: string; costUsd: number | null }[] = [
+      { endpoint: "backlinks.summary", costUsd: summary.costUsd },
+    ];
+
+    let items: TopBacklink[] = [];
+    if (wantsAll) {
+      // Pagina hasta cubrir backlinksTotal (o el tope de páginas de
+      // seguridad), re-comprobando el tope de gasto antes de CADA página —
+      // a diferencia de un rango fijo, "todos" puede ser muchas llamadas.
+      const total = summary.data.backlinksTotal ?? 0;
+      let offset = 0;
+      let page = 0;
+      while (offset < total && page < BACKLINKS_MAX_PAGES_SAFETY) {
+        try {
+          await assertWithinSpendLimit(id);
+        } catch (error) {
+          if (error instanceof DataForSeoSpendLimitError) break; // se corta con lo ya traído, no se pierde
+          throw error;
+        }
+        const pageLimit = Math.min(BACKLINKS_MAX_PER_REQUEST, total - offset);
+        const page_ = await fetchTopBacklinks(domain, pageLimit, offset);
+        items = items.concat(page_.items);
+        costs.push({ endpoint: "backlinks.top", costUsd: page_.costUsd });
+        if (page_.items.length === 0) break;
+        offset += page_.items.length;
+        page++;
+      }
+    } else {
+      const top = await fetchTopBacklinks(domain, limit);
+      items = top.items;
+      costs.push({ endpoint: "backlinks.top", costUsd: top.costUsd });
+    }
 
     const snapshot = await prisma.backlinkSnapshot.create({
       data: {
@@ -64,17 +107,14 @@ export async function POST(
         dofollowBacklinks: summary.data.dofollowBacklinks,
         nofollowBacklinks: summary.data.nofollowBacklinks,
         brokenBacklinks: summary.data.brokenBacklinks,
-        topBacklinks: top.items as unknown as Prisma.InputJsonValue,
+        topBacklinks: items as unknown as Prisma.InputJsonValue,
       },
     });
 
-    for (const [endpoint, cost] of [
-      ["backlinks.summary", summary.costUsd],
-      ["backlinks.top", top.costUsd],
-    ] as const) {
-      if (cost !== null) {
+    for (const { endpoint, costUsd } of costs) {
+      if (costUsd !== null) {
         await prisma.apiUsageLog.create({
-          data: { projectId: id, api: "dataforseo", endpoint, model: null, costUsd: cost },
+          data: { projectId: id, api: "dataforseo", endpoint, model: null, costUsd },
         });
       }
     }

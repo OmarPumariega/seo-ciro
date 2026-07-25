@@ -341,11 +341,20 @@ sitio; ver el apartado "Copilot" más abajo.
   producto de DataForSEO aparte (`src/lib/backlinks/dataforseo.ts`, API de Backlinks —
   gasto real nuevo, no reutiliza ninguna llamada ya pagada). "Analizar" por dominio
   (propio o competidor) trae autoridad (`rank` 0-1000), backlinks totales, dominios de
-  referencia, dofollow/nofollow, rotos, y el top de backlinks individuales (dominio de
-  origen + su autoridad, URL, anchor, dofollow, primera vez visto) — persistido en
-  `BacklinkSnapshot` (histórico, mismo criterio que `VisibilitySnapshot`). Tabla
+  referencia, dofollow/nofollow, rotos, y el listado de backlinks individuales — **todos**
+  los campos que devuelve `backlinks/backlinks/live` (autoridad de dominio y de página,
+  anchor, contexto textual, primera/última vez visto, roto/redirección con código HTTP,
+  spam score, idioma/título/tamaño de la página de origen...), nada se descarta.
+  Selector de cantidad por análisis (20/50/100/200/500/**Todos**, siempre priorizado por
+  autoridad desc); "Todos" pagina contra la API hasta el total real del dominio, con el
+  coste estimado mostrado y confirmación antes de lanzarlo. Persistido en
+  `BacklinkSnapshot` (histórico, mismo criterio que `VisibilitySnapshot`). Filtros en la
+  tabla por autoridad mínima, última vez visto y dofollow/nofollow, fila expandible con
+  el resto de campos, y dos agregaciones: páginas propias con más enlaces entrantes y
+  páginas de origen con más autoridad (a nivel de página, no de dominio). Tabla
   comparativa de autoridad entre el proyecto y sus competidores arriba de todo. Ver
-  histórico ya calculado es gratis, solo "Analizar" paga (guard de tope de gasto).
+  histórico ya calculado es gratis, solo "Analizar" paga (guard de tope de gasto,
+  re-comprobado antes de cada página en el modo "Todos").
 - **Geogrid** (Módulo 9, solo negocios locales): keyword + rejilla (3×3/5×5/7×7) + radio
   → crea `GeogridRun` pending → se procesa de inmediato y también vía el cron →
   Maps SERP en cada punto con coordenada exacta, localiza la posición del negocio
