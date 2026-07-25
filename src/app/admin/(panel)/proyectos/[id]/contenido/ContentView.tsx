@@ -22,6 +22,7 @@ import {
   DEFAULT_TARGET_WORDS,
   type ContentType,
 } from "@/lib/seo/content";
+import OptimizeUrlPanel from "./OptimizeUrlPanel";
 
 type Generation = {
   id: string;
@@ -93,6 +94,11 @@ function consumeTfidfPayload(): { keyword?: string; terms?: string } {
 }
 
 export default function ContentView({ projectId }: { projectId: string }) {
+  // Dos modos: generar contenido nuevo desde cero, u optimizar una URL ya
+  // publicada (lee su contenido actual y compara contra TF-IDF/competidores/
+  // estudio de keywords, sin reescribirla entera).
+  const [mode, setMode] = useState<"generar" | "optimizar">("generar");
+
   // Pre-llenado desde TF-IDF (lazy init — lee sessionStorage solo al montar).
   const [tfidfPayload] = useState(consumeTfidfPayload);
   const [type, setType] = useState<ContentType>("blog");
@@ -316,11 +322,39 @@ export default function ContentView({ projectId }: { projectId: string }) {
       <div>
         <h2 className="text-lg font-semibold text-gray-900">Generador de Contenido</h2>
         <p className="text-sm text-gray-500 mt-1">
-          Genera un texto completo con jerarquía de encabezados, usando el tono de marca
-          del proyecto.
+          {mode === "generar"
+            ? "Genera un texto completo con jerarquía de encabezados, usando el tono de marca del proyecto."
+            : "Analiza una URL ya publicada y recibe una lista de cambios concretos para optimizarla."}
         </p>
       </div>
 
+      <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5 w-fit">
+        <button
+          type="button"
+          onClick={() => setMode("generar")}
+          className={cn(
+            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+            mode === "generar" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-800"
+          )}
+        >
+          Generar contenido nuevo
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("optimizar")}
+          className={cn(
+            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+            mode === "optimizar" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-800"
+          )}
+        >
+          Optimizar URL existente
+        </button>
+      </div>
+
+      {mode === "optimizar" ? (
+        <OptimizeUrlPanel projectId={projectId} />
+      ) : (
+        <>
       {tfidfTerms.trim() && (
         <div className="bg-indigo-50/60 border border-indigo-100 rounded-xl p-4 space-y-1.5">
           <div className="flex items-start justify-between gap-3">
@@ -657,6 +691,8 @@ export default function ContentView({ projectId }: { projectId: string }) {
           </div>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }

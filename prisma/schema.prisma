@@ -92,6 +92,7 @@ model Project {
   schemaGenerations    SchemaGeneration[]
   apiUsageLogs         ApiUsageLog[]
   contentGenerations   ContentGeneration[]
+  urlOptimizations     UrlOptimization[]
   auditRuns            AuditRun[]
   keywordStudies       KeywordStudy[]
   rankKeywords         RankKeyword[]
@@ -195,6 +196,30 @@ model ContentGeneration {
   createdAt DateTime @default(now())
 
   @@index([projectId, createdAt])
+}
+
+// Módulo 7 — "Optimizar URL existente": a diferencia de ContentGeneration
+// (texto nuevo completo), aquí el LLM devuelve una lista de cambios
+// concretos sobre una página ya publicada, comparada contra TF-IDF del
+// top-10, gap de competidores y el estudio "General" de keywords. Modelo
+// separado porque la forma (checklist estructurado) no encaja con el
+// versionado por diff de texto (LCS) que usa ContentGeneration.
+model UrlOptimization {
+  id             String   @id @default(cuid())
+  projectId      String
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  url            String
+  targetKeyword  String
+  // Foto de la página en el momento del análisis (title/meta/h1/headings/
+  // wordCount) — para poder ver qué había ANTES de aplicar los cambios.
+  currentSnapshot Json
+  rankPosition   Int? // posición actual si la keyword está en Rank Tracking
+  // [{ type, location, current, recommended, reason }]
+  suggestions    Json
+  model          String
+  createdAt      DateTime @default(now())
+
+  @@index([projectId, url, createdAt])
 }
 
 // Módulo 8 — una fila por auditoría disparada. Primer módulo con datos

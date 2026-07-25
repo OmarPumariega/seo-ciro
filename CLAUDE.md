@@ -97,12 +97,13 @@ reutiliza llamadas ya pagadas).
 ## Esquema de base de datos (Prisma)
 
 Ver [`docs/04-modelo-de-datos.md`](./docs/04-modelo-de-datos.md) para el detalle
-completo (26 modelos). Resumen: `User` (login agencia), `Project` (cliente/dominio, con
+completo (27 modelos). Resumen: `User` (login agencia), `Project` (cliente/dominio, con
 NAP, propiedad de Google seleccionada y tope de gasto opcional),
 `TitleMetaGeneration` y `SchemaGeneration` (historial de los Módulos 3 y 4),
 `ApiUsageLog` (coste por llamada a OpenRouter/DataForSEO, base del control de gasto),
 `GoogleConnection` (OAuth2 único de la agencia, Módulo 6), `ContentGeneration` (Módulo 7,
-con versionado por tema), `AuditRun` + `AuditPage` (Módulo 8, ampliado con checks
+con versionado por tema) + `UrlOptimization` (Módulo 7, "Optimizar URL existente"),
+`AuditRun` + `AuditPage` (Módulo 8, ampliado con checks
 on-page/robots/sitemap), `KeywordStudy` + `Keyword` + `KeywordDataCache` (Módulo 1),
 `RankKeyword` + `RankPosition` (Módulo 5), `GeogridRun` (Módulo 9), `TodoItem` (manual
 + auto-generado desde auditoría), `NotificationLog` (dedupe de avisos por email),
@@ -284,7 +285,17 @@ sitio; ver el apartado "Copilot" más abajo.
   generador recibe (`tfidfTerms`) y pasa al prompt como guía de cobertura (cero coste:
   son datos del SERP que ya pagó el TF-IDF). Generaciones agrupadas por tema
   (versionado): comparar versiones con diff línea a línea (LCS), restaurar una
-  anterior o regenerar.
+  anterior o regenerar. Segundo modo, **"Optimizar URL existente"**
+  (`OptimizeUrlPanel.tsx`): dada una URL ya publicada, la scrapea (título/meta/H1/
+  encabezados/texto), resuelve su keyword objetivo (manual o autosugerida desde
+  Rank Tracking por coincidencia de URL, `src/lib/rank/find-tracked-keyword.ts`),
+  cruza contra el TF-IDF de esa keyword (reusa lo ya calculado o lo lanza si falta,
+  `getOrComputeTfidfResult()` — misma lógica que el módulo TF-IDF, extraída a
+  `src/lib/tfidf/get-or-compute.ts`), el content gap de los competidores trackeados
+  y el estudio "General" de keywords, y en vez de reescribir la página entera
+  devuelve una **lista de cambios concretos** (JSON estricto del LLM: qué título/
+  meta/H1/encabezado/contenido tocar y por qué), persistidos en `UrlOptimization`
+  con historial por URL.
 - **TF-IDF**: siembra una keyword + ubicación opcional (mismo `LocationPicker` que Rank
   Tracking) → top-10 orgánico real (vía `SerpCache` si ya existe, si no una llamada SERP
   nueva) → scraping de cada resultado → términos más relevantes por TF-IDF para orientar

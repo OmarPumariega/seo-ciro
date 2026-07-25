@@ -1,16 +1,13 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
-import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
-import { DataForSeoError } from "@/lib/dataforseo/client";
 import {
-  assertWithinSpendLimit,
+  getOrComputeTfidfResult,
+  TfidfNoResultsError,
+  DataForSeoError,
   DataForSeoSpendLimitError,
-} from "@/lib/dataforseo/spend";
-import { fetchTopOrganic } from "@/lib/tfidf/serp";
-import { computeTfidf } from "@/lib/tfidf/tfidf";
-import { normalizeKeyword } from "@/lib/keywords/normalize";
+} from "@/lib/tfidf/get-or-compute";
 
 // GET: devuelve los resultados TF-IDF ya guardados para este proyecto (los que
 // se auto-generan al chequear keywords en Rank Tracking + los manuales). Así el
@@ -63,71 +60,24 @@ export async function POST(
   const rawLocation = Number(body.locationCode);
   const locationCode = Number.isInteger(rawLocation) && rawLocation > 0 ? rawLocation : 2724;
 
+  let outcome;
   try {
-    await assertWithinSpendLimit(id);
+    outcome = await getOrComputeTfidfResult({ projectId: id, keyword, languageCode, locationCode });
   } catch (error) {
     if (error instanceof DataForSeoSpendLimitError) {
       return NextResponse.json({ error: error.message }, { status: 422 });
     }
-    throw error;
-  }
-
-  let serp;
-  try {
-    serp = await fetchTopOrganic({ keyword, locationCode, languageCode });
-  } catch (error) {
+    if (error instanceof TfidfNoResultsError) {
+      return NextResponse.json({ error: error.message }, { status: 422 });
+    }
     if (error instanceof DataForSeoError) {
       return NextResponse.json({ error: error.message }, { status: 502 });
     }
     throw error;
   }
 
-  if (serp.results.length === 0) {
-    return NextResponse.json(
-      { error: "La búsqueda no devolvió resultados orgánicos para esta keyword." },
-      { status: 422 }
-    );
-  }
-
-  // Cálculo completo: términos TF-IDF + temas (H2/H3) + encabezados por página
-  // + frecuencia de palabras en encabezados.
-  const tfidfResult = {
-    ...(await computeTfidf(serp.results)),
-    // PAA/related searches/featured snippet: misma respuesta ya pagada,
-    // antes se descartaban. Fuente de ideas de contenido directa.
-    peopleAlsoAsk: serp.peopleAlsoAsk,
-    relatedSearches: serp.relatedSearches,
-    featuredSnippet: serp.featuredSnippet,
-  };
-
-  // Persiste el resultado (upsert por project+keyword).
-  const normalized = normalizeKeyword(keyword);
-  await prisma.tfidfResult.upsert({
-    where: { projectId_keyword: { projectId: id, keyword: normalized } },
-    create: {
-      projectId: id,
-      keyword: normalized,
-      result: tfidfResult as unknown as Prisma.InputJsonValue,
-    },
-    update: {
-      result: tfidfResult as unknown as Prisma.InputJsonValue,
-    },
-  });
-
-  if (serp.costUsd !== null) {
-    await prisma.apiUsageLog.create({
-      data: {
-        projectId: id,
-        api: "dataforseo",
-        endpoint: "tfidf",
-        model: null,
-        costUsd: serp.costUsd,
-      },
-    });
-  }
-
   return NextResponse.json(
-    { ...tfidfResult, costUsd: serp.costUsd },
+    { ...outcome.result, costUsd: outcome.costUsd },
     { status: 200 }
   );
 }

@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { loadRobotsRules, CRAWLER_USER_AGENT } from "@/lib/audit/robots";
+import { normalizeUrl } from "@/lib/seo/normalize-url";
 
 const MAX_PAGES = 50;
 const MAX_DEPTH = 4;
@@ -66,17 +67,6 @@ export type CrawlResult = {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function normalizeUrl(raw: string): string | null {
-  try {
-    const u = new URL(raw);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
-    u.hash = "";
-    return u.toString();
-  } catch {
-    return null;
-  }
 }
 
 async function checkSitemap(origin: string): Promise<boolean> {
