@@ -46,7 +46,13 @@ type StoredResult = {
   keyword: string;
   result: FullResult;
   updatedAt: string;
+  // Cruce gratis con Rank Tracking / KeywordDataCache — para poder
+  // ordenar/filtrar cuando hay muchos resultados guardados.
+  position: number | null;
+  searchVolume: number | null;
 };
+
+type StoredSort = "alpha" | "best-position" | "worst-position" | "most-searches";
 
 export default function TfidfView({ projectId }: { projectId: string }) {
   const [keyword, setKeyword] = useState("");
@@ -59,6 +65,8 @@ export default function TfidfView({ projectId }: { projectId: string }) {
 
   const [stored, setStored] = useState<StoredResult[]>([]);
   const [loadingStored, setLoadingStored] = useState(true);
+  const [storedSearch, setStoredSearch] = useState("");
+  const [storedSort, setStoredSort] = useState<StoredSort>("alpha");
 
   const [copied, setCopied] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
@@ -186,6 +194,34 @@ export default function TfidfView({ projectId }: { projectId: string }) {
 
   const maxHeadingTermCount = result?.headingTerms[0]?.count ?? 1;
 
+  // "Resultados disponibles" — buscador manual + orden, para que la lista
+  // siga siendo manejable con 50-100 keywords guardadas. Sin posición o
+  // volumen conocido, la keyword se manda al final del orden elegido (nunca
+  // se inventa un valor para poder ordenarla).
+  const visibleStored = stored
+    .filter((s) => s.keyword.toLowerCase().includes(storedSearch.trim().toLowerCase()))
+    .sort((a, b) => {
+      if (storedSort === "best-position") {
+        if (a.position == null && b.position == null) return 0;
+        if (a.position == null) return 1;
+        if (b.position == null) return -1;
+        return a.position - b.position;
+      }
+      if (storedSort === "worst-position") {
+        if (a.position == null && b.position == null) return 0;
+        if (a.position == null) return 1;
+        if (b.position == null) return -1;
+        return b.position - a.position;
+      }
+      if (storedSort === "most-searches") {
+        if (a.searchVolume == null && b.searchVolume == null) return 0;
+        if (a.searchVolume == null) return 1;
+        if (b.searchVolume == null) return -1;
+        return b.searchVolume - a.searchVolume;
+      }
+      return a.keyword.localeCompare(b.keyword);
+    });
+
   return (
     <div className="space-y-6">
       <div>
@@ -205,28 +241,61 @@ export default function TfidfView({ projectId }: { projectId: string }) {
         </div>
       )}
       {stored.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-100 p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Clock className="h-4 w-4 text-gray-400" />
-            <h3 className="text-sm font-semibold text-gray-900">Resultados disponibles ({stored.length})</h3>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {stored.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => selectStored(s)}
-                className={cn(
-                  "px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors",
-                  result === s.result
-                    ? "bg-gray-900 text-white border-gray-900"
-                    : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                )}
-                title={new Date(s.updatedAt).toLocaleDateString("es-ES")}
+        <div className="bg-white rounded-xl border border-gray-100 p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-gray-400" />
+              <h3 className="text-sm font-semibold text-gray-900">
+                Resultados disponibles ({visibleStored.length}{visibleStored.length !== stored.length ? ` de ${stored.length}` : ""})
+              </h3>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={storedSearch}
+                onChange={(e) => setStoredSearch(e.target.value)}
+                placeholder="Buscar keyword…"
+                className="px-2.5 py-1 border border-gray-200 rounded-lg text-xs outline-none focus:border-gray-400 w-40"
+              />
+              <select
+                value={storedSort}
+                onChange={(e) => setStoredSort(e.target.value as StoredSort)}
+                className="px-2 py-1 border border-gray-200 rounded-lg text-xs outline-none focus:border-gray-400 bg-white text-gray-600"
               >
-                {s.keyword}
-              </button>
-            ))}
+                <option value="alpha">Alfabético</option>
+                <option value="best-position">Mejor posición</option>
+                <option value="worst-position">Peor posición</option>
+                <option value="most-searches">Más búsquedas</option>
+              </select>
+            </div>
           </div>
+          {visibleStored.length === 0 ? (
+            <p className="text-xs text-gray-400">Ninguna keyword coincide con la búsqueda.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {visibleStored.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => selectStored(s)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors",
+                    result === s.result
+                      ? "bg-gray-900 text-white border-gray-900"
+                      : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                  )}
+                  title={new Date(s.updatedAt).toLocaleDateString("es-ES")}
+                >
+                  {s.keyword}
+                  {(s.position != null || s.searchVolume != null) && (
+                    <span className={cn("ml-1.5 font-normal", result === s.result ? "text-gray-300" : "text-gray-400")}>
+                      {s.position != null && `· #${s.position}`}
+                      {s.searchVolume != null && ` · ${s.searchVolume.toLocaleString("es-ES")}/mes`}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
