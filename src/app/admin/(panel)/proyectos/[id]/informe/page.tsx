@@ -9,6 +9,9 @@ import { getGoogleClient, GoogleNotConnectedError } from "@/lib/google/client";
 import { listCannibalizations } from "@/lib/google/search-console";
 import { normalizeDomain } from "@/lib/competitors/dataforseo";
 import type { PositionBuckets } from "@/components/admin/PositionDistribution";
+import { buildStructureTree, type StructureTreeNode } from "@/lib/keywords/structure-tree";
+import { normalizeKeyword } from "@/lib/keywords/normalize";
+import type { StructurePage } from "@/lib/keywords/structure";
 
 function capitalizeFirst(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -53,6 +56,7 @@ export default async function InformePage({
       address: true,
       gscSiteUrl: true,
       reportConfig: true,
+      defaultKeywordStudyId: true,
     },
   });
   if (!project) notFound();
@@ -92,6 +96,7 @@ export default async function InformePage({
     schemaGens,
     contenidoGens,
     gscSnapshot,
+    ga4Snapshot,
   ] = await Promise.all([
     prisma.auditRun.findFirst({
       where: { projectId: id, status: "completed", completedAt: { lt: startOfNextMonth } },
@@ -100,7 +105,12 @@ export default async function InformePage({
     }),
     prisma.rankKeyword.findMany({
       where: { projectId: id },
-      select: { keyword: true, device: true, lastPosition: true, bestPosition: true, lastCheckedAt: true },
+      select: {
+        keyword: true, device: true, lastPosition: true, bestPosition: true, lastCheckedAt: true,
+        // Últimas 2 posiciones → indicador de tendencia (↑/↓/→) sin necesitar
+        // el sparkline completo del módulo en vivo.
+        positions: { orderBy: { checkedAt: "desc" }, take: 2, select: { position: true } },
+      },
     }),
     prisma.keywordStudy.count({ where: { projectId: id } }),
     prisma.keyword.count({ where: { study: { projectId: id } } }),
@@ -131,11 +141,18 @@ export default async function InformePage({
       orderBy: { createdAt: "asc" },
       select: { id: true, domain: true, contentGap: true, contentGapAt: true },
     }),
-    // Arquitectura de URLs: último estudio con estructura generada.
+    // Arquitectura de URLs: último estudio con estructura generada. Se traen
+    // también sus keywords (volumen real) para poder reconstruir la
+    // jerarquía real con buildStructureTree — antes el informe solo pintaba
+    // una lista plana de slug/h1, perdiendo la agrupación padre/hijo.
     prisma.keywordStudy.findFirst({
       where: { projectId: id, structure: { not: Prisma.DbNull } },
       orderBy: { updatedAt: "desc" },
-      select: { structure: true, updatedAt: true },
+      select: {
+        structure: true,
+        updatedAt: true,
+        keywords: { select: { keyword: true, searchVolume: true } },
+      },
     }),
     prisma.titleMetaGeneration.findMany({
       where: { projectId: id },
@@ -157,6 +174,11 @@ export default async function InformePage({
       orderBy: { createdAt: "desc" },
       select: { totals: true, topQueries: true, month: true, rangeDays: true },
     }),
+    prisma.ga4Snapshot.findFirst({
+      where: { projectId: id },
+      orderBy: { createdAt: "desc" },
+      select: { totals: true, byChannel: true, month: true, rangeDays: true },
+    }),
   ]);
 
   const monthCost = monthCostAgg._sum.costUsd ? Number(monthCostAgg._sum.costUsd) : 0;
@@ -170,6 +192,17 @@ export default async function InformePage({
   });
 
   const rankedCount = rankKeywords.filter((k) => k.lastPosition != null).length;
+
+  // Tendencia por keyword: compara las 2 últimas posiciones reales
+  // (checkedAt desc) — posición más baja = mejor ranking. null si no hay
+  // histórico suficiente todavía.
+  function trendFor(positions: { position: number | null }[]): "up" | "down" | "same" | null {
+    const [current, previous] = positions;
+    if (!current || !previous || current.position == null || previous.position == null) return null;
+    if (current.position < previous.position) return "up";
+    if (current.position > previous.position) return "down";
+    return "same";
+  }
   const generationDate = now.toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
   const monthLabel = capitalizeFirst(
     startOfMonth.toLocaleDateString("es-ES", { month: "long", year: "numeric" })
@@ -283,15 +316,22 @@ export default async function InformePage({
     };
   });
 
-  // --- Arquitectura de URLs ---
-  type StructurePage = { slug: string; h1: string };
+  // --- Arquitectura de URLs: jerarquía real (padres/hijos), no lista plana ---
+  // Reutiliza buildStructureTree, la MISMA función que pinta el árbol en el
+  // módulo Arquitectura en vivo — el informe deja de perder la agrupación.
   let arquitectura: ReportData["arquitectura"] = null;
   if (structureStudy?.structure) {
     const s = structureStudy.structure as { pages?: unknown };
     if (Array.isArray(s.pages)) {
-      const pages = (s.pages as Array<Record<string, unknown>>)
-        .filter((p) => typeof p.slug === "string" || typeof p.h1 === "string") as StructurePage[];
-      arquitectura = { pages, updatedAt: structureStudy.updatedAt };
+      const pages = (s.pages as Array<Record<string, unknown>>).filter(
+        (p) => typeof p.slug === "string"
+      ) as unknown as StructurePage[];
+      const volumeByKeyword = new Map<string, number>();
+      for (const k of structureStudy.keywords) {
+        if (k.searchVolume != null) volumeByKeyword.set(normalizeKeyword(k.keyword), k.searchVolume);
+      }
+      const tree = buildStructureTree(pages, volumeByKeyword);
+      arquitectura = { tree, pageCount: pages.length, updatedAt: structureStudy.updatedAt };
     }
   }
 
@@ -325,18 +365,77 @@ export default async function InformePage({
     }
   }
 
-  // --- Google / Search Console (snapshot) ---
+  // --- Google / Search Console + Analytics (snapshots) ---
+  // Antes esta sección solo leía GscSnapshot — GA4 (sesiones, conversiones,
+  // canal principal) no aparecía en el informe pese a estar ya persistido
+  // por el panel de Analytics del módulo Google.
   let google: ReportData["google"] = null;
-  if (gscSnapshot) {
-    const totals = gscSnapshot.totals as { clicks: number; impressions: number; ctr: number; position: number } | null;
-    const qs = (gscSnapshot.topQueries ?? null) as Array<{ query: string; clicks: number; position: number }> | null;
+  if (gscSnapshot || ga4Snapshot) {
+    const totals = gscSnapshot?.totals as { clicks: number; impressions: number; ctr: number; position: number } | null;
+    const qs = (gscSnapshot?.topQueries ?? null) as Array<{ query: string; clicks: number; position: number }> | null;
+    const ga4Totals = ga4Snapshot?.totals as { sessions: number; conversions: number } | null;
+    const byChannel = (ga4Snapshot?.byChannel ?? null) as Array<{ channel: string; sessions: number }> | null;
     google = {
-      month: gscSnapshot.month,
-      rangeDays: gscSnapshot.rangeDays,
+      month: gscSnapshot?.month ?? ga4Snapshot?.month ?? "",
+      rangeDays: gscSnapshot?.rangeDays ?? ga4Snapshot?.rangeDays ?? 0,
       totals: totals ?? { clicks: 0, impressions: 0, ctr: 0, position: 0 },
       topQueries: qs ?? [],
+      ga4: ga4Snapshot
+        ? {
+            sessions: ga4Totals?.sessions ?? 0,
+            conversions: ga4Totals?.conversions ?? 0,
+            topChannels: (byChannel ?? []).slice(0, 5),
+          }
+        : null,
     };
   }
+
+  // --- Backlinks: tu último snapshot + el de cada competidor ya trackeado
+  // (misma lista de Competidores) — ver es gratis, no dispara ninguna
+  // llamada nueva a la API de Backlinks.
+  const ownBacklinks = ownDomain
+    ? await prisma.backlinkSnapshot.findFirst({
+        where: { projectId: id, domain: ownDomain },
+        orderBy: { fetchedAt: "desc" },
+        select: { rank: true, backlinksTotal: true, referringDomains: true, brokenBacklinks: true, fetchedAt: true },
+      })
+    : null;
+  const competitorBacklinks = await Promise.all(
+    competitors.map(async (c) => {
+      const snap = await prisma.backlinkSnapshot.findFirst({
+        where: { projectId: id, domain: c.domain },
+        orderBy: { fetchedAt: "desc" },
+        select: { rank: true, backlinksTotal: true, referringDomains: true, fetchedAt: true },
+      });
+      return { domain: c.domain, rank: snap?.rank ?? null, backlinksTotal: snap?.backlinksTotal ?? null, referringDomains: snap?.referringDomains ?? null };
+    })
+  );
+  const backlinksData: ReportData["backlinks"] =
+    ownBacklinks || competitorBacklinks.some((c) => c.rank !== null)
+      ? {
+          own: ownBacklinks
+            ? {
+                rank: ownBacklinks.rank,
+                backlinksTotal: ownBacklinks.backlinksTotal,
+                referringDomains: ownBacklinks.referringDomains,
+                brokenBacklinks: ownBacklinks.brokenBacklinks,
+                fetchedAt: ownBacklinks.fetchedAt,
+              }
+            : null,
+          competitors: competitorBacklinks,
+        }
+      : null;
+
+  // --- Keywords: top N del estudio "General" (Punto 4) por prioridad — antes
+  // esta sección solo mostraba totales, ni una keyword listada.
+  const keywordsTop = project.defaultKeywordStudyId
+    ? await prisma.keyword.findMany({
+        where: { studyId: project.defaultKeywordStudyId },
+        orderBy: { priority: "desc" },
+        take: 20,
+        select: { keyword: true, searchVolume: true, difficulty: true, priority: true },
+      })
+    : [];
 
   // Cascada: Project.reportConfig (override) → GlobalSetting.INFORME_DEFAULT_CONFIG
   // (default para todos los proyectos) → DEFAULT_SECTIONS/DEFAULT_ORDER (hardcoded).
@@ -379,15 +478,21 @@ export default async function InformePage({
     rank: {
       keywords: rankKeywords.map((k) => ({
         keyword: k.keyword, device: k.device, lastPosition: k.lastPosition,
-        bestPosition: k.bestPosition, lastCheckedAt: k.lastCheckedAt,
+        bestPosition: k.bestPosition, lastCheckedAt: k.lastCheckedAt, trend: trendFor(k.positions),
       })),
       topRank: topRank.map((k) => ({
         keyword: k.keyword, device: k.device, lastPosition: k.lastPosition,
-        bestPosition: k.bestPosition, lastCheckedAt: k.lastCheckedAt,
+        bestPosition: k.bestPosition, lastCheckedAt: k.lastCheckedAt, trend: trendFor(k.positions),
       })),
       rankedCount,
     },
-    keywords: { studyCount, keywordTotal },
+    keywords: {
+      studyCount,
+      keywordTotal,
+      top: keywordsTop.map((k) => ({
+        keyword: k.keyword, searchVolume: k.searchVolume, difficulty: k.difficulty, priority: k.priority,
+      })),
+    },
     arquitectura,
     "titulos-meta": titulosMetaGens.map((g) => ({
       url: g.url, variants: g.variants as unknown as { title: string; description: string }[], createdAt: g.createdAt,
@@ -410,6 +515,7 @@ export default async function InformePage({
     costs: { monthCost },
     links: linksData,
     competitors: { own: ownVisibility, items: competitorSnapshots },
+    backlinks: backlinksData,
     tfidf: tfidfData,
   };
 

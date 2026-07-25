@@ -22,6 +22,7 @@ export type SectionKey =
   | "geogrid"
   | "links"
   | "competitors"
+  | "backlinks"
   | "tfidf"
   | "costs";
 
@@ -40,6 +41,7 @@ export const SECTION_KEYS: SectionKey[] = [
   "geogrid",
   "links",
   "competitors",
+  "backlinks",
   "tfidf",
   "costs",
 ];
@@ -58,6 +60,7 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
   geogrid: "SEO Local (geogrid)",
   links: "Enlaces internos",
   competitors: "Competidores",
+  backlinks: "Backlinks",
   tfidf: "TF-IDF",
   costs: "Costes",
 };

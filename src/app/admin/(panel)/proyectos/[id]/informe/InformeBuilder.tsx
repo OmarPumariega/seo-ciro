@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import {
   ChevronLeft, ChevronRight, ChevronUp, ChevronDown, FileText, Gauge, Target, Search,
-  MapPin, Wallet, ClipboardCheck, Network, Type, Code2, PenLine, Globe, GitBranch, Hash,
+  MapPin, Wallet, ClipboardCheck, Network, Type, Code2, PenLine, Globe, GitBranch, Hash, Anchor,
 } from "lucide-react";
 import GeogridMap from "@/components/admin/GeogridMap";
 import PositionDistribution, { type PositionBuckets } from "@/components/admin/PositionDistribution";
@@ -16,6 +16,7 @@ import {
   SECTION_LABELS,
   type ReportSections, type SectionKey,
 } from "@/lib/informe/sections";
+import type { StructureTreeNode } from "@/lib/keywords/structure-tree";
 
 export type { ReportSections, SectionKey } from "@/lib/informe/sections";
 
@@ -57,16 +58,29 @@ export type ReportData = {
   audit: { overallScore: number | null; categoryScores: CategoryScores | null; pagesCrawled: number; completedAt: Date | null } | null;
   authority: { impressions: number; clicks: number; queries: number; position: number; month: string } | null;
   rank: {
-    keywords: { keyword: string; device: string; lastPosition: number | null; bestPosition: number | null; lastCheckedAt: Date | null }[];
-    topRank: { keyword: string; device: string; lastPosition: number | null; bestPosition: number | null; lastCheckedAt: Date | null }[];
+    keywords: { keyword: string; device: string; lastPosition: number | null; bestPosition: number | null; lastCheckedAt: Date | null; trend: "up" | "down" | "same" | null }[];
+    topRank: { keyword: string; device: string; lastPosition: number | null; bestPosition: number | null; lastCheckedAt: Date | null; trend: "up" | "down" | "same" | null }[];
     rankedCount: number;
   };
-  keywords: { studyCount: number; keywordTotal: number };
-  arquitectura: { pages: { slug: string; h1: string }[]; updatedAt: Date } | null;
+  keywords: {
+    studyCount: number;
+    keywordTotal: number;
+    // Top N del estudio "General" (Punto 4) por prioridad — antes esta
+    // sección solo mostraba totales, ni una keyword listada.
+    top: { keyword: string; searchVolume: number | null; difficulty: number | null; priority: number }[];
+  };
+  arquitectura: { tree: StructureTreeNode; pageCount: number; updatedAt: Date } | null;
   "titulos-meta": { url: string; variants: { title: string; description: string }[]; createdAt: Date }[];
   schema: { url: string; selectedType: string; valid: boolean; createdAt: Date }[];
   contenido: { topic: string; model: string | null; createdAt: Date }[];
-  google: { month: string; rangeDays: number; totals: { clicks: number; impressions: number; ctr: number; position: number }; topQueries: { query: string; clicks: number; position: number }[] } | null;
+  google: {
+    month: string; rangeDays: number;
+    totals: { clicks: number; impressions: number; ctr: number; position: number };
+    topQueries: { query: string; clicks: number; position: number }[];
+    // GA4 — antes ausente por completo del informe pese a estar ya
+    // persistido por el panel de Analytics (Ga4Snapshot).
+    ga4: { sessions: number; conversions: number; topChannels: { channel: string; sessions: number }[] } | null;
+  } | null;
   canibalizaciones: { count: number; top: { query: string; urls: number; clicks: number }[] } | null;
   geogrid: {
     keyword: string; gridSize: number; radiusKm: number; centerLat: number; centerLng: number;
@@ -90,6 +104,12 @@ export type ReportData = {
       fetchedAt: Date | null;
     }[];
   };
+  // Antes ausente por completo del informe — el módulo entero (autoridad,
+  // backlinks totales, rotos) no llegaba pese a existir BacklinkSnapshot.
+  backlinks: {
+    own: { rank: number | null; backlinksTotal: number | null; referringDomains: number | null; brokenBacklinks: number | null; fetchedAt: Date | null } | null;
+    competitors: { domain: string; rank: number | null; backlinksTotal: number | null; referringDomains: number | null }[];
+  } | null;
   tfidf: {
     keyword: string;
     terms: { term: string; tfidf: number; docs: number }[];
@@ -336,7 +356,7 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
             <table className="w-full text-sm">
               <thead><tr className="text-left text-gray-400 border-b border-gray-200">
                 <th className="py-2 pr-4 font-medium">Keyword</th><th className="py-2 pr-4 font-medium">Dispositivo</th>
-                <th className="py-2 pr-4 font-medium text-right">Última</th><th className="py-2 pr-4 font-medium text-right">Mejor</th><th className="py-2 pr-4 font-medium">Chequeo</th>
+                <th className="py-2 pr-4 font-medium text-right">Última</th><th className="py-2 pr-2 font-medium"></th><th className="py-2 pr-4 font-medium text-right">Mejor</th><th className="py-2 pr-4 font-medium">Chequeo</th>
               </tr></thead>
               <tbody>
                 {data.rank.topRank.map((k, i) => (
@@ -344,6 +364,14 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
                     <td className="py-2 pr-4 text-gray-900">{k.keyword}</td>
                     <td className="py-2 pr-4 text-gray-500">{k.device === "mobile" ? "Móvil" : "Escritorio"}</td>
                     <td className="py-2 pr-4 text-right tabular-nums text-gray-900">{k.lastPosition ?? "—"}</td>
+                    <td className={cn(
+                      "py-2 pr-2 text-center",
+                      k.trend === "up" && "text-emerald-600",
+                      k.trend === "down" && "text-red-600",
+                      k.trend === "same" && "text-gray-400"
+                    )} title={k.trend === "up" ? "Mejora" : k.trend === "down" ? "Empeora" : k.trend === "same" ? "Sin cambios" : "Sin histórico suficiente"}>
+                      {k.trend === "up" ? "↑" : k.trend === "down" ? "↓" : k.trend === "same" ? "→" : ""}
+                    </td>
                     <td className="py-2 pr-4 text-right tabular-nums font-medium text-gray-900">{k.bestPosition ?? "—"}</td>
                     <td className="py-2 pr-4 text-gray-400">{fmtDate(k.lastCheckedAt)}</td>
                   </tr>
@@ -367,26 +395,72 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
         <Stat label="Keywords investigadas" value={String(data.keywords.keywordTotal)} />
       </div>
       {data.keywords.studyCount === 0 && <p className="text-sm text-gray-500">Aún no hay estudios de keywords para este proyecto.</p>}
+      {data.keywords.top.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-gray-400 border-b border-gray-200">
+              <th className="py-2 pr-4 font-medium">Keyword</th>
+              <th className="py-2 pr-4 font-medium text-right">Volumen</th>
+              <th className="py-2 pr-4 font-medium text-right">Dificultad</th>
+              <th className="py-2 font-medium text-right">Prioridad</th>
+            </tr></thead>
+            <tbody>
+              {data.keywords.top.map((k, i) => (
+                <tr key={i} className="border-b border-gray-100 last:border-0">
+                  <td className="py-2 pr-4 text-gray-900">{k.keyword}</td>
+                  <td className="py-2 pr-4 text-right tabular-nums text-gray-700">{k.searchVolume ?? "—"}</td>
+                  <td className="py-2 pr-4 text-right tabular-nums text-gray-700">{k.difficulty ?? "—"}</td>
+                  <td className="py-2 text-right tabular-nums font-medium text-gray-900">{k.priority}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="text-xs text-gray-400 mt-2">Top {data.keywords.top.length} del estudio &laquo;General&raquo; por prioridad.</p>
+        </div>
+      )}
     </section>
   );
+
+  // Jerarquía real (padres/hijos) en vez de la lista plana anterior — mismo
+  // árbol (StructureTreeNode) que ya pinta el módulo Arquitectura en vivo.
+  function renderTreeNode(node: StructureTreeNode, depth: number): React.ReactNode {
+    if (!node.page && node.children.length === 0) return null;
+    return (
+      <li key={node.path || "root"} style={{ marginLeft: depth * 16 }} className="py-0.5">
+        {node.page ? (
+          <>
+            <span className="text-gray-900">{node.page.h1 || node.page.navLabel}</span>
+            <span className="text-gray-400 font-mono text-xs ml-2">/{node.path}</span>
+            {node.volume > 0 && <span className="text-gray-400 text-xs ml-2">· vol. {node.volume}</span>}
+          </>
+        ) : (
+          <span className="text-gray-500 text-xs uppercase tracking-wide">{node.segment}/</span>
+        )}
+        {node.children.length > 0 && (
+          <ul className="space-y-0.5">
+            {node.children.map((child) => renderTreeNode(child, depth + 1))}
+          </ul>
+        )}
+      </li>
+    );
+  }
 
   const renderArquitectura = () => (
     <section className="space-y-4">
       <SectionTitle icon={<Network className="h-4 w-4" />}>
         Arquitectura de URLs <span className="text-gray-400 font-normal text-sm">(última estructura generada)</span>
       </SectionTitle>
-      {!data.arquitectura || data.arquitectura.pages.length === 0 ? (
+      {!data.arquitectura || data.arquitectura.pageCount === 0 ? (
         <p className="text-sm text-gray-500">Sin arquitectura de URLs generada. Créala desde el módulo Arquitectura.</p>
       ) : (
-        <ul className="space-y-1 text-sm">
-          {data.arquitectura.pages.map((p, i) => (
-            <li key={i} className="border-b border-gray-100 pb-1 last:border-0">
-              <span className="text-gray-900">{p.h1}</span>
-              <span className="text-gray-400 font-mono text-xs ml-2">/{p.slug}</span>
-            </li>
-          ))}
-          <p className="text-xs text-gray-400 mt-1">Estructura del {fmtDate(data.arquitectura.updatedAt)}.</p>
-        </ul>
+        <div className="text-sm">
+          <ul className="space-y-0.5">
+            {data.arquitectura.tree.children.map((child) => renderTreeNode(child, 0))}
+          </ul>
+          <p className="text-xs text-gray-400 mt-2">
+            {data.arquitectura.pageCount} páginas · estructura del {fmtDate(data.arquitectura.updatedAt)}.
+          </p>
+        </div>
       )}
     </section>
   );
@@ -472,6 +546,26 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
                 </li>
               ))}
             </ul>
+          )}
+          {data.google.ga4 && (
+            <div className="pt-3 border-t border-gray-100 space-y-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Google Analytics (GA4)</p>
+              <div className="grid grid-cols-2 gap-4">
+                <Stat label="Sesiones" value={fmtInt(data.google.ga4.sessions)} />
+                <Stat label="Conversiones" value={fmtInt(data.google.ga4.conversions)} />
+              </div>
+              {data.google.ga4.topChannels.length > 0 && (
+                <ul className="text-sm space-y-1">
+                  <p className="text-xs text-gray-400">Canales de tráfico principales:</p>
+                  {data.google.ga4.topChannels.map((c, i) => (
+                    <li key={i} className="flex items-center justify-between gap-2 border-b border-gray-100 pb-1 last:border-0">
+                      <span className="text-gray-900">{c.channel}</span>
+                      <span className="text-xs text-gray-400">{fmtInt(c.sessions)} sesiones</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
         </>
       )}
@@ -703,6 +797,57 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
     </section>
   );
 
+  // Antes ausente por completo del informe pese a existir el módulo entero —
+  // mismo criterio que Competidores: solo lectura de lo ya persistido
+  // (BacklinkSnapshot), sin disparar ninguna llamada nueva a la API.
+  const renderBacklinks = () => (
+    <section className="space-y-4">
+      <SectionTitle icon={<Anchor className="h-4 w-4" />}>
+        Backlinks <span className="text-gray-400 font-normal text-sm">(último análisis)</span>
+      </SectionTitle>
+      {!data.backlinks ? (
+        <p className="text-sm text-gray-500">Sin backlinks analizados todavía. Ejecuta un análisis desde el módulo Backlinks.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-gray-400 border-b border-gray-200">
+              <th className="py-2 pr-4 font-medium">Dominio</th>
+              <th className="py-2 pr-4 font-medium text-right">Autoridad</th>
+              <th className="py-2 pr-4 font-medium text-right">Backlinks</th>
+              <th className="py-2 font-medium text-right">Dominios de referencia</th>
+            </tr></thead>
+            <tbody>
+              {data.backlinks.own && (
+                <tr className="border-b border-gray-100">
+                  <td className="py-2 pr-4 text-gray-900 font-medium">
+                    {data.project.domain} <span className="text-[10px] text-emerald-700 font-semibold">· TÚ</span>
+                  </td>
+                  <td className="py-2 pr-4 text-right tabular-nums text-gray-900">{data.backlinks.own.rank ?? "—"}</td>
+                  <td className="py-2 pr-4 text-right tabular-nums text-gray-500">{data.backlinks.own.backlinksTotal?.toLocaleString("es-ES") ?? "—"}</td>
+                  <td className="py-2 text-right tabular-nums text-gray-500">{data.backlinks.own.referringDomains?.toLocaleString("es-ES") ?? "—"}</td>
+                </tr>
+              )}
+              {data.backlinks.competitors.map((c) => (
+                <tr key={c.domain} className="border-b border-gray-100 last:border-0">
+                  <td className="py-2 pr-4 text-gray-900">{c.domain}</td>
+                  <td className="py-2 pr-4 text-right tabular-nums text-gray-900">{c.rank ?? "—"}</td>
+                  <td className="py-2 pr-4 text-right tabular-nums text-gray-500">{c.backlinksTotal?.toLocaleString("es-ES") ?? "—"}</td>
+                  <td className="py-2 text-right tabular-nums text-gray-500">{c.referringDomains?.toLocaleString("es-ES") ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {data.backlinks.own && (
+            <p className="text-xs text-gray-400 mt-2">
+              {data.backlinks.own.brokenBacklinks != null && <>{data.backlinks.own.brokenBacklinks} backlinks rotos · </>}
+              actualizado el {fmtDate(data.backlinks.own.fetchedAt)}.
+            </p>
+          )}
+        </div>
+      )}
+    </section>
+  );
+
   const renderTfidf = () => (
     <section className="space-y-4">
       <SectionTitle icon={<Hash className="h-4 w-4" />}>TF-IDF <span className="text-gray-400 font-normal text-sm">(términos, temas y encabezados del top-10 orgánico)</span></SectionTitle>
@@ -821,6 +966,7 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
     geogrid: renderGeogrid,
     links: renderLinks,
     competitors: renderCompetitors,
+    backlinks: renderBacklinks,
     tfidf: renderTfidf,
     costs: renderCosts,
   };

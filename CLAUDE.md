@@ -173,6 +173,17 @@ Proyectos. Tres bloques:
   (global) → `DEFAULT_SECTIONS`/`DEFAULT_ORDER` hardcoded en `src/lib/informe/sections.ts`.
   Cada proyecto puede tener su propio override desde su InformeBuilder; el botón
   "Restablecer al default global" borra ese override (`DELETE /api/proyectos/[id]/informe/config`).
+  **Regla permanente:** cualquier módulo o mejora nueva que añada datos reales
+  (una tabla, un snapshot, un campo con valor de negocio) debe evaluar en la misma
+  sesión de trabajo si corresponde una sección nueva o una ampliación en el Informe
+  (`src/lib/informe/sections.ts` + `InformeBuilder.tsx`) — no como tarea aparte para
+  más adelante. Registrar una sección nueva es barato (solo hay que añadirla a
+  `SECTION_KEYS`/`SECTION_LABELS`, traer sus datos en `page.tsx` y añadir un
+  `renderX` al `dispatch` de `InformeBuilder.tsx`; el checklist/reorder de
+  Configuración y del InformeBuilder del proyecto la reconocen solos, sin UI
+  dedicada) — el coste de olvidarlo es que el informe se queda desincronizado del
+  resto de la herramienta sin que nadie se dé cuenta hasta que un cliente pregunta
+  por un dato que sí existe pero no aparece.
 - **Conexión con Google** (Módulo 6): OAuth2 de la agencia. Conectar/desconectar, ver
   email y scopes concedidos. La *selección de propiedad* por proyecto vive en la
   ficha de cada proyecto, no aquí — la conexión es una, las propiedades son por
@@ -363,10 +374,14 @@ sitio; ver el apartado "Copilot" más abajo.
   gasto aplicado al inicio de cada run. Cada run del histórico se puede borrar
   (icono papelera); el borrado se bloquea si está pending/running para no
   machacar el job en curso (`DELETE /api/proyectos/[id]/geogrid/[runId]`).
-- **Informe**: vista HTML de solo lectura con auditoría, rank tracking, keywords,
-  geogrid (si aplica) y gasto del mes, con hoja de estilos de impresión —
-  "Guardar como PDF" es el propio diálogo de impresión del navegador, no hay
-  generación de PDF en servidor ni versionado del informe.
+- **Informe**: vista HTML de solo lectura con auditoría, rank tracking (con
+  indicador de tendencia ↑/↓/→ por keyword), keywords (top del estudio "General"
+  por prioridad, no solo totales), arquitectura de URLs (jerarquía real
+  padres/hijos, no lista plana), Google (Search Console **y** GA4 — antes GA4
+  no aparecía), backlinks (autoridad propia y de competidores) y gasto del mes,
+  con hoja de estilos de impresión — "Guardar como PDF" es el propio diálogo de
+  impresión del navegador, no hay generación de PDF en servidor ni versionado
+  del informe.
 - **Copilot**: widget flotante persistente (`CopilotWidget.tsx`, montado en
   `AdminShell.tsx` — no remonta al navegar entre módulos, así que conserva estado con
   `useState` normal, sin Context ni librería nueva), no una página del nav. Tres
