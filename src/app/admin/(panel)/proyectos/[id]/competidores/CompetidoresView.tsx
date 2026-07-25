@@ -105,8 +105,13 @@ function SeasonalitySparkline({ points }: { points: number[] | null | undefined 
 // deriva de `competition`/`competitionIndex` (eso es densidad de pujas de
 // Google Ads, una señal distinta que antes se usaba como proxy y por eso
 // casi siempre salía "Media" o "?"). Sin dato → "?".
-function difficulty(score: number | null): { label: string; cls: string } {
-  if (score === null) return { label: "?", cls: "bg-gray-100 text-gray-400" };
+function difficulty(score: number | null | undefined): { label: string; cls: string } {
+  // == null (no ===): cubre null Y undefined. Los content gap/top keywords
+  // guardados antes de que este campo existiera no tienen `difficulty` en su
+  // JSON (ausente → undefined, no null) — chequear solo `=== null` dejaba
+  // pasar undefined y caía siempre en la rama "Baja", igual que el bug ya
+  // corregido en fmtCpc.
+  if (score == null) return { label: "?", cls: "bg-gray-100 text-gray-400" };
   if (score >= 67) return { label: `${score} · Alta`, cls: "bg-red-50 text-red-700" };
   if (score >= 34) return { label: `${score} · Media`, cls: "bg-amber-50 text-amber-700" };
   return { label: `${score} · Baja`, cls: "bg-emerald-50 text-emerald-700" };
@@ -320,6 +325,15 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
   const [addDomain, setAddDomain] = useState("");
   const [analyzingDomain, setAnalyzingDomain] = useState<string | null>(null);
   const [gapId, setGapId] = useState<string | null>(null);
+  // "Analizar todos" / "Gap todos" — procesa en bucle SECUENCIAL (nunca en
+  // paralelo: assertWithinSpendLimit es check-then-act, un Promise.all podría
+  // saltarse el tope de gasto viendo el mismo acumulado desactualizado) solo
+  // los competidores que aún no tengan análisis/gap hecho. Los botones
+  // individuales de cada fila no cambian.
+  const [bulkAnalyzing, setBulkAnalyzing] = useState(false);
+  const [bulkAnalyzeProgress, setBulkAnalyzeProgress] = useState<{ done: number; total: number } | null>(null);
+  const [bulkGapping, setBulkGapping] = useState(false);
+  const [bulkGapProgress, setBulkGapProgress] = useState<{ done: number; total: number } | null>(null);
   const [importingId, setImportingId] = useState<string | null>(null);
   const [trackingId, setTrackingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string>("");
@@ -435,6 +449,67 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
       return;
     }
     load();
+  }
+
+  async function handleAnalyzeAll() {
+    const pending = (data?.competitors ?? []).filter((c) => !c.snapshot);
+    if (pending.length === 0 || bulkAnalyzing) return;
+    setError("");
+    setBulkAnalyzing(true);
+    setBulkAnalyzeProgress({ done: 0, total: pending.length });
+
+    for (const c of pending) {
+      setAnalyzingDomain(c.domain);
+      const res = await fetch(`/api/proyectos/${projectId}/competidores/analizar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domain: c.domain, locationCode: location?.code }),
+      });
+      if (!res.ok) {
+        if (res.status === 422) {
+          const d = await res.json().catch(() => ({}));
+          setError(d.error ?? "Tope de gasto alcanzado — se detiene «Analizar todos».");
+          break; // tope de gasto — seguir repetiría el mismo fallo en los demás
+        }
+      }
+      setBulkAnalyzeProgress((p) => (p ? { ...p, done: p.done + 1 } : p));
+    }
+
+    setAnalyzingDomain(null);
+    setBulkAnalyzing(false);
+    setBulkAnalyzeProgress(null);
+    await load();
+    await loadTrends();
+  }
+
+  async function handleGapAll() {
+    const pending = (data?.competitors ?? []).filter((c) => !c.contentGap || c.contentGap.length === 0);
+    if (pending.length === 0 || bulkGapping) return;
+    setError("");
+    setBulkGapping(true);
+    setBulkGapProgress({ done: 0, total: pending.length });
+
+    for (const c of pending) {
+      setGapId(c.id);
+      const res = await fetch(`/api/proyectos/${projectId}/competidores/${c.id}/content-gap`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ locationCode: location?.code }),
+      });
+      if (!res.ok) {
+        if (res.status === 422) {
+          const d = await res.json().catch(() => ({}));
+          setError(d.error ?? "Tope de gasto alcanzado — se detiene «Gap todos».");
+          break;
+        }
+      }
+      setBulkGapProgress((p) => (p ? { ...p, done: p.done + 1 } : p));
+    }
+
+    setGapId(null);
+    setBulkGapping(false);
+    setBulkGapProgress(null);
+    await load();
   }
 
   async function handleRemove(competitorId: string) {
@@ -634,6 +709,38 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
         </button>
       </form>
 
+      {/* Analizar todos / Gap todos — solo los competidores sin análisis o
+          sin gap hecho, en bucle secuencial. Los botones por fila de abajo
+          siguen disponibles para reanalizar uno suelto en cualquier momento. */}
+      {data && data.competitors.length > 0 && (() => {
+        const pendingAnalyze = data.competitors.filter((c) => !c.snapshot).length;
+        const pendingGap = data.competitors.filter((c) => !c.contentGap || c.contentGap.length === 0).length;
+        return (
+          <div className="bg-white rounded-xl border border-gray-100 p-4 flex flex-wrap items-center gap-3">
+            <button
+              onClick={handleAnalyzeAll}
+              disabled={pendingAnalyze === 0 || bulkAnalyzing}
+              className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+            >
+              {bulkAnalyzing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {bulkAnalyzeProgress
+                ? `Analizando ${bulkAnalyzeProgress.done}/${bulkAnalyzeProgress.total}...`
+                : `Analizar todos${pendingAnalyze > 0 ? ` (${pendingAnalyze} pendientes)` : ""}`}
+            </button>
+            <button
+              onClick={handleGapAll}
+              disabled={pendingGap === 0 || bulkGapping}
+              className="flex items-center gap-2 px-3 py-1.5 border border-gray-200 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+            >
+              {bulkGapping ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Target className="h-3.5 w-3.5" />}
+              {bulkGapProgress
+                ? `Calculando gap ${bulkGapProgress.done}/${bulkGapProgress.total}...`
+                : `Gap todos${pendingGap > 0 ? ` (${pendingGap} pendientes)` : ""}`}
+            </button>
+          </div>
+        );
+      })()}
+
       {/* Lista de competidores */}
       <div className="space-y-3">
         {data?.competitors.length === 0 && <p className="text-sm text-gray-500">Aún no hay competidores. Añade uno para espiar su visibilidad.</p>}
@@ -650,8 +757,8 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
                 {!c.snapshot && (
                   <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1 mt-2">
                     Aún sin analizar. Pulsa <strong>Analizar</strong> a la derecha (cuesta{' '}
-                    {analyzeCost.toFixed(2)}$) o <strong>Lanzar / re-procesar análisis</strong> en la
-                    ficha del proyecto para procesar todos a la vez.
+                    {analyzeCost.toFixed(2)}$) o <strong>Analizar todos</strong> arriba para
+                    procesar de una vez todos los competidores pendientes.
                   </p>
                 )}
               </div>
