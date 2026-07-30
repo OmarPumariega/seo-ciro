@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import {
   Loader2, Sparkles, Plus, Trash2, Target, TrendingUp, AlertTriangle,
-  ExternalLink, ChevronDown, ChevronUp, ArrowDownToLine, Crosshair,
+  ExternalLink, ChevronDown, ChevronUp, ArrowDownToLine, Crosshair, FileSearch,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ConfirmDialog from "@/components/admin/ConfirmDialog";
@@ -13,6 +13,7 @@ import PositionDistribution, { type PositionBuckets } from "@/components/admin/P
 import {
   competitorAnalysisCostUsd,
   contentGapCostUsd,
+  onPageAnalysisCostUsd,
 } from "@/lib/dataforseo/pricing";
 import { importKeywordsToDefaultStudy } from "@/lib/keywords/client-import";
 
@@ -34,6 +35,214 @@ type TopKeyword = {
   url: string | null;
   description: string | null;
 };
+
+// Análisis on-page de una URL suelta (Screaming Frog-like), vía DataForSEO
+// On-Page API — ver src/lib/onpage/. Los campos boolean/issues reflejan
+// exactamente lo que da la API real: no hay recuento de enlaces rotos (solo
+// "¿tiene alguno?"), ni de imágenes sin alt (solo el mismo tipo de flag,
+// dentro de `issues`).
+type OnPageAnalysisData = {
+  id: string;
+  onPageScore: number | null;
+  wordCount: number | null;
+  characterCount: number | null;
+  sentenceCount: number | null;
+  titleLength: number | null;
+  descriptionLength: number | null;
+  htags: Record<string, string[]> | null;
+  issues: string[] | null;
+  readability: {
+    automatedReadabilityIndex: number | null;
+    colemanLiauReadabilityIndex: number | null;
+    daleChallReadabilityIndex: number | null;
+    fleschKincaidReadabilityIndex: number | null;
+    smogReadabilityIndex: number | null;
+  } | null;
+  imagesCount: number | null;
+  internalLinksCount: number | null;
+  externalLinksCount: number | null;
+  hasBrokenLinks: boolean | null;
+  fetchedAt: string;
+};
+
+// Etiquetas en español para las incidencias más relevantes — el resto (hay
+// ~45 posibles) se muestra con el nombre crudo formateado, sin necesidad de
+// mantener una lista exhaustiva.
+const ONPAGE_ISSUE_LABELS: Record<string, string> = {
+  no_title: "Sin título",
+  no_description: "Sin meta descripción",
+  no_h1_tag: "Sin H1",
+  title_too_long: "Título demasiado largo",
+  title_too_short: "Título demasiado corto",
+  duplicate_title_tag: "Título duplicado en la página",
+  duplicate_meta_tags: "Meta tags duplicados",
+  no_image_alt: "Imágenes sin alt",
+  no_image_title: "Imágenes sin title",
+  low_readability_rate: "Legibilidad baja",
+  low_content_rate: "Poco texto respecto al peso de la página",
+  is_broken: "Página caída (4xx/5xx)",
+  is_4xx_code: "Error 4xx",
+  is_5xx_code: "Error 5xx",
+  is_redirect: "Redirección",
+  no_favicon: "Sin favicon",
+  irrelevant_title: "Título poco relevante para el contenido",
+  irrelevant_description: "Meta descripción poco relevante",
+  has_render_blocking_resources: "Recursos que bloquean el renderizado",
+  high_loading_time: "Tiempo de carga alto",
+  deprecated_html_tags: "Etiquetas HTML obsoletas",
+  lorem_ipsum: "Contenido de relleno (lorem ipsum)",
+};
+
+function onPageIssueLabel(key: string): string {
+  return ONPAGE_ISSUE_LABELS[key] ?? key.replace(/_/g, " ");
+}
+
+function OnPageReportDetail({ analysis }: { analysis: OnPageAnalysisData }) {
+  const htags: Record<string, string[]> = analysis.htags ?? {};
+  const htagLevels = Object.keys(htags).sort();
+  return (
+    <div className="mt-2 space-y-2 text-xs">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="bg-gray-50 rounded-lg p-2">
+          <p className="text-gray-400">Palabras</p>
+          <p className="font-semibold text-gray-900">{analysis.wordCount ?? "—"}</p>
+        </div>
+        <div className="bg-gray-50 rounded-lg p-2">
+          <p className="text-gray-400">Caracteres</p>
+          <p className="font-semibold text-gray-900">{analysis.characterCount ?? "—"}</p>
+        </div>
+        <div className="bg-gray-50 rounded-lg p-2" title="DataForSEO no da recuento de frases; se estima sobre un fragmento del texto (primeros ~3000 caracteres), no la página completa — por eso puede parecer bajo frente al recuento de palabras.">
+          <p className="text-gray-400">Frases (muestra)</p>
+          <p className="font-semibold text-gray-900">{analysis.sentenceCount ?? "—"}</p>
+        </div>
+        <div className="bg-gray-50 rounded-lg p-2">
+          <p className="text-gray-400">Puntuación on-page</p>
+          <p className="font-semibold text-gray-900">{analysis.onPageScore != null ? `${Math.round(analysis.onPageScore)}/100` : "—"}</p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-3 text-gray-600">
+        <span>Título: <strong className="text-gray-900">{analysis.titleLength ?? "—"}</strong> car.</span>
+        <span>Meta descripción: <strong className="text-gray-900">{analysis.descriptionLength ?? "—"}</strong> car.</span>
+        <span>Imágenes: <strong className="text-gray-900">{analysis.imagesCount ?? "—"}</strong></span>
+        <span>Enlaces internos: <strong className="text-gray-900">{analysis.internalLinksCount ?? "—"}</strong></span>
+        <span>Enlaces externos: <strong className="text-gray-900">{analysis.externalLinksCount ?? "—"}</strong></span>
+        {analysis.hasBrokenLinks === true && (
+          <span className="text-red-600 font-medium">Tiene enlaces rotos</span>
+        )}
+      </div>
+
+      {htagLevels.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-gray-500 font-medium">Jerarquía de encabezados</p>
+          <ul className="space-y-0.5">
+            {htagLevels.map((level) => (
+              <li key={level} className="flex items-start gap-1.5">
+                <span className="text-[10px] font-mono px-1 rounded bg-gray-100 text-gray-500 shrink-0 mt-0.5 uppercase">{level}</span>
+                <span className="text-gray-700">
+                  {(htags[level] ?? []).join("  ·  ") || <span className="text-gray-300">—</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {analysis.issues && analysis.issues.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-gray-500 font-medium">Incidencias detectadas ({analysis.issues.length})</p>
+          <div className="flex flex-wrap gap-1">
+            {analysis.issues.map((issue) => (
+              <span key={issue} className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
+                {onPageIssueLabel(issue)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {analysis.readability?.fleschKincaidReadabilityIndex != null && (
+        <p className="text-gray-500">
+          Índice de legibilidad (Flesch-Kincaid): <strong className="text-gray-900">{analysis.readability.fleschKincaidReadabilityIndex.toFixed(1)}</strong>
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Botón "Analizar página" por URL — al montar comprueba gratis si ya hay un
+// análisis reciente (GET); si no, "Analizar" paga (DataForSEO On-Page API,
+// guard de frescura de 7 días en el backend, ver src/lib/onpage/analyze.ts).
+function OnPageButton({ projectId, url }: { projectId: string; url: string }) {
+  const [analysis, setAnalysis] = useState<OnPageAnalysisData | null>(null);
+  const [checkingExisting, setCheckingExisting] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/proyectos/${projectId}/competidores/onpage?url=${encodeURIComponent(url)}`)
+      .then((r) => r.json())
+      .then((d: OnPageAnalysisData | null) => {
+        if (!cancelled && d && d.id) setAnalysis(d);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setCheckingExisting(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, url]);
+
+  async function handleAnalyze() {
+    setError("");
+    setAnalyzing(true);
+    try {
+      const res = await fetch(`/api/proyectos/${projectId}/competidores/onpage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Error al analizar la página");
+        return;
+      }
+      setAnalysis(data);
+      setExpanded(true);
+    } catch {
+      setError("Error de conexión. Inténtalo de nuevo.");
+    } finally {
+      setAnalyzing(false);
+    }
+  }
+
+  return (
+    <div className="mt-1.5 pt-1.5 border-t border-gray-100">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => (analysis ? setExpanded((v) => !v) : handleAnalyze())}
+          disabled={analyzing || checkingExisting}
+          className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+          title={analysis ? "Ver informe on-page" : `Analizar página (~$${onPageAnalysisCostUsd().toFixed(4)}, gratis si ya se analizó hace menos de 7 días)`}
+        >
+          {analyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileSearch className="h-3 w-3" />}
+          {analysis ? (expanded ? "Ocultar informe on-page" : "Ver informe on-page") : "Analizar página"}
+        </button>
+        {analysis && (
+          <span className="text-[10px] text-gray-400">
+            {new Date(analysis.fetchedAt).toLocaleDateString("es-ES")}
+          </span>
+        )}
+      </div>
+      {error && <p className="text-[11px] text-red-600 mt-1">{error}</p>}
+      {expanded && analysis && <OnPageReportDetail analysis={analysis} />}
+    </div>
+  );
+}
 
 type Snapshot = {
   id: string;
@@ -235,7 +444,7 @@ function TopKeywords({ keywords, title }: { keywords: TopKeyword[] | null; title
 // dificultad para priorizar, y al expandir, el snippet + título + URL con la
 // que el competidor posiciona esa keyword (ejemplo de copy). Antes solo se veían
 // 3 campos de los 10 que ya pagábamos.
-function ContentGapList({ items, contentGapAt }: { items: TopKeyword[]; contentGapAt: string | null }) {
+function ContentGapList({ items, contentGapAt, projectId }: { items: TopKeyword[]; contentGapAt: string | null; projectId: string }) {
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const q = search.trim().toLowerCase();
@@ -319,6 +528,7 @@ function ContentGapList({ items, contentGapAt }: { items: TopKeyword[]; contentG
                               <ExternalLink className="h-3 w-3 shrink-0" />
                             </a>
                           )}
+                          {k.url && <OnPageButton projectId={projectId} url={k.url} />}
                         </td>
                       </tr>
                     )}
@@ -612,7 +822,14 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
       return;
     }
     setImportingId(c.id);
-    const result = await importKeywordsToDefaultStudy(projectId, `Competidor ${c.domain}`, keywords);
+    // Propaga la ubicación real con la que se analizó (el LocationPicker de
+    // arriba) — si no, el endpoint cachearía este volumen bajo la ubicación
+    // del estudio "General" (siempre es/2724), mezclando datos de una
+    // ubicación local con la clave nacional del caché compartido.
+    const result = await importKeywordsToDefaultStudy(projectId, `Competidor ${c.domain}`, keywords, {
+      locationCode: location?.code ?? 2724,
+      languageCode: "es",
+    });
     setImportingId(null);
     if (!result.ok) {
       showNotice(result.error);
@@ -836,7 +1053,7 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
             {c.snapshot && <VisibilityKpis snapshot={c.snapshot} trend={trendsByDomain[c.domain]} />}
             {c.snapshot?.topKeywords && <TopKeywords keywords={c.snapshot.topKeywords} title="Sus top keywords" />}
             {c.contentGap && c.contentGap.length > 0 && (
-              <ContentGapList items={c.contentGap} contentGapAt={c.contentGapAt} />
+              <ContentGapList items={c.contentGap} contentGapAt={c.contentGapAt} projectId={projectId} />
             )}
             {/* Acciones cruzadas: lleva la inteligencia del competidor a los
                 módulos donde se trabaja (estudio / rank tracking), sin copiar

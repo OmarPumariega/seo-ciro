@@ -103,6 +103,7 @@ model Project {
   competitors          Competitor[]
   visibilitySnapshots  VisibilitySnapshot[]
   backlinkSnapshots    BacklinkSnapshot[]
+  onPageAnalyses       OnPageAnalysis[]
   gscSnapshots         GscSnapshot[]
   ga4Snapshots         Ga4Snapshot[]
   tfidfResults         TfidfResult[]
@@ -658,6 +659,42 @@ model BacklinkSnapshot {
   fetchedAt            DateTime @default(now())
 
   @@index([projectId, domain, fetchedAt])
+}
+
+// Análisis on-page de UNA página (propia o de un competidor) — complemento a
+// Competidores/TF-IDF con datos tipo Screaming Frog: recuento de palabras,
+// jerarquía de encabezados, incidencias de título/meta/H1, legibilidad.
+// Histórico append-only (mismo criterio que VisibilitySnapshot/
+// BacklinkSnapshot): analizar paga, ver el último análisis es gratis, con
+// guard de frescura de 7 días. Vía DataForSEO On-Page API (instant_pages),
+// producto de pago aparte del resto de la app.
+model OnPageAnalysis {
+  id                 String   @id @default(cuid())
+  projectId          String
+  project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  url                String
+  domain             String // dominio normalizado, para filtrar/agrupar por competidor
+  onPageScore        Float? // onpage_score de DataForSEO (0-100)
+  wordCount          Int? // meta.content.plain_text_word_count
+  characterCount     Int? // meta.content.plain_text_size
+  // Recuento de frases: DataForSEO no lo da (solo cuenta palabras/caracteres,
+  // no expone el texto plano en este endpoint) — se deriva gratis con el
+  // scraper propio (scrapePage, ya usado por TF-IDF/Título-Meta/Schema)
+  // sobre la misma URL, best-effort: null si esa página depende de JS y el
+  // scraper estático no ve contenido (nunca se inventa un número).
+  sentenceCount      Int?
+  titleLength        Int? // meta.title_length
+  descriptionLength  Int? // meta.description_length
+  htags              Json? // meta.htags tal cual: { h1: string[], h2: string[], ... } (los niveles presentes)
+  issues             Json? // string[] — claves de `checks` con valor true (no_h1_tag, title_too_long, duplicate_meta_tags, low_readability_rate...)
+  readability        Json? // { automatedReadabilityIndex, colemanLiauReadabilityIndex, daleChallReadabilityIndex, fleschKincaidReadabilityIndex, smogReadabilityIndex }
+  imagesCount        Int? // meta.images_count
+  internalLinksCount Int?
+  externalLinksCount Int?
+  hasBrokenLinks     Boolean? // `broken_links` — booleano real de la API, no un conteo
+  fetchedAt          DateTime @default(now())
+
+  @@index([projectId, url, fetchedAt])
 }
 
 // Snapshot de rendimiento de Search Console para un proyecto. Se persiste cada
