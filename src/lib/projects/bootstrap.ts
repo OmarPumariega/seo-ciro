@@ -5,14 +5,14 @@ import {
 } from "@/lib/dataforseo/client";
 import {
   DataForSeoSpendLimitError,
-  assertWithinSpendLimit,
 } from "@/lib/dataforseo/spend";
+import { normalizeDomain } from "@/lib/competitors/dataforseo";
 import {
-  fetchDomainOverview,
-  fetchRankedKeywords,
-  fetchContentGap,
-  normalizeDomain,
-} from "@/lib/competitors/dataforseo";
+  analyzeCompetitorVisibility,
+  computeCompetitorContentGap,
+  isVisibilityFresh,
+  isContentGapFresh,
+} from "@/lib/competitors/analyze";
 import { checkRankKeyword } from "@/lib/rank/check";
 import {
   COMPETITORS_ANALYZE_DEFAULT_LIMIT,
@@ -100,16 +100,27 @@ export async function estimateBootstrapCost(projectId: string): Promise<{
   let keywordsToCheck = 0;
   for (const kw of studyKeywords) if (!trackedSet.has(kw)) keywordsToCheck++;
 
-  // Competidores: se analizan todos (visibilidad + content gap) sin importar
-  // si ya tenían snapshot, para refrescar la tendencia.
-  const competitors = await prisma.competitor.count({ where: { projectId } });
+  // Competidores: solo cuentan los que tienen visibilidad o content-gap
+  // desactualizados (>7 días o inexistentes) — mismo criterio de frescura que
+  // aplica bootstrapProjectAnalysis más abajo, para que la estimación no diga
+  // "hay que pagar" por algo que en realidad va a salir gratis.
+  const competitors = await prisma.competitor.findMany({
+    where: { projectId },
+    select: { domain: true, contentGapAt: true },
+  });
+  let staleVisibility = 0;
+  let staleContentGap = 0;
+  for (const c of competitors) {
+    if (!(await isVisibilityFresh(projectId, c.domain))) staleVisibility++;
+    if (!isContentGapFresh(c.contentGapAt)) staleContentGap++;
+  }
 
   const rankCost = keywordsToCheck * rankCheckCostUsd(DEFAULT_DEPTH);
-  const competitorCost = competitors * (competitorAnalysisCostUsd() + contentGapCostUsd());
+  const competitorCost = staleVisibility * competitorAnalysisCostUsd() + staleContentGap * contentGapCostUsd();
 
   return {
     keywordsToCheck,
-    competitorsToAnalyze: competitors,
+    competitorsToAnalyze: Math.max(staleVisibility, staleContentGap),
     estimatedCostUsd: Math.round((rankCost + competitorCost) * 100) / 100,
     missingDomain: !project.domain,
   };
@@ -328,43 +339,16 @@ export async function bootstrapProjectAnalysis(projectId: string): Promise<Boots
   for (const c of competitors) {
     if (result.spendLimitHit) break;
 
-    // Visibilidad + top keywords (2 llamadas Labs).
+    // Visibilidad + top keywords — gratis si ya hay un VisibilitySnapshot de
+    // hace menos de 7 días para este dominio (analyzeCompetitorVisibility),
+    // así que relanzar el bootstrap varias veces no vuelve a pagar por
+    // competidores ya analizados recientemente.
     try {
-      await assertWithinSpendLimit(projectId);
-      const [overview, ranked] = await Promise.all([
-        fetchDomainOverview({
-          domain: c.domain,
-          locationCode: competitorLocationCode,
-          languageCode: competitorLanguageCode,
-        }),
-        fetchRankedKeywords({
-          domain: c.domain,
-          locationCode: competitorLocationCode,
-          languageCode: competitorLanguageCode,
-          limit: COMPETITORS_ANALYZE_DEFAULT_LIMIT,
-        }),
-      ]);
-
-      await prisma.visibilitySnapshot.create({
-        data: {
-          projectId,
-          domain: c.domain,
-          organicTraffic: overview.organicTraffic,
-          organicKeywords: overview.organicKeywords,
-          topKeywords: ranked.items as unknown as Prisma.InputJsonValue,
-        },
+      await analyzeCompetitorVisibility(projectId, c.domain, {
+        locationCode: competitorLocationCode,
+        languageCode: competitorLanguageCode,
+        limit: COMPETITORS_ANALYZE_DEFAULT_LIMIT,
       });
-
-      for (const [endpoint, cost] of [
-        ["competidores.visibilidad", overview.costUsd],
-        ["competidores.ranked", ranked.costUsd],
-      ] as const) {
-        if (cost !== null) {
-          await prisma.apiUsageLog.create({
-            data: { projectId, api: "dataforseo", endpoint, model: null, costUsd: cost },
-          });
-        }
-      }
       result.competitorsAnalyzed++;
     } catch (error) {
       if (error instanceof DataForSeoSpendLimitError) {
@@ -385,34 +369,14 @@ export async function bootstrapProjectAnalysis(projectId: string): Promise<Boots
       continue; // con el content gap no seguimos si el análisis falló
     }
 
-    // Content gap (1 llamada Labs).
+    // Content gap — mismo criterio de frescura de 7 días vía
+    // computeCompetitorContentGap.
     try {
-      await assertWithinSpendLimit(projectId);
-      const { items, costUsd } = await fetchContentGap({
-        competitorDomain: c.domain,
-        projectDomain,
+      await computeCompetitorContentGap(projectId, c, projectDomain, {
         locationCode: competitorLocationCode,
         languageCode: competitorLanguageCode,
         limit: COMPETITORS_GAP_DEFAULT_LIMIT,
       });
-      await prisma.competitor.update({
-        where: { id: c.id },
-        data: {
-          contentGap: items as unknown as Prisma.InputJsonValue,
-          contentGapAt: new Date(),
-        },
-      });
-      if (costUsd !== null) {
-        await prisma.apiUsageLog.create({
-          data: {
-            projectId,
-            api: "dataforseo",
-            endpoint: "competidores.contentgap",
-            model: null,
-            costUsd,
-          },
-        });
-      }
       result.contentGapsCalculated++;
     } catch (error) {
       if (error instanceof DataForSeoSpendLimitError) {

@@ -236,18 +236,38 @@ export default function ProjectWizard() {
   }
 
   async function finish() {
-    if (projectId) {
-      // Lanzamiento completo en background: importa las keywords del estudio
-      // al rank tracking y las chequea (lo que dispara TF-IDF gratis), y
-      // analiza visibilidad + content gap de cada competidor. Fire-and-forget
-      // igual que la auditoría: no bloquea la navegación a la ficha.
-      await fetch(`/api/proyectos/${projectId}/bootstrap`, { method: "POST" }).catch(() => {});
+    if (!projectId) {
+      router.push("/admin/proyectos");
+      return;
+    }
+    setError("");
+    setSaving(true);
+    try {
+      // Encola el lanzamiento completo (importar keywords del estudio al rank
+      // tracking + chequeo/TF-IDF + análisis de competidores) como un
+      // BootstrapRun en background — el endpoint solo crea el registro y
+      // dispara el job, responde casi al instante. El trabajo real (que puede
+      // tardar minutos) se sigue viendo desde el panel de la ficha del
+      // proyecto, con polling; navegar aquí no espera a que termine.
+      const res = await fetch(`/api/proyectos/${projectId}/bootstrap`, { method: "POST" });
+      if (!res.ok && res.status !== 409) {
+        const d = await res.json().catch(() => ({}));
+        setError(d.error ?? "No se pudo encolar el análisis inicial.");
+        return;
+      }
       if (runAudit) {
-        await fetch(`/api/proyectos/${projectId}/auditorias`, { method: "POST" }).catch(() => {});
+        const auditRes = await fetch(`/api/proyectos/${projectId}/auditorias`, { method: "POST" });
+        if (!auditRes.ok && auditRes.status !== 409) {
+          const d = await auditRes.json().catch(() => ({}));
+          setError(d.error ?? "No se pudo encolar la auditoría técnica.");
+          return;
+        }
       }
       router.push(`/admin/proyectos/${projectId}`);
-    } else {
-      router.push("/admin/proyectos");
+    } catch {
+      setError("Error de conexión. Inténtalo de nuevo.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -661,7 +681,7 @@ export default function ProjectWizard() {
                 disabled={saving}
                 className="inline-flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 disabled:opacity-50"
               >
-                <Check className="h-4 w-4" />
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 Crear y lanzar
               </button>
             )}

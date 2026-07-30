@@ -97,6 +97,7 @@ model Project {
   keywordStudies       KeywordStudy[]
   rankKeywords         RankKeyword[]
   geogridRuns          GeogridRun[]
+  bootstrapRuns        BootstrapRun[]
   todos                TodoItem[]
   copilotThreads       CopilotThread[]
   competitors          Competitor[]
@@ -248,6 +249,27 @@ model AuditRun {
   linkGraph       Json? // grafo de enlaces internos { url, links[] } (PageRank/enlazado M interno)
   errorMessage    String?
   pages           AuditPage[]
+
+  @@index([projectId, triggeredAt])
+}
+
+// "Lanzamiento completo" del proyecto (importar keywords de estudios al Rank
+// Tracking + chequeo de posición/TF-IDF + análisis de competidores), disparado
+// desde el paso final del wizard de alta o desde "Re-procesar proyecto" en la
+// ficha. Mismo patrón pending/running/completed/failed que AuditRun/GeogridRun
+// — se ejecuta en background (fire-and-forget + cron de respaldo) para no
+// bloquear la navegación mientras dura (puede tardar minutos con varias
+// keywords/competidores).
+model BootstrapRun {
+  id           String    @id @default(cuid())
+  projectId    String
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status       String    @default("pending") // pending | running | completed | failed
+  triggeredAt  DateTime  @default(now())
+  startedAt    DateTime?
+  completedAt  DateTime?
+  result       Json? // BootstrapResult serializado (contadores + errors[])
+  errorMessage String?
 
   @@index([projectId, triggeredAt])
 }

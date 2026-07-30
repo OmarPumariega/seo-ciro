@@ -5,11 +5,14 @@
  * auto-descubre — este nombre "-node" es solo una convención propia, no algo
  * que Next reconozca por sí solo).
  *
- * Cada 60s ejecuta tres jobs:
+ * Cada 60s ejecuta cuatro jobs:
  *   • Módulo 8 — procesa una AuditRun "pending" (crawler + PSI + GSC).
  *   • Módulo 5 — procesa las keywords de rank tracking cuya frecuencia
  *     programada (daily/weekly/monthly) se ha vencido.
  *   • Módulo 9 — procesa un geogrid "pending" (rejilla N×N de Maps SERP).
+ *   • Lanzamiento de proyecto — procesa un BootstrapRun "pending" (respaldo:
+ *     el disparo normal es fire-and-forget desde el wizard/re-procesar, esto
+ *     solo cubre el caso de que el proceso se reiniciara a mitad).
  * Intervalo corto a propósito: el usuario pulsa "Ejecutar auditoría ahora" y
  * espera viendo la UI; varios minutos de latencia se sentirían rotos. (El
  * rank tracking manual es síncrono y no pasa por aquí.)
@@ -42,10 +45,17 @@ export async function register() {
   const g = globalThis as GlobalWithTimer;
   if (g[TIMER_GLOBAL_KEY]) return; // ya arrancado (hot-reload / re-entrada)
 
-  const [{ runAuditJob }, { runRankJob }, { runGeogridJob }, { checkSpendNotifications }] = await Promise.all([
+  const [
+    { runAuditJob },
+    { runRankJob },
+    { runGeogridJob },
+    { runBootstrapJob },
+    { checkSpendNotifications },
+  ] = await Promise.all([
     import("@/lib/audit/job"),
     import("@/lib/rank/job"),
     import("@/lib/geogrid/job"),
+    import("@/lib/projects/bootstrap-job"),
     import("@/lib/notifications/notify"),
   ]);
 
@@ -67,6 +77,12 @@ export async function register() {
       if (geo.processed > 0) console.log(`[geogrid] procesados=${geo.processed}`);
     } catch (e) {
       console.error("[geogrid] error en run:", e);
+    }
+    try {
+      const bootstrap = await runBootstrapJob();
+      if (bootstrap.processed > 0) console.log(`[bootstrap] procesadas=${bootstrap.processed}`);
+    } catch (e) {
+      console.error("[bootstrap] error en run:", e);
     }
     // Aviso de gasto (tope DataForSEO). Dedupe por día → un aviso/día como máx.
     try {
