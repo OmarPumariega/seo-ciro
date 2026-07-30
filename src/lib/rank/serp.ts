@@ -1,5 +1,6 @@
 import { postTask } from "@/lib/dataforseo/client";
-import { saveSerpCache, parseSerpExtras, type CachedSerpItem } from "@/lib/dataforseo/serp-cache";
+import { getCachedSerpEntry, saveSerpCache, parseSerpExtras, type CachedSerpItem } from "@/lib/dataforseo/serp-cache";
+import { madridDayBounds } from "@/lib/rank/day-guard";
 
 // Cliente de SERP de DataForSEO (Módulo 5 — Rank Tracking). Llama al
 // endpoint Live Advanced de orgánicos de Google y localiza en qué posición
@@ -63,6 +64,53 @@ type OrganicItem = {
   description?: string;
 };
 
+// Forma común de un item posicionable, sea que venga fresco de la API (ya
+// filtrado a type:"organic") o de una fila de SerpCache — permite compartir
+// la lógica de "mejor posición de un dominio" entre ambos caminos.
+type MatchableItem = {
+  domain: string;
+  position: number | null;
+  url: string | null;
+  title: string | null;
+  description: string | null;
+};
+
+// El dominio puede aparecer varias veces (varias URLs del mismo dominio). Nos
+// quedamos con la mejor posición (más baja = más arriba).
+function bestMatchFrom(items: MatchableItem[], domain: string): SerpRank {
+  let bestPosition: number | null = null;
+  let bestUrl: string | null = null;
+  let bestTitle: string | null = null;
+  let bestDescription: string | null = null;
+  for (const item of items) {
+    if (!domainMatches(item.domain, domain)) continue;
+    if (item.position === null) continue;
+    if (bestPosition === null || item.position < bestPosition) {
+      bestPosition = item.position;
+      bestUrl = item.url;
+      bestTitle = item.title;
+      bestDescription = item.description;
+    }
+  }
+  return { position: bestPosition, url: bestUrl, title: bestTitle, description: bestDescription };
+}
+
+function buildResultFromMatchable(
+  items: MatchableItem[],
+  projectDomain: string,
+  competitorDomains: string[]
+): SerpResult {
+  const competitors: Record<string, SerpRank> = {};
+  for (const domain of competitorDomains) {
+    competitors[domain] = bestMatchFrom(items, domain);
+  }
+  return {
+    rank: bestMatchFrom(items, projectDomain),
+    costUsd: null, // servido desde caché — gratis
+    competitors,
+  };
+}
+
 export async function checkSerpRank(params: {
   keyword: string;
   locationCode: number;
@@ -77,6 +125,33 @@ export async function checkSerpRank(params: {
   const { keyword, locationCode, languageCode, device, projectDomain } = params;
   const depth = params.depth ?? DEFAULT_DEPTH;
   const competitorDomains = params.competitorDomains ?? [];
+
+  // Reutiliza el SERP de HOY si otro módulo (TF-IDF, "Optimizar URL
+  // existente") ya lo pagó para esta misma keyword+ubicación+idioma+
+  // dispositivo — mismo dato, mismo día, coste cero. Solo aplica a depth<=10:
+  // el caché nunca guarda más de top-10, así que para depth mayor SIEMPRE se
+  // paga fresco (si no, un dominio que solo aparece más abajo del top-10
+  // parecería "no encontrado" cuando en realidad la llamada real sí lo vería).
+  if (depth <= 10) {
+    const { start: todayStart } = madridDayBounds();
+    const cachedEntry = await getCachedSerpEntry({
+      keyword,
+      locationCode,
+      languageCode,
+      device,
+      freshAfter: todayStart,
+    });
+    if (cachedEntry && cachedEntry.results.length > 0) {
+      const cachedItems: MatchableItem[] = cachedEntry.results.map((c) => ({
+        domain: c.domain,
+        position: c.position ?? null,
+        url: c.url || null,
+        title: c.title || null,
+        description: c.description ?? null,
+      }));
+      return buildResultFromMatchable(cachedItems, projectDomain, competitorDomains);
+    }
+  }
 
   const task = await postTask(
     "/v3/serp/google/organic/live/advanced",
@@ -94,7 +169,18 @@ export async function checkSerpRank(params: {
   const resultArr = Array.isArray(task.result) ? (task.result as Array<Record<string, unknown>>) : [];
   const resultObj = resultArr[0] ?? {};
   const allItems = Array.isArray(resultObj.items) ? (resultObj.items as Array<Record<string, unknown>>) : [];
-  const organicItems = allItems;
+  const organicItems: MatchableItem[] = [];
+  for (const raw of allItems) {
+    const item = raw as OrganicItem;
+    if (item.type !== "organic") continue;
+    organicItems.push({
+      domain: typeof item.domain === "string" ? item.domain : "",
+      position: typeof item.rank_absolute === "number" ? item.rank_absolute : null,
+      url: typeof item.url === "string" ? item.url : null,
+      title: typeof item.title === "string" ? item.title : null,
+      description: typeof item.description === "string" ? item.description : null,
+    });
+  }
 
   // Funcionalidades del SERP más allá de los orgánicos — misma respuesta ya
   // pagada, nunca se inspeccionaban (solo se miraba type:"organic"). Se
@@ -111,19 +197,13 @@ export async function checkSerpRank(params: {
   // description (snippet): llegan gratis en el mismo item que ya pagamos y
   // son justo lo que el TF-IDF necesita para mostrar "cómo posiciona Google
   // al competidor" como ejemplo de copy. Antes se tiraban.
-  const topForCache: CachedSerpItem[] = [];
-  for (const raw of organicItems) {
-    const item = raw as OrganicItem;
-    if (item.type !== "organic") continue;
-    topForCache.push({
-      url: typeof item.url === "string" ? item.url : "",
-      title: typeof item.title === "string" ? item.title : "",
-      domain: typeof item.domain === "string" ? item.domain : "",
-      position: typeof item.rank_absolute === "number" ? item.rank_absolute : undefined,
-      description: typeof item.description === "string" ? item.description : undefined,
-    });
-    if (topForCache.length >= 10) break;
-  }
+  const topForCache: CachedSerpItem[] = organicItems.slice(0, 10).map((item) => ({
+    url: item.url ?? "",
+    title: item.title ?? "",
+    domain: item.domain,
+    position: item.position ?? undefined,
+    description: item.description ?? undefined,
+  }));
   if (topForCache.length > 0) {
     await saveSerpCache({
       keyword,
@@ -137,38 +217,6 @@ export async function checkSerpRank(params: {
     });
   }
 
-  // El dominio puede aparecer varias veces (varias URLs del mismo dominio).
-  // Nos quedamos con la mejor posición (rank_absolute más bajo = más arriba).
-  function bestMatch(domain: string): SerpRank {
-    let bestPosition: number | null = null;
-    let bestUrl: string | null = null;
-    let bestTitle: string | null = null;
-    let bestDescription: string | null = null;
-    for (const raw of organicItems) {
-      const item = raw as OrganicItem;
-      if (item.type !== "organic") continue;
-      const itemDomain = typeof item.domain === "string" ? item.domain : "";
-      if (!domainMatches(itemDomain, domain)) continue;
-      const pos = typeof item.rank_absolute === "number" ? item.rank_absolute : null;
-      if (pos === null) continue;
-      if (bestPosition === null || pos < bestPosition) {
-        bestPosition = pos;
-        bestUrl = typeof item.url === "string" ? item.url : null;
-        bestTitle = typeof item.title === "string" ? item.title : null;
-        bestDescription = typeof item.description === "string" ? item.description : null;
-      }
-    }
-    return { position: bestPosition, url: bestUrl, title: bestTitle, description: bestDescription };
-  }
-
-  const competitors: Record<string, SerpRank> = {};
-  for (const domain of competitorDomains) {
-    competitors[domain] = bestMatch(domain);
-  }
-
-  return {
-    rank: bestMatch(projectDomain),
-    costUsd: typeof task.cost === "number" ? task.cost : null,
-    competitors,
-  };
+  const result = buildResultFromMatchable(organicItems, projectDomain, competitorDomains);
+  return { ...result, costUsd: typeof task.cost === "number" ? task.cost : null };
 }

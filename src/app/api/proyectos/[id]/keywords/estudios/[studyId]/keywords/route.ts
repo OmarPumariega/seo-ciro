@@ -40,6 +40,19 @@ export async function POST(
     return NextResponse.json({ error: "Cuerpo de la petición inválido" }, { status: 400 });
   }
 
+  // Ubicación/idioma REALES de la fuente (p.ej. Competidores analizó con una
+  // ubicación local distinta a la del estudio "General"). Si no vienen, cae
+  // al comportamiento anterior (ubicación del propio estudio) — correcto para
+  // "pegar lista"/sugerencias, que sí son de la ubicación del estudio.
+  const rawSourceLocation = Number(body.locationCode);
+  const sourceLocationCode = Number.isInteger(rawSourceLocation) && rawSourceLocation > 0 ? rawSourceLocation : null;
+  const sourceLanguageCode =
+    typeof body.languageCode === "string" && /^[a-z]{2}$/i.test(body.languageCode)
+      ? body.languageCode.toLowerCase()
+      : null;
+  const cacheLocationCode = sourceLocationCode ?? study.locationCode;
+  const cacheLanguageCode = sourceLanguageCode ?? study.languageCode;
+
   const rawItems = Array.isArray(body.items) ? (body.items as ItemIn[]) : [];
   // Normaliza, dedupe dentro del lote y descarta vacíos.
   const seen = new Set<string>();
@@ -91,7 +104,7 @@ export async function POST(
         },
       ])
     );
-    await upsertCache(toCreate.map((i) => i.keyword), cacheData, study.languageCode, study.locationCode);
+    await upsertCache(toCreate.map((i) => i.keyword), cacheData, cacheLanguageCode, cacheLocationCode);
     await recomputeStudyPriorities(studyId);
   }
 

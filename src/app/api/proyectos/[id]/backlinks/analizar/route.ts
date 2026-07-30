@@ -20,9 +20,16 @@ import { BACKLINKS_LIST_DEFAULT_LIMIT } from "@/lib/dataforseo/pricing";
 // (domain_from_rank desc) primero.
 const LIMIT_OPTIONS = [20, 50, 100, 200, 500] as const;
 
+// Mismo criterio de frescura (7 días) que Competidores — evita re-pagar un
+// perfil de backlinks ya analizado hace poco, especialmente caro con "Todos".
+const BACKLINKS_FRESH_MS = 7 * 24 * 60 * 60 * 1000;
+
 // Analiza el perfil de backlinks de un dominio (el del proyecto o un
 // competidor). PAGA (summary + backlinks, un producto de DataForSEO aparte
-// del resto de la app — ver dataforseo.ts). Crea un BacklinkSnapshot
+// del resto de la app — ver dataforseo.ts) — salvo que ya haya un
+// BacklinkSnapshot de hace menos de 7 días que cubra al menos el `limit`
+// pedido, en cuyo caso se devuelve gratis. "Todos" siempre paga fresco (ya
+// tiene su propio aviso de coste alto en la UI). Crea un BacklinkSnapshot
 // (acumula tendencia). Ver los resultados después es gratis (lee el último
 // snapshot).
 export async function POST(
@@ -51,6 +58,23 @@ export async function POST(
   const rawLimit = Number(body.limit);
   const limit =
     !wantsAll && (LIMIT_OPTIONS as readonly number[]).includes(rawLimit) ? rawLimit : BACKLINKS_LIST_DEFAULT_LIMIT;
+
+  // Guard de frescura: si ya hay un snapshot de hace menos de 7 días que
+  // cubre al menos el límite pedido, se devuelve gratis. "Todos" queda fuera
+  // a propósito — es una acción explícita y ya avisada de coste alto en la
+  // UI, y reutilizar un snapshot parcial aquí podría "quedarse corto" sin que
+  // el usuario lo note.
+  if (!wantsAll) {
+    const cutoff = new Date(Date.now() - BACKLINKS_FRESH_MS);
+    const fresh = await prisma.backlinkSnapshot.findFirst({
+      where: { projectId: id, domain, fetchedAt: { gt: cutoff } },
+      orderBy: { fetchedAt: "desc" },
+    });
+    const freshCount = Array.isArray(fresh?.topBacklinks) ? (fresh.topBacklinks as unknown[]).length : 0;
+    if (fresh && freshCount >= limit) {
+      return NextResponse.json({ ...fresh, fromCache: true }, { status: 201 });
+    }
+  }
 
   try {
     await assertWithinSpendLimit(id);

@@ -10,6 +10,8 @@ export type TrackedKeywordMatch = {
   keyword: string;
   lastPosition: number | null;
   bestPosition: number | null;
+  locationCode: number;
+  languageCode: string;
 };
 
 export async function findTrackedKeywordForUrl(
@@ -26,7 +28,7 @@ export async function findTrackedKeywordForUrl(
     select: {
       url: true,
       position: true,
-      rankKeyword: { select: { keyword: true, bestPosition: true } },
+      rankKeyword: { select: { keyword: true, bestPosition: true, locationCode: true, languageCode: true } },
     },
   });
 
@@ -37,5 +39,7 @@ export async function findTrackedKeywordForUrl(
     keyword: match.rankKeyword.keyword,
     lastPosition: match.position,
     bestPosition: match.rankKeyword.bestPosition,
+    locationCode: match.rankKeyword.locationCode,
+    languageCode: match.rankKeyword.languageCode,
   };
 }

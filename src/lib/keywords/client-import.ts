@@ -16,7 +16,13 @@ export type ImportableKeyword = {
 export async function importKeywordsToDefaultStudy(
   projectId: string,
   source: string,
-  items: ImportableKeyword[]
+  items: ImportableKeyword[],
+  // Ubicación/idioma REALES de donde vienen las métricas (p.ej. la elegida en
+  // el LocationPicker de Competidores al analizar). Si no se indica, el
+  // endpoint usa la del estudio "General" (comportamiento anterior) — pero
+  // cuando la fuente usó otra ubicación, hay que pasarla para no cachear el
+  // volumen de esa ubicación como si fuera el de la del estudio.
+  sourceLocation?: { locationCode: number; languageCode: string }
 ): Promise<{ ok: true; added: number; studyId: string } | { ok: false; error: string }> {
   const defaultRes = await fetch(`/api/proyectos/${projectId}/keywords/estudios/default`, {
     method: "POST",
@@ -38,6 +44,8 @@ export async function importKeywordsToDefaultStudy(
         difficulty: k.difficulty ?? null,
         source,
       })),
+      locationCode: sourceLocation?.locationCode,
+      languageCode: sourceLocation?.languageCode,
     }),
   });
   const data = await addRes.json();

@@ -41,7 +41,11 @@ export async function getOrComputeTfidfResult(params: {
 
   await assertWithinSpendLimit(projectId); // lanza DataForSeoSpendLimitError si aplica
 
-  const serp = await fetchTopOrganic({ keyword, locationCode, languageCode }); // lanza DataForSeoError si aplica
+  // Usa la keyword NORMALIZADA (igual que RankKeyword.keyword) para que el
+  // lookup de SerpCache haga match aunque el usuario la haya escrito con
+  // mayúsculas/espaciado distinto — si no, un caché ya pagado por Rank
+  // Tracking no se encontraría por una comparación de string exacta.
+  const serp = await fetchTopOrganic({ keyword: normalized, locationCode, languageCode }); // lanza DataForSeoError si aplica
   if (serp.results.length === 0) {
     throw new TfidfNoResultsError("La búsqueda no devolvió resultados orgánicos para esta keyword.");
   }

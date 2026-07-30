@@ -76,6 +76,7 @@ export async function getCachedSerp(params: {
   locationCode: number;
   languageCode: string;
   device: string;
+  freshAfter?: Date;
 }): Promise<CachedSerpItem[] | null> {
   const row = await getCachedSerpEntry(params);
   return row?.results ?? null;
@@ -83,13 +84,17 @@ export async function getCachedSerp(params: {
 
 // Igual que getCachedSerp pero devolviendo también las funcionalidades del
 // SERP (PAA/related searches/featured snippet) — para TF-IDF y Rank Tracking.
+// `freshAfter` permite a un caller exigir un corte más estricto que el TTL de
+// 7 días por defecto (p.ej. Rank Tracking solo acepta caché de HOY, no de
+// hace días, aunque siga "fresco" para TF-IDF).
 export async function getCachedSerpEntry(params: {
   keyword: string;
   locationCode: number;
   languageCode: string;
   device: string;
+  freshAfter?: Date;
 }): Promise<CachedSerpEntry | null> {
-  const cutoff = new Date(Date.now() - TTL_MS);
+  const cutoff = params.freshAfter ?? new Date(Date.now() - TTL_MS);
   const row = await prisma.serpCache.findFirst({
     where: {
       keyword: params.keyword,

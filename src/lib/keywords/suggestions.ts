@@ -1,6 +1,7 @@
 import { postTask } from "@/lib/dataforseo/client";
 import { mapIntent, flattenMonthlySearches, type IntentValue, type Competition } from "@/lib/keywords/dataforseo";
 import { upsertCache } from "@/lib/keywords/cache";
+import { normalizeKeyword } from "@/lib/keywords/normalize";
 
 // Sugerencias de keywords (Módulo 1, modo Planificador). A partir de una
 // keyword semilla, DataForSEO Labs devuelve keywords relacionadas con sus
@@ -52,8 +53,13 @@ export async function fetchSuggestions(params: {
   const cacheData = new Map<string, { searchVolume: number | null; competition: string | null; cpc: number | null; intent: string | null; monthlySearches: number[] | null }>();
 
   for (const item of rawItems) {
-    const kw = typeof item.keyword === "string" ? item.keyword : null;
-    if (!kw) continue;
+    const rawKw = typeof item.keyword === "string" ? item.keyword : null;
+    if (!rawKw) continue;
+    // Normalizada igual que el resto de escrituras en KeywordDataCache — si
+    // no, una keyword con distinto casing/espaciado al que produce
+    // normalizeKeyword() queda huérfana en caché y se paga de nuevo en el
+    // siguiente lookup (pegar lista, resolver).
+    const kw = normalizeKeyword(rawKw);
     const ki = (item.keyword_info ?? {}) as Record<string, unknown>;
     const kp = (item.keyword_properties ?? {}) as Record<string, unknown>;
     const si = (item.search_intent_info ?? {}) as Record<string, unknown>;

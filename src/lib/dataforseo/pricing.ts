@@ -108,3 +108,13 @@ export function backlinkAnalysisCostUsd(limit = BACKLINKS_LIST_DEFAULT_LIMIT): n
   const list = BACKLINKS_LIST_TASK_COST_USD + limit * BACKLINKS_LIST_ITEM_COST_USD;
   return Math.round((summary + list) * 1000) / 1000;
 }
+
+// On-Page API (instant_pages), análisis on-page de una página suelta
+// (Competidores → "Analizar página"). Precio verificado contra una llamada
+// real a la API con enable_javascript:true (necesario para ver páginas de
+// competidores que dependen de JS): $0.0015/página — el coste real sigue
+// siendo el que devuelve la API (registrado en ApiUsageLog).
+export const ONPAGE_ANALYSIS_COST_USD = 0.0015;
+export function onPageAnalysisCostUsd(): number {
+  return ONPAGE_ANALYSIS_COST_USD;
+}
