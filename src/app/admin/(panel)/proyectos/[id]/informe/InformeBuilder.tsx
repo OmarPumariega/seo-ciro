@@ -1005,7 +1005,7 @@ export default function InformeBuilder({ projectId, data, initialConfig, initial
             <Link href={data.nextHref} className="p-1.5 text-gray-500 hover:text-gray-900 hover:bg-gray-50 rounded-md" title="Mes siguiente"><ChevronRight className="h-4 w-4" /></Link>
           )}
         </div>
-        <PrintButton className="w-full" />
+        <PrintButton className="w-full" projectName={data.project.name} />
 
         {/* Panel de control: secciones activables + reordenables */}
         <div className="bg-white rounded-xl border border-gray-200 p-4">
