@@ -72,6 +72,7 @@ export async function POST(
       messages: [...history, userMessage],
     });
   } catch (error) {
+    console.error("[copilot] error del LLM:", error);
     return NextResponse.json({ error: friendlyLlmErrorMessage(error) }, { status: 502 });
   }
 
@@ -79,31 +80,46 @@ export async function POST(
     return NextResponse.json({ error: "Sin respuesta del modelo" }, { status: 502 });
   }
 
-  const assistantMessage: CopilotMessage = { role: "assistant", content: reply.content };
-  const allMessages = [...history, userMessage, assistantMessage];
+  // Red de seguridad: la llamada al LLM ya está cubierta arriba, pero el
+  // guardado del hilo no lo estaba — un fallo ahí escapaba sin capturar y el
+  // frontend se quedaba "colgado" sin ningún mensaje.
+  try {
+    const assistantMessage: CopilotMessage = { role: "assistant", content: reply.content };
+    const allMessages = [...history, userMessage, assistantMessage];
 
-  if (resolvedThreadId) {
-    await prisma.copilotThread.update({
-      where: { id: resolvedThreadId },
-      data: { messages: allMessages },
-    });
-  } else {
-    const title = message.length > 40 ? message.slice(0, 40).trimEnd() + "…" : message;
-    const created = await prisma.copilotThread.create({
-      data: { projectId: id, title, messages: allMessages },
-    });
-    resolvedThreadId = created.id;
+    if (resolvedThreadId) {
+      await prisma.copilotThread.update({
+        where: { id: resolvedThreadId },
+        data: { messages: allMessages },
+      });
+    } else {
+      const title = message.length > 40 ? message.slice(0, 40).trimEnd() + "…" : message;
+      const created = await prisma.copilotThread.create({
+        data: { projectId: id, title, messages: allMessages },
+      });
+      resolvedThreadId = created.id;
+    }
+
+    // No bloquea la respuesta: el hilo ya está guardado, un fallo al
+    // registrar el coste no debe impedir que el usuario vea la respuesta.
+    try {
+      await logApiUsage({
+        projectId: id,
+        endpoint: "copilot",
+        model: reply.model,
+        usage: reply.usage,
+      });
+    } catch (error) {
+      console.error("[copilot] logApiUsage falló tras respuesta exitosa:", error);
+    }
+
+    return NextResponse.json(
+      { threadId: resolvedThreadId, message: reply.content },
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error("[copilot] error inesperado:", error);
+    const errorMessage = error instanceof Error ? error.message : "Error inesperado";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
-
-  await logApiUsage({
-    projectId: id,
-    endpoint: "copilot",
-    model: reply.model,
-    usage: reply.usage,
-  });
-
-  return NextResponse.json(
-    { threadId: resolvedThreadId, message: reply.content },
-    { status: 201 }
-  );
 }

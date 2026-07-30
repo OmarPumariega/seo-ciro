@@ -115,21 +115,38 @@ export default function TitulosMetaView({ projectId }: { projectId: string }) {
     setLoading(true);
     setCurrent(null);
 
-    const res = await fetch(`/api/proyectos/${projectId}/titulos-meta`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url, keyword: keyword || undefined }),
-    });
-    const data = await res.json();
-    setLoading(false);
+    // Timeout defensivo: si OpenRouter tarda demasiado, el usuario ve un
+    // error accionable en vez de un spinner girando sin fin ni forma de
+    // reintentar.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45000);
 
-    if (!res.ok) {
-      setError(data.error ?? "Error al generar los títulos y meta descripciones");
-      return;
+    try {
+      const res = await fetch(`/api/proyectos/${projectId}/titulos-meta`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, keyword: keyword || undefined }),
+        signal: controller.signal,
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error ?? "Error al generar los títulos y meta descripciones");
+        return;
+      }
+
+      setCurrent(data);
+      setHistory((prev) => [data, ...prev]);
+    } catch (err) {
+      setError(
+        err instanceof DOMException && err.name === "AbortError"
+          ? "La generación está tardando demasiado. Inténtalo de nuevo."
+          : "Error de conexión. Inténtalo de nuevo."
+      );
+    } finally {
+      clearTimeout(timeout);
+      setLoading(false);
     }
-
-    setCurrent(data);
-    setHistory((prev) => [data, ...prev]);
   }
 
   return (

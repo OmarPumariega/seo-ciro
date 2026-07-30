@@ -93,48 +93,65 @@ export async function POST(
       ? Math.round(targetWordsRaw)
       : DEFAULT_TARGET_WORDS[type];
 
-  const client = await getOpenRouterClient();
-  const model = await getDefaultOpenRouterModel();
-
-  let completion;
+  // Red de seguridad: cualquier excepción no prevista en este bloque
+  // (resolución del cliente/modelo de OpenRouter, guardado en BD) escapaba
+  // sin capturar y el frontend se quedaba "colgado" sin ningún mensaje —
+  // mismo bug encontrado y arreglado en Título y Meta.
   try {
-    completion = await client.chat.completions.create({
-      model,
-      temperature: 0.7,
-      messages: [
-        { role: "system", content: buildSystemPrompt(type, targetWords) },
-        { role: "user", content: buildUserMessage({ topic, keyword, targetUrl, internalLinks, tfidfTerms }) },
-      ],
+    const client = await getOpenRouterClient();
+    const model = await getDefaultOpenRouterModel();
+
+    let completion;
+    try {
+      completion = await client.chat.completions.create({
+        model,
+        temperature: 0.7,
+        messages: [
+          { role: "system", content: buildSystemPrompt(type, targetWords) },
+          { role: "user", content: buildUserMessage({ topic, keyword, targetUrl, internalLinks, tfidfTerms }) },
+        ],
+      });
+    } catch (error) {
+      console.error("[contenido] error del LLM:", error);
+      return NextResponse.json({ error: friendlyLlmErrorMessage(error) }, { status: 502 });
+    }
+
+    const content = completion.choices[0]?.message?.content;
+    if (!content) {
+      return NextResponse.json({ error: "Sin respuesta del modelo" }, { status: 502 });
+    }
+
+    const generation = await prisma.contentGeneration.create({
+      data: {
+        projectId: id,
+        type,
+        topic,
+        keyword,
+        targetUrl,
+        internalLinks: internalLinks ?? null,
+        content,
+        wordCount: countWords(content),
+        model,
+      },
     });
+
+    // No bloquea la respuesta: la generación ya está guardada, un fallo al
+    // registrar el coste no debe impedir que el usuario la vea.
+    try {
+      await logApiUsage({
+        projectId: id,
+        endpoint: "modulo7.contenido",
+        model,
+        usage: completion.usage,
+      });
+    } catch (error) {
+      console.error("[contenido] logApiUsage falló tras generación exitosa:", error);
+    }
+
+    return NextResponse.json(generation, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ error: friendlyLlmErrorMessage(error) }, { status: 502 });
+    console.error("[contenido] error inesperado:", error);
+    const message = error instanceof Error ? error.message : "Error inesperado al generar";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  const content = completion.choices[0]?.message?.content;
-  if (!content) {
-    return NextResponse.json({ error: "Sin respuesta del modelo" }, { status: 502 });
-  }
-
-  const generation = await prisma.contentGeneration.create({
-    data: {
-      projectId: id,
-      type,
-      topic,
-      keyword,
-      targetUrl,
-      internalLinks: internalLinks ?? null,
-      content,
-      wordCount: countWords(content),
-      model,
-    },
-  });
-
-  await logApiUsage({
-    projectId: id,
-    endpoint: "modulo7.contenido",
-    model,
-    usage: completion.usage,
-  });
-
-  return NextResponse.json(generation, { status: 201 });
 }

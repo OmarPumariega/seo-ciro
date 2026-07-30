@@ -41,29 +41,45 @@ export async function POST(
       })),
     });
   } catch (error) {
+    console.error("[estructura] error del LLM:", error);
     return NextResponse.json({ error: friendlyLlmErrorMessage(error) }, { status: 502 });
   }
 
-  const updated = await prisma.keywordStudy.update({
-    where: { id: studyId },
-    data: {
-      structure: result.structure as unknown as Prisma.InputJsonValue,
+  // Red de seguridad: la llamada al LLM ya está cubierta arriba, pero el
+  // guardado en BD no lo estaba — un fallo ahí escapaba sin capturar y el
+  // frontend se quedaba "colgado" sin ningún mensaje.
+  try {
+    const updated = await prisma.keywordStudy.update({
+      where: { id: studyId },
+      data: {
+        structure: result.structure as unknown as Prisma.InputJsonValue,
+        structureModel: result.model,
+      },
+    });
+
+    // No bloquea la respuesta: la estructura ya está guardada, un fallo al
+    // registrar el coste no debe impedir que el usuario la vea. Es
+    // OpenRouter, no DataForSEO: el helper existente aplica tal cual.
+    try {
+      await logApiUsage({
+        projectId: id,
+        endpoint: "modulo1.estructura",
+        model: result.model,
+        usage: result.usage,
+      });
+    } catch (error) {
+      console.error("[estructura] logApiUsage falló tras generación exitosa:", error);
+    }
+
+    // Devolvemos solo lo lean de la estructura, no el estudio entero otra vez.
+    return NextResponse.json({
+      structure: result.structure,
       structureModel: result.model,
-    },
-  });
-
-  // Es OpenRouter, no DataForSEO: el helper existente aplica tal cual.
-  await logApiUsage({
-    projectId: id,
-    endpoint: "modulo1.estructura",
-    model: result.model,
-    usage: result.usage,
-  });
-
-  // Devolvemos solo lo lean de la estructura, no el estudio entero otra vez.
-  return NextResponse.json({
-    structure: result.structure,
-    structureModel: result.model,
-    updatedAt: updated.updatedAt,
-  });
+      updatedAt: updated.updatedAt,
+    });
+  } catch (error) {
+    console.error("[estructura] error inesperado:", error);
+    const message = error instanceof Error ? error.message : "Error inesperado al generar";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

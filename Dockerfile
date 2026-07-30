@@ -61,6 +61,12 @@ RUN npx prisma generate
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/next.config.ts ./
 
+# Contenido leído del disco en runtime (no compilado por Next) — p.ej.
+# docs/seo-rules.md, que loadSeoRules() (Módulo 3) lee vía fs.readFile con
+# process.cwd(). Sin esto, ese módulo lanzaba ENOENT en producción (el
+# archivo nunca llegaba a la imagen final) mientras funcionaba en local.
+COPY --from=builder /app/docs ./docs
+
 EXPOSE 3000
 
 CMD ["sh", "-c", "npx prisma migrate deploy && npm run start"]

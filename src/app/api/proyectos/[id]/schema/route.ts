@@ -76,6 +76,9 @@ export async function POST(
 
   let jsonLd: Record<string, unknown>;
   let model: string | null = null;
+  // Coste a registrar tras guardar la generación (ver nota de logApiUsage
+  // más abajo) — solo se rellena en la rama LLM.
+  let usageToLog: { model: string; usage: Awaited<ReturnType<typeof buildLlmJsonLd>>["usage"] } | null = null;
 
   if (entry.generator === "deterministic") {
     try {
@@ -93,29 +96,47 @@ export async function POST(
     }
     jsonLd = result.jsonLd;
     model = result.model;
-
-    await logApiUsage({
-      projectId: id,
-      endpoint: `modulo4.schema.${type.toLowerCase()}`,
-      model: result.model,
-      usage: result.usage,
-    });
+    usageToLog = { model: result.model, usage: result.usage };
   }
 
-  const { valid, errors } = validateJsonLd(type, jsonLd);
+  // Red de seguridad: de aquí en adelante ya no debería fallar, pero si algo
+  // inesperado lanza (BD, etc.), Next.js devolvía una respuesta no-JSON que
+  // el frontend no sabía interpretar — se quedaba "colgado" sin mensaje.
+  try {
+    const { valid, errors } = validateJsonLd(type, jsonLd);
 
-  const generation = await prisma.schemaGeneration.create({
-    data: {
-      projectId: id,
-      url,
-      suggestedType,
-      selectedType: type,
-      jsonLd: jsonLd as Prisma.InputJsonValue,
-      valid,
-      validationErrors: errors.length > 0 ? (errors as Prisma.InputJsonValue) : undefined,
-      model,
-    },
-  });
+    const generation = await prisma.schemaGeneration.create({
+      data: {
+        projectId: id,
+        url,
+        suggestedType,
+        selectedType: type,
+        jsonLd: jsonLd as Prisma.InputJsonValue,
+        valid,
+        validationErrors: errors.length > 0 ? (errors as Prisma.InputJsonValue) : undefined,
+        model,
+      },
+    });
 
-  return NextResponse.json(generation, { status: 201 });
+    // No bloquea la respuesta: la generación ya está guardada, un fallo al
+    // registrar el coste no debe impedir que el usuario la vea.
+    if (usageToLog) {
+      try {
+        await logApiUsage({
+          projectId: id,
+          endpoint: `modulo4.schema.${type.toLowerCase()}`,
+          model: usageToLog.model,
+          usage: usageToLog.usage,
+        });
+      } catch (error) {
+        console.error("[schema] logApiUsage falló tras generación exitosa:", error);
+      }
+    }
+
+    return NextResponse.json(generation, { status: 201 });
+  } catch (error) {
+    console.error("[schema] error inesperado:", error);
+    const message = error instanceof Error ? error.message : "Error inesperado al generar";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

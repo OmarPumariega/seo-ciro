@@ -60,42 +60,52 @@ export default function SchemaView({ projectId }: { projectId: string }) {
     setSuggestedType(null);
     setAnalyzing(true);
 
-    const res = await fetch(`/api/proyectos/${projectId}/schema/sugerencia`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
-    });
-    const data = await res.json();
-    setAnalyzing(false);
+    try {
+      const res = await fetch(`/api/proyectos/${projectId}/schema/sugerencia`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json();
 
-    if (!res.ok) {
-      setError(data.error ?? "Error al analizar la URL");
-      return;
+      if (!res.ok) {
+        setError(data.error ?? "Error al analizar la URL");
+        return;
+      }
+
+      setSuggestedType(data.suggestedType);
+      setSelectedType(data.suggestedType);
+    } catch {
+      setError("Error de conexión. Inténtalo de nuevo.");
+    } finally {
+      setAnalyzing(false);
     }
-
-    setSuggestedType(data.suggestedType);
-    setSelectedType(data.suggestedType);
   }
 
   async function handleGenerate() {
     setError("");
     setGenerating(true);
 
-    const res = await fetch(`/api/proyectos/${projectId}/schema`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url, type: selectedType }),
-    });
-    const data = await res.json();
-    setGenerating(false);
+    try {
+      const res = await fetch(`/api/proyectos/${projectId}/schema`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, type: selectedType }),
+      });
+      const data = await res.json();
 
-    if (!res.ok) {
-      setError(data.error ?? "Error al generar el schema");
-      return;
+      if (!res.ok) {
+        setError(data.error ?? "Error al generar el schema");
+        return;
+      }
+
+      setCurrent(data);
+      setHistory((prev) => [data, ...prev]);
+    } catch {
+      setError("Error de conexión. Inténtalo de nuevo.");
+    } finally {
+      setGenerating(false);
     }
-
-    setCurrent(data);
-    setHistory((prev) => [data, ...prev]);
   }
 
   function copyJsonLd() {
