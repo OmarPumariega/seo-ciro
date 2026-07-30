@@ -22,6 +22,7 @@ import {
   DEFAULT_TARGET_WORDS,
   type ContentType,
 } from "@/lib/seo/content";
+import { normalizeKeyword } from "@/lib/keywords/normalize";
 import OptimizeUrlPanel from "./OptimizeUrlPanel";
 
 type Generation = {
@@ -215,6 +216,37 @@ export default function ContentView({ projectId }: { projectId: string }) {
     };
   }, [projectId]);
 
+  // Auto-detección de TF-IDF ya calculado para el tema escrito, sin que el
+  // usuario tenga que pasar por el botón "Enviar a Contenido" del módulo
+  // TF-IDF. Solo actúa si `tfidfTerms` sigue vacío — nunca pisa el hand-off
+  // de sessionStorage ni lo que el usuario haya editado a mano. Reutiliza el
+  // mismo GET que ya usa el módulo TF-IDF (gratis, solo lectura).
+  useEffect(() => {
+    const trimmed = topic.trim();
+    if (!trimmed || tfidfTerms.trim()) return;
+    let cancelled = false;
+    const t = setTimeout(() => {
+      fetch(`/api/proyectos/${projectId}/tfidf`)
+        .then((r) => r.json())
+        .then((stored: { keyword: string; result: { topics: { text: string }[]; terms: { term: string }[] } }[]) => {
+          if (cancelled || !Array.isArray(stored)) return;
+          const match = stored.find((s) => s.keyword === normalizeKeyword(trimmed));
+          if (!match) return;
+          const lines = [
+            ...match.result.topics.slice(0, 20).map((t) => t.text),
+            ...match.result.terms.slice(0, 10).map((t) => t.term),
+          ];
+          setTfidfTerms(lines.join("\n"));
+        })
+        .catch(() => {});
+    }, 600);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topic, projectId]);
+
   // URLs ya presentes en el textarea (para marcar chips como añadidos).
   const addedUrls = useMemo(
     () => new Set(internalLinks.split("\n").map((l) => l.trim()).filter(Boolean)),
@@ -257,37 +289,42 @@ export default function ContentView({ projectId }: { projectId: string }) {
     setCompareTarget(null);
     setRestored(false);
 
-    const res = await fetch(`/api/proyectos/${projectId}/contenido`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type,
-        topic,
-        keyword: keyword || undefined,
-        targetUrl: targetUrl || undefined,
-        internalLinks: internalLinks || undefined,
-        tfidfTerms: tfidfTerms || undefined,
-        targetWords,
-      }),
-    });
-    const data = await res.json();
-    setLoading(false);
+    try {
+      const res = await fetch(`/api/proyectos/${projectId}/contenido`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type,
+          topic,
+          keyword: keyword || undefined,
+          targetUrl: targetUrl || undefined,
+          internalLinks: internalLinks || undefined,
+          tfidfTerms: tfidfTerms || undefined,
+          targetWords,
+        }),
+      });
+      const data = await res.json();
 
-    if (!res.ok) {
-      setError(data.error ?? "Error al generar el contenido");
-      return;
+      if (!res.ok) {
+        setError(data.error ?? "Error al generar el contenido");
+        return;
+      }
+
+      setCurrent(data);
+      setRestored(false);
+      setHistory((prev) => [data, ...prev]);
+      setGroups((prev) => {
+        const idx = prev.findIndex((g) => g.topic === data.topic);
+        if (idx === -1) return [{ topic: data.topic, versions: [data] }, ...prev];
+        const next = [...prev];
+        next[idx] = { ...next[idx], versions: [data, ...next[idx].versions] };
+        return next;
+      });
+    } catch {
+      setError("Error de conexión. Inténtalo de nuevo.");
+    } finally {
+      setLoading(false);
     }
-
-    setCurrent(data);
-    setRestored(false);
-    setHistory((prev) => [data, ...prev]);
-    setGroups((prev) => {
-      const idx = prev.findIndex((g) => g.topic === data.topic);
-      if (idx === -1) return [{ topic: data.topic, versions: [data] }, ...prev];
-      const next = [...prev];
-      next[idx] = { ...next[idx], versions: [data, ...next[idx].versions] };
-      return next;
-    });
   }
 
   function copyContent() {

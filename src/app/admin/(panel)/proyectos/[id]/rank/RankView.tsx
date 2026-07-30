@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import * as Select from "@radix-ui/react-select";
 import {
   Loader2,
@@ -61,6 +62,10 @@ type RankKeyword = {
   // Próximo escaneo automático calculado por el servidor (misma fórmula que
   // el cron) — null si la frecuencia es "manual" (sin auto-escaneo).
   nextScanAt: string | null;
+  // Precargados desde el mismo GET (gratis, ya en BD) — así la fila muestra
+  // un badge sin clic y expandirla no dispara ninguna llamada de red.
+  competitorPositions: CompetitorPosition[];
+  tfidfAvailable: boolean;
 };
 
 type SortKey = "keyword" | "volume" | "position" | "best" | "delta" | (string & {});
@@ -219,8 +224,6 @@ export default function RankView({ projectId }: { projectId: string }) {
   const [editingLoc, setEditingLoc] = useState<string | null>(null);
   const [history, setHistory] = useState<RankPosition[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [competitors, setCompetitors] = useState<CompetitorPosition[]>([]);
-  const [loadingCompetitors, setLoadingCompetitors] = useState(false);
   // Copy histórico expandible por fila: al seleccionar una fecha con title/
   // snippet se despliega el "cómo lo mostraba Google" en ese chequeo.
   const [copyExpanded, setCopyExpanded] = useState<string | null>(null);
@@ -311,32 +314,21 @@ export default function RankView({ projectId }: { projectId: string }) {
     }
   }
 
-  async function loadCompetitors(kwId: string) {
-    setLoadingCompetitors(true);
-    try {
-      const d: CompetitorPosition[] = await fetch(
-        `/api/proyectos/${projectId}/rank/keywords/${kwId}/competidores`
-      ).then((r) => r.json());
-      if (Array.isArray(d)) setCompetitors(d);
-    } finally {
-      setLoadingCompetitors(false);
-    }
-  }
-
-  // OJO: los efectos (fetch de historial/competidores) van en el cuerpo de
-  // la función, NUNCA dentro del updater de setSelectedId — React (Strict
-  // Mode, activo por defecto en `next dev`) puede invocar un updater dos
-  // veces para detectar side effects, lo que duplicaba las llamadas y
-  // producía condiciones de carrera: la fila expandía y volvía a colapsar
-  // sola en el segundo click, dependiendo de qué llamada resolviera última.
+  // OJO: el efecto (fetch de historial) va en el cuerpo de la función, NUNCA
+  // dentro del updater de setSelectedId — React (Strict Mode, activo por
+  // defecto en `next dev`) puede invocar un updater dos veces para detectar
+  // side effects, lo que duplicaba las llamadas y producía condiciones de
+  // carrera: la fila expandía y volvía a colapsar sola en el segundo click,
+  // dependiendo de qué llamada resolviera última. Los competidores YA NO se
+  // piden aquí: vienen precargados en `keywords[i].competitorPositions`
+  // desde el GET inicial (gratis, ya en BD) — expandir la fila es
+  // instantáneo, sin ninguna llamada de red.
   function selectKeyword(kwId: string) {
     const next = selectedId === kwId ? null : kwId;
     setSelectedId(next);
     setHistory([]);
-    setCompetitors([]);
     if (next) {
       loadHistory(next);
-      loadCompetitors(next);
     }
   }
 
@@ -430,8 +422,10 @@ export default function RankView({ projectId }: { projectId: string }) {
     }
     await loadKeywords();
 
+    // loadKeywords() ya refresca competitorPositions (viene en el mismo GET);
+    // solo el histórico de posiciones necesita su propio fetch.
     if (selectedId === kwId) {
-      await Promise.all([loadHistory(kwId), loadCompetitors(kwId)]);
+      await loadHistory(kwId);
     }
 
     // El guard "un chequeo por día natural" puede devolver la posición ya
@@ -1119,6 +1113,27 @@ export default function RankView({ projectId }: { projectId: string }) {
                             </button>
                           )}
                         </div>
+                        {(kw.competitorPositions.length > 0 || kw.tfidfAvailable) && (
+                          <div className="pl-5 flex items-center gap-1.5 mt-0.5">
+                            {kw.competitorPositions.length > 0 && (
+                              <span
+                                className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500"
+                                title="Competidores trackeados en este mismo SERP (gratis, expande la fila para verlos)"
+                              >
+                                {kw.competitorPositions.length} competidor{kw.competitorPositions.length === 1 ? "" : "es"}
+                              </span>
+                            )}
+                            {kw.tfidfAvailable && (
+                              <Link
+                                href={`/admin/proyectos/${projectId}/tfidf?keyword=${encodeURIComponent(kw.keyword)}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-700 hover:bg-violet-100 font-medium"
+                              >
+                                TF-IDF →
+                              </Link>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="py-2 px-3 text-right text-gray-600 tabular-nums whitespace-nowrap">
                         {kw.searchVolume === null ? <span className="text-gray-300">—</span> : kw.searchVolume.toLocaleString("es-ES")}
@@ -1334,9 +1349,7 @@ export default function RankView({ projectId }: { projectId: string }) {
                                 posición ya venía en la respuesta pagada para la keyword propia. */}
                             <div className="pt-2 border-t border-gray-100">
                               <p className="text-xs font-medium text-gray-600 mb-1.5">Competidores en este SERP</p>
-                              {loadingCompetitors ? (
-                                <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-                              ) : competitors.length === 0 ? (
+                              {kw.competitorPositions.length === 0 ? (
                                 <p className="text-xs text-gray-400">
                                   Sin competidores trackeados todavía (o el último chequeo fue anterior a esta
                                   función) — añádelos en la pestaña Competidores.
@@ -1344,7 +1357,7 @@ export default function RankView({ projectId }: { projectId: string }) {
                               ) : (
                                 <table className="w-full text-xs">
                                   <tbody>
-                                    {competitors.map((c) => {
+                                    {kw.competitorPositions.map((c) => {
                                       const hasCopy = Boolean(c.title || c.description);
                                       const key = `comp:${c.domain}`;
                                       const open = copyExpanded === key;

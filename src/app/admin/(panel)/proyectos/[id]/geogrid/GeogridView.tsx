@@ -149,8 +149,32 @@ function PointRankingPanel({
 }) {
   const [expandedDomain, setExpandedDomain] = useState<string | null>(null);
   const [keywordsByDomain, setKeywordsByDomain] = useState<Record<string, BusinessKeyword[]>>({});
+  const [freeDomains, setFreeDomains] = useState<Set<string>>(new Set());
   const [loadingDomain, setLoadingDomain] = useState<string | null>(null);
   const [kwError, setKwError] = useState("");
+
+  // Al seleccionar un punto, precarga en segundo plano (sin coste, nunca
+  // paga) las keywords de los negocios del pack que YA tienen un análisis
+  // reciente en Competidores — así se pintan solas al expandir, sin que el
+  // usuario tenga que pulsar "Ver keywords" para descubrir que era gratis.
+  useEffect(() => {
+    const domains = (point?.top ?? [])
+      .map((item) => item.domain)
+      .filter((d): d is string => Boolean(d));
+    if (domains.length === 0 || !runId) return;
+    let cancelled = false;
+    fetch(`/api/proyectos/${projectId}/geogrid/${runId}/keywords-negocio?domains=${domains.map(encodeURIComponent).join(",")}`)
+      .then((r) => r.json())
+      .then((data: Record<string, BusinessKeyword[]>) => {
+        if (cancelled || !data || typeof data !== "object") return;
+        setKeywordsByDomain((prev) => ({ ...prev, ...data }));
+        setFreeDomains((prev) => new Set([...prev, ...Object.keys(data)]));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [point, runId, projectId]);
 
   async function toggleKeywords(domain: string) {
     if (expandedDomain === domain) {
@@ -229,8 +253,15 @@ function PointRankingPanel({
                   {item.domain && (
                     <button
                       onClick={() => toggleKeywords(item.domain as string)}
-                      className="flex items-center gap-1 text-[11px] text-gray-500 hover:text-gray-900 shrink-0"
-                      title={`Ver keywords de ${item.domain} (~$${geogridBusinessKeywordsCostUsd().toFixed(2)})`}
+                      className={cn(
+                        "flex items-center gap-1 text-[11px] shrink-0",
+                        freeDomains.has(item.domain) ? "text-emerald-700 hover:text-emerald-900" : "text-gray-500 hover:text-gray-900"
+                      )}
+                      title={
+                        freeDomains.has(item.domain)
+                          ? `Ya disponible gratis (analizado antes en Competidores) — ${item.domain}`
+                          : `Ver keywords de ${item.domain} (~$${geogridBusinessKeywordsCostUsd().toFixed(2)})`
+                      }
                     >
                       {loadingDomain === item.domain ? (
                         <Loader2 className="h-3 w-3 animate-spin" />
@@ -238,6 +269,7 @@ function PointRankingPanel({
                         <Search className="h-3 w-3" />
                       )}
                       Ver keywords
+                      {freeDomains.has(item.domain) && <span className="text-[10px]">· gratis</span>}
                     </button>
                   )}
                 </div>

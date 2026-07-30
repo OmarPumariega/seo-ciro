@@ -93,20 +93,25 @@ export default function ArquitecturaView({
     if (!studyId) return;
     setGenerating(true);
     setError("");
-    const res = await fetch(`/api/proyectos/${projectId}/keywords/estudios/${studyId}/estructura`, {
-      method: "POST",
-    });
-    const data = await res.json();
-    setGenerating(false);
-    if (!res.ok) {
-      setError(data.error ?? "Error al generar la estructura");
-      return;
+    try {
+      const res = await fetch(`/api/proyectos/${projectId}/keywords/estudios/${studyId}/estructura`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Error al generar la estructura");
+        return;
+      }
+      setStudy((prev) =>
+        prev ? { ...prev, structure: data.structure, structureModel: data.structureModel, updatedAt: data.updatedAt } : prev
+      );
+      // Refresca la lista para que el badge "hasStructure" quede al día.
+      setStudies((prev) => prev.map((s) => (s.id === studyId ? { ...s, hasStructure: true } : s)));
+    } catch {
+      setError("Error de conexión. Inténtalo de nuevo.");
+    } finally {
+      setGenerating(false);
     }
-    setStudy((prev) =>
-      prev ? { ...prev, structure: data.structure, structureModel: data.structureModel, updatedAt: data.updatedAt } : prev
-    );
-    // Refresca la lista para que el badge "hasStructure" quede al día.
-    setStudies((prev) => prev.map((s) => (s.id === studyId ? { ...s, hasStructure: true } : s)));
   }
 
   const volumeByKeyword = new Map<string, number>(

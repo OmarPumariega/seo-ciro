@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Loader2, Search, ChevronDown, ChevronUp, FileSearch,
   ClipboardCopy, Check, Clock, List, ExternalLink, Send,
@@ -8,6 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 import LocationPicker, { type LocationValue } from "@/components/admin/LocationPicker";
 import ImportSuccessNotice from "@/components/admin/ImportSuccessNotice";
+import { normalizeKeyword } from "@/lib/keywords/normalize";
 
 type TfidfTerm = { term: string; tfidf: number; docs: number };
 type TopicGap = { text: string; coverage: number; urls: string[] };
@@ -55,6 +57,12 @@ type StoredResult = {
 type StoredSort = "alpha" | "best-position" | "worst-position" | "most-searches";
 
 export default function TfidfView({ projectId }: { projectId: string }) {
+  // Deep-link desde Keywords/Rank Tracking (?keyword=...): al llegar desde el
+  // badge "TF-IDF →" de otro módulo, se selecciona ese resultado ya calculado
+  // directamente, en vez de obligar a buscarlo en "Resultados disponibles".
+  const searchParams = useSearchParams();
+  const deepLinkKeyword = searchParams.get("keyword");
+
   const [keyword, setKeyword] = useState("");
   const [languageCode, setLanguageCode] = useState("es");
   const [location, setLocation] = useState<LocationValue>(null);
@@ -81,14 +89,18 @@ export default function TfidfView({ projectId }: { projectId: string }) {
         if (Array.isArray(d)) {
           setStored(d);
           if (d.length > 0 && !result) {
-            setResult(d[0].result);
-            setKeyword(d[0].keyword);
+            const deepLinkMatch = deepLinkKeyword
+              ? d.find((s) => s.keyword === normalizeKeyword(deepLinkKeyword))
+              : undefined;
+            const initial = deepLinkMatch ?? d[0];
+            setResult(initial.result);
+            setKeyword(initial.keyword);
           }
         }
       })
       .finally(() => setLoadingStored(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [projectId, deepLinkKeyword]);
 
   useEffect(() => {
     loadStored();

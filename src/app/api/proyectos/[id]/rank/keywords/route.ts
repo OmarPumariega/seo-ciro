@@ -56,6 +56,57 @@ export async function GET(
     volumeByKey.set(`${row.keyword}|${row.languageCode}|${row.locationCode}`, row.searchVolume);
   }
 
+  // Posiciones de competidores en el MISMO SERP (gratis, ya guardadas junto al
+  // chequeo propio) y disponibilidad de TF-IDF — se traen todas de una vez
+  // aquí para que la tabla las pinte sin ninguna llamada extra al expandir
+  // una fila (antes: un fetch por keyword al seleccionarla).
+  const keywordIds = keywords.map((k) => k.id);
+  const [competitorRows, tfidfRows] = keywordIds.length
+    ? await Promise.all([
+        prisma.rankCompetitorPosition.findMany({
+          where: { rankKeywordId: { in: keywordIds } },
+          orderBy: { checkedAt: "desc" },
+        }),
+        prisma.tfidfResult.findMany({
+          where: { projectId: id, keyword: { in: keywords.map((k) => k.keyword) } },
+          select: { keyword: true },
+        }),
+      ])
+    : [[], []];
+  // Última fila por (rankKeywordId, dominio) — mismo criterio que
+  // rank/keywords/[kwId]/competidores/route.ts.
+  const competitorsByKeyword = new Map<
+    string,
+    {
+      domain: string;
+      position: number | null;
+      url: string | null;
+      title: string | null;
+      description: string | null;
+      checkedAt: Date;
+    }[]
+  >();
+  const seenDomainPerKeyword = new Set<string>();
+  for (const row of competitorRows) {
+    const dedupeKey = `${row.rankKeywordId}|${row.competitorDomain}`;
+    if (seenDomainPerKeyword.has(dedupeKey)) continue;
+    seenDomainPerKeyword.add(dedupeKey);
+    const list = competitorsByKeyword.get(row.rankKeywordId) ?? [];
+    list.push({
+      domain: row.competitorDomain,
+      position: row.position,
+      url: row.url,
+      title: row.title,
+      description: row.description,
+      checkedAt: row.checkedAt,
+    });
+    competitorsByKeyword.set(row.rankKeywordId, list);
+  }
+  for (const list of competitorsByKeyword.values()) {
+    list.sort((a, b) => (a.position ?? Infinity) - (b.position ?? Infinity));
+  }
+  const tfidfSet = new Set(tfidfRows.map((r) => r.keyword));
+
   const withVolume = keywords.map((kw) => ({
     ...kw,
     searchVolume: volumeByKey.get(`${kw.keyword}|${kw.languageCode}|${kw.locationCode}`) ?? null,
@@ -69,6 +120,8 @@ export async function GET(
     // (findMostOverdueProject) para decidir cuándo está vencida, así la
     // fecha mostrada nunca miente sobre lo que realmente hará el job.
     nextScanAt: project ? computeNextScanAt(kw, project) : null,
+    competitorPositions: competitorsByKeyword.get(kw.id) ?? [],
+    tfidfAvailable: tfidfSet.has(kw.keyword),
   }));
 
   return NextResponse.json(withVolume);

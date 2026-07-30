@@ -1,7 +1,49 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db/prisma";
+import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
+
+type StudyWithKeywords = Prisma.KeywordStudyGetPayload<{ include: { keywords: true } }>;
+
+// Cruce gratis con TF-IDF y Rank Tracking (mismo patrón que
+// src/app/api/proyectos/[id]/tfidf/route.ts) — así el usuario ve, sin pulsar
+// nada, si una keyword del estudio ya tiene un TF-IDF calculado o ya está
+// trackeada con una posición conocida, en vez de tener que ir a buscarla a
+// mano en otro módulo. Compartido entre GET y PATCH: ambos devuelven el
+// estudio completo al frontend, que sustituye su estado con la respuesta.
+async function enrichStudy(projectId: string, study: StudyWithKeywords) {
+  const keywordList = study.keywords.map((k) => k.keyword);
+  const [tfidfRows, rankRows] = keywordList.length
+    ? await Promise.all([
+        prisma.tfidfResult.findMany({
+          where: { projectId, keyword: { in: keywordList } },
+          select: { keyword: true },
+        }),
+        prisma.rankKeyword.findMany({
+          where: { projectId, keyword: { in: keywordList } },
+          orderBy: { lastCheckedAt: "desc" },
+          select: { keyword: true, lastPosition: true },
+        }),
+      ])
+    : [[], []];
+  const tfidfSet = new Set(tfidfRows.map((r) => r.keyword));
+  // Si hay varias RankKeyword para la misma keyword (distinta ubicación/
+  // dispositivo), nos quedamos con la comprobada más reciente (ya viene
+  // ordenado desc).
+  const positionByKeyword = new Map<string, number | null>();
+  for (const rk of rankRows) {
+    if (!positionByKeyword.has(rk.keyword)) positionByKeyword.set(rk.keyword, rk.lastPosition);
+  }
+  return {
+    ...study,
+    keywords: study.keywords.map((k) => ({
+      ...k,
+      tfidfAvailable: tfidfSet.has(k.keyword),
+      rankPosition: positionByKeyword.get(k.keyword) ?? null,
+    })),
+  };
+}
 
 export async function GET(
   _req: NextRequest,
@@ -28,7 +70,7 @@ export async function GET(
     return NextResponse.json({ error: "Estudio no encontrado" }, { status: 404 });
   }
 
-  return NextResponse.json(study);
+  return NextResponse.json(await enrichStudy(id, study));
 }
 
 // Edita el nombre y/o las notas del estudio.
@@ -97,7 +139,7 @@ export async function PATCH(
       keywords: { orderBy: [{ priority: "desc" }, { searchVolume: "desc" }] },
     },
   });
-  return NextResponse.json(updated);
+  return NextResponse.json(await enrichStudy(id, updated));
 }
 
 // Borra el estudio. onDelete: Cascade en Keyword se encarga de sus keywords.

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import {
   Loader2,
   Sparkles,
@@ -37,6 +38,10 @@ type Keyword = {
   // lista" no la resuelve (el endpoint plano de volumen no la incluye).
   difficulty?: number | null;
   priority: number;
+  // Cruce gratis con TF-IDF y Rank Tracking (ya calculado/trackeado en otro
+  // módulo) — se pinta solo, sin que el usuario tenga que ir a buscarlo.
+  tfidfAvailable?: boolean;
+  rankPosition?: number | null;
 };
 
 type StructurePage = {
@@ -442,17 +447,22 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
   async function handleGenerateStructure() {
     setStructureError("");
     setGeneratingStructure(true);
-    const res = await fetch(`/api/proyectos/${projectId}/keywords/estudios/${current!.id}/estructura`, {
-      method: "POST",
-    });
-    const data = await res.json();
-    setGeneratingStructure(false);
-    if (!res.ok) {
-      setStructureError(data.error ?? "Error al generar la estructura");
-      return;
+    try {
+      const res = await fetch(`/api/proyectos/${projectId}/keywords/estudios/${current!.id}/estructura`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setStructureError(data.error ?? "Error al generar la estructura");
+        return;
+      }
+      setCurrent((prev) => (prev ? { ...prev, structure: data.structure, structureModel: data.structureModel, updatedAt: data.updatedAt } : prev));
+      loadStudies();
+    } catch {
+      setStructureError("Error de conexión. Inténtalo de nuevo.");
+    } finally {
+      setGeneratingStructure(false);
     }
-    setCurrent((prev) => (prev ? { ...prev, structure: data.structure, structureModel: data.structureModel, updatedAt: data.updatedAt } : prev));
-    loadStudies();
   }
 
   const tree = current?.structure?.pages ? buildTree(current.structure.pages) : [];
@@ -731,6 +741,8 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
                     <th className="font-medium py-2 px-2">CPC</th>
                     <th className="font-medium py-2 px-2">Dif.</th>
                     <th className="font-medium py-2 px-2">Intención</th>
+                    <th className="font-medium py-2 px-2">Posición</th>
+                    <th className="font-medium py-2 px-2">TF-IDF</th>
                     <th className="font-medium py-2 px-2 text-right">Prio.</th>
                     <th className="py-2 px-2 w-10"></th>
                   </tr>
@@ -766,6 +778,21 @@ export default function KeywordsView({ projectId }: { projectId: string }) {
                           <span className={cn("text-[11px] px-2 py-0.5 rounded-full", INTENT_STYLES[kw.intent] ?? "bg-gray-100 text-gray-500")}>
                             {kw.intent}
                           </span>
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </td>
+                      <td className="py-2 px-2 text-gray-700 tabular-nums">
+                        {kw.rankPosition == null ? <span className="text-gray-300">—</span> : `#${kw.rankPosition}`}
+                      </td>
+                      <td className="py-2 px-2">
+                        {kw.tfidfAvailable ? (
+                          <Link
+                            href={`/admin/proyectos/${projectId}/tfidf?keyword=${encodeURIComponent(kw.keyword)}`}
+                            className="text-[11px] px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 hover:bg-violet-100 font-medium"
+                          >
+                            Ver →
+                          </Link>
                         ) : (
                           <span className="text-gray-300">—</span>
                         )}
