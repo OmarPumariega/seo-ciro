@@ -233,7 +233,7 @@ export default function RankView({ projectId }: { projectId: string }) {
   // dentro del formulario de "Añadir keyword", con un selector de frecuencia
   // propio en vez de compartir el del alta). scheduleDate en formato
   // "YYYY-MM-DD" (lo que da/espera <input type="date">).
-  const [scheduleFrequency, setScheduleFrequency] = useState<string>("weekly");
+  const [scheduleFrequency, setScheduleFrequency] = useState<string>("monthly");
   const [scheduleDate, setScheduleDate] = useState<string>("");
   const [savedSchedule, setSavedSchedule] = useState<{ frequency: string; date: string } | null>(null);
   const [scheduleSaving, setScheduleSaving] = useState(false);

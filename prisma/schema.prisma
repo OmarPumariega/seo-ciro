@@ -406,7 +406,7 @@ model RankKeyword {
   locationName        String? // nombre legible del locationCode elegido (null = España nacional)
   languageCode        String                   @default("es")
   device              String                   @default("desktop") // "desktop" | "mobile"
-  frequency           String                   @default("weekly") // "manual" | "daily" | "weekly" | "monthly"
+  frequency           String                   @default("monthly") // "manual" | "daily" | "weekly" | "monthly"
   depth               Int                      @default(10) // resultados a parsear: 10/30/50/100 (coste ~proporcional)
   lastPosition        Int? // null = nunca comprobada, o fuera del depth pedido
   bestPosition        Int? // mejor (más baja) posición histórica

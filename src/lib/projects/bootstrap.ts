@@ -60,7 +60,7 @@ export type BootstrapResult = {
 };
 
 const DEFAULT_DEPTH = 30;
-const DEFAULT_FREQUENCY = "weekly";
+const DEFAULT_FREQUENCY = "monthly";
 const DEFAULT_DEVICE = "desktop";
 
 // Calcula el coste estimado de ejecutar el bootstrap ahora. Mismo criterio

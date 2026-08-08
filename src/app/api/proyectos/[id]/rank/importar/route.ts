@@ -50,7 +50,7 @@ export async function POST(
   const frequency =
     typeof body.frequency === "string" && (RANK_FREQUENCIES as readonly string[]).includes(body.frequency)
       ? body.frequency
-      : "weekly";
+      : "monthly";
   const rawDepth = Number(body.depth);
   const depth = (ALLOWED_DEPTHS as readonly number[]).includes(rawDepth) ? rawDepth : 10;
   // Por defecto se agrupan bajo el nombre del estudio de origen — así se
