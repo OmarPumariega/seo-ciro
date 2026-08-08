@@ -18,6 +18,7 @@ import {
   Link2,
   ListChecks,
   Map,
+  NotebookPen,
   PenLine,
   Search,
   Settings,
@@ -52,7 +53,7 @@ type NavGroup = { id: string; label: string; icon: LucideIcon; modules: NavModul
 type ProjectNav = { top: NavModule[]; groups: NavGroup[]; bottom: NavModule[] };
 
 // Navegación de un proyecto agrupada por tipo de herramienta. Los módulos
-// transversales (Perfil, Tareas, Informe) van sueltos; el resto se agrupa en
+// transversales (Perfil, Tareas, Notas, Informe) van sueltos; el resto se agrupa en
 // carpetas plegables: Investigación · On-Page · Técnico · Seguimiento. Geogrid
 // solo aparece en proyectos locales (negocio con coordenadas) y cuelga del
 // grupo Seguimiento. Copilot ya NO es una entrada de nav — es un widget
@@ -111,6 +112,7 @@ function projectNav(base: string, isLocalBusiness: boolean): ProjectNav {
     top: [
       { href: base, label: "Perfil", icon: User },
       { href: `${base}/tareas`, label: "Tareas", icon: ListChecks },
+      { href: `${base}/notas`, label: "Notas", icon: NotebookPen },
     ],
     groups,
     bottom: [

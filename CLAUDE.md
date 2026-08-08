@@ -106,7 +106,8 @@ con versionado por tema) + `UrlOptimization` (Módulo 7, "Optimizar URL existent
 `AuditRun` + `AuditPage` (Módulo 8, ampliado con checks
 on-page/robots/sitemap), `KeywordStudy` + `Keyword` + `KeywordDataCache` (Módulo 1),
 `RankKeyword` + `RankPosition` (Módulo 5), `GeogridRun` (Módulo 9), `TodoItem` (manual
-+ auto-generado desde auditoría), `NotificationLog` (dedupe de avisos por email),
++ auto-generado desde auditoría), `ProjectNote` (apuntes internos del negocio del
+cliente), `NotificationLog` (dedupe de avisos por email),
 `CopilotThread`, `SerpCache` (compartida entre Rank Tracking y TF-IDF), `Competitor` +
 `VisibilitySnapshot` (módulo Competidores), `BacklinkSnapshot` (módulo Backlinks,
 mismo criterio que `VisibilitySnapshot`), `GscSnapshot` y `Ga4Snapshot` (paneles de
@@ -191,7 +192,7 @@ Proyectos. Tres bloques:
 
 ### Ficha de proyecto (`/admin/proyectos/[id]/...`)
 Módulos anidados por ruta, con el nav en el sidebar global (no pestañas locales), en
-este orden: Perfil, Tareas, Keywords, Arquitectura, Título y Meta, Schema, Rank Tracking,
+este orden: Perfil, Tareas, Notas, Keywords, Arquitectura, Título y Meta, Schema, Rank Tracking,
 Google, Contenido, TF-IDF, Auditoría, Enlaces, Canibalizaciones, Competidores, Backlinks,
 Geogrid (solo si el proyecto es negocio local con coordenadas), Informe. El Copilot **no** es una
 ruta/módulo del nav — es un widget flotante global (`CopilotWidget.tsx`, montado en
@@ -205,6 +206,12 @@ sitio; ver el apartado "Copilot" más abajo.
   identificadas por el prefijo `🔍 [Auditoría <fecha>]`. La siguiente auditoría marca
   `done` las automáticas anteriores antes de crear las nuevas — no se acumulan tareas
   obsoletas. Las tareas manuales nunca se tocan.
+- **Notas**: cuaderno de apuntes internos del negocio del cliente (acuerdos,
+  contactos, cosas a recordar) — modelo `ProjectNote`, texto libre con fecha,
+  cada apunte editable y borrable individualmente. Sin estado ni prioridad (a
+  diferencia de `TodoItem`, no son tareas) y sin generación automática. No
+  aparece en el Informe: es información interna de agencia, no un resultado de
+  trabajo SEO para enseñar al cliente.
 - **Keywords** (Módulo 1): espacio de trabajo tipo Planificador por estudio.
   Siembras una keyword → DataForSEO Labs (`keyword_suggestions`) devuelve relacionadas
   con volumen/competición/CPC/intención/estacionalidad ya resueltos (se cachean al

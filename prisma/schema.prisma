@@ -99,6 +99,7 @@ model Project {
   geogridRuns          GeogridRun[]
   bootstrapRuns        BootstrapRun[]
   todos                TodoItem[]
+  notes                ProjectNote[]
   copilotThreads       CopilotThread[]
   competitors          Competitor[]
   visibilitySnapshots  VisibilitySnapshot[]
@@ -518,6 +519,22 @@ model TodoItem {
   // Trazabilidad: si esta tarea nació de una plantilla (catálogo de tareas
   // preestablecidas), guarda su id. Null para tareas manuales o de auditoría.
   templateId  String?
+
+  @@index([projectId])
+}
+
+// Apuntes del negocio del cliente: notas internas de la agencia (acuerdos,
+// contactos, recordatorios) sin estado ni fecha de vencimiento — a diferencia
+// de TodoItem, no son tareas. Lista libre, ordenada por fecha. No aparecen en
+// el Informe (son información interna de agencia, no un resultado de trabajo
+// SEO para enseñar al cliente).
+model ProjectNote {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([projectId])
 }
