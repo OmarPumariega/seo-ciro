@@ -20,3 +20,29 @@ body {
   background: var(--background);
   color: var(--foreground);
 }
+
+/* Editor enriquecido (RichTextEditor, módulo Notas). Tailwind resetea los
+   márgenes/estilos por defecto de párrafos y listas, así que el contenido
+   del contentEditable y el HTML ya guardado (renderizado luego con
+   dangerouslySetInnerHTML) necesitan un mínimo de estilo propio. */
+.tiptap p {
+  margin: 0.25em 0;
+}
+.tiptap ul,
+.tiptap ol {
+  padding-left: 1.25em;
+  margin: 0.25em 0;
+}
+.tiptap ul {
+  list-style: disc;
+}
+.tiptap ol {
+  list-style: decimal;
+}
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  color: #9ca3af;
+  pointer-events: none;
+}

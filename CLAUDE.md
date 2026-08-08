@@ -106,8 +106,9 @@ con versionado por tema) + `UrlOptimization` (Módulo 7, "Optimizar URL existent
 `AuditRun` + `AuditPage` (Módulo 8, ampliado con checks
 on-page/robots/sitemap), `KeywordStudy` + `Keyword` + `KeywordDataCache` (Módulo 1),
 `RankKeyword` + `RankPosition` (Módulo 5), `GeogridRun` (Módulo 9), `TodoItem` (manual
-+ auto-generado desde auditoría), `ProjectNote` (apuntes internos del negocio del
-cliente), `NotificationLog` (dedupe de avisos por email),
++ auto-generado desde auditoría), `ProjectNote` + `ProjectNoteImage` (apuntes internos
+del negocio del cliente, con fotos adjuntas guardadas como bytes),
+`NotificationLog` (dedupe de avisos por email),
 `CopilotThread`, `SerpCache` (compartida entre Rank Tracking y TF-IDF), `Competitor` +
 `VisibilitySnapshot` (módulo Competidores), `BacklinkSnapshot` (módulo Backlinks,
 mismo criterio que `VisibilitySnapshot`), `GscSnapshot` y `Ga4Snapshot` (paneles de
@@ -207,11 +208,26 @@ sitio; ver el apartado "Copilot" más abajo.
   `done` las automáticas anteriores antes de crear las nuevas — no se acumulan tareas
   obsoletas. Las tareas manuales nunca se tocan.
 - **Notas**: cuaderno de apuntes internos del negocio del cliente (acuerdos,
-  contactos, cosas a recordar) — modelo `ProjectNote`, texto libre con fecha,
-  cada apunte editable y borrable individualmente. Sin estado ni prioridad (a
-  diferencia de `TodoItem`, no son tareas) y sin generación automática. No
-  aparece en el Informe: es información interna de agencia, no un resultado de
-  trabajo SEO para enseñar al cliente.
+  contactos, cosas a recordar) — modelo `ProjectNote`, cada apunte con
+  **título opcional**, contenido en HTML enriquecido (negrita/cursiva/
+  subrayado/color vía `RichTextEditor.tsx`, componente genérico basado en
+  Tiptap — `useEditor`/`EditorContent` + `StarterKit`/`TextStyle`/`Color`/
+  `Placeholder`, `immediatelyRender: false` para evitar mismatch de
+  hidratación con SSR) y hasta 8 fotos adjuntas (`ProjectNoteImage`, límites
+  en `src/lib/notes/constants.ts`). Fotos guardadas como `Bytes` **en
+  Postgres, no en disco**: el runner de producción no tiene volumen
+  persistente para uploads (se reconstruye en cada deploy), así que un
+  archivo en disco se perdería en el siguiente build — bytea evita depender
+  de un volumen nuevo o un proveedor externo (S3/Cloudinary) para un puñado
+  de fotos de referencia por nota. Se sirven de una en una vía
+  `GET .../notas/[noteId]/imagenes/[imageId]` (detrás de sesión, como
+  cualquier fetch same-origin) con caché inmutable — una edición nunca
+  sobreescribe una foto ya subida, crea una fila nueva. El HTML del editor es
+  seguro de pintar con `dangerouslySetInnerHTML` porque el schema cerrado de
+  Tiptap nunca emite `<script>`/`<iframe>`/atributos `on*`. Sin estado ni
+  prioridad (a diferencia de `TodoItem`, no son tareas) y sin generación
+  automática. No aparece en el Informe: es información interna de agencia, no
+  un resultado de trabajo SEO para enseñar al cliente.
 - **Keywords** (Módulo 1): espacio de trabajo tipo Planificador por estudio.
   Siembras una keyword → DataForSEO Labs (`keyword_suggestions`) devuelve relacionadas
   con volumen/competición/CPC/intención/estacionalidad ya resueltos (se cachean al

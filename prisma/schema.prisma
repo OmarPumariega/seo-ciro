@@ -527,16 +527,38 @@ model TodoItem {
 // contactos, recordatorios) sin estado ni fecha de vencimiento — a diferencia
 // de TodoItem, no son tareas. Lista libre, ordenada por fecha. No aparecen en
 // el Informe (son información interna de agencia, no un resultado de trabajo
-// SEO para enseñar al cliente).
+// SEO para enseñar al cliente). `content` es HTML (negrita/color/subrayado)
+// generado por el editor enriquecido del front-end, no texto plano.
 model ProjectNote {
-  id        String   @id @default(cuid())
+  id        String             @id @default(cuid())
   projectId String
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project   Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title     String?
   content   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  images    ProjectNoteImage[]
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
 
   @@index([projectId])
+}
+
+// Fotos adjuntas a un apunte. Guardadas como bytes directamente en Postgres
+// (no en disco): el runner de producción no tiene volumen persistente para
+// uploads (se reconstruye en cada deploy), así que un archivo en disco se
+// perdería en el próximo build. Un puñado de fotos de referencia por nota no
+// justifica añadir un volumen ni un proveedor externo (S3/Cloudinary) todavía
+// — límites de tamaño/cantidad en la API evitan que la tabla crezca sin control.
+model ProjectNoteImage {
+  id        String      @id @default(cuid())
+  noteId    String
+  note      ProjectNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  data      Bytes
+  mimeType  String
+  filename  String?
+  size      Int
+  createdAt DateTime    @default(now())
+
+  @@index([noteId])
 }
 
 // Catálogo global de tareas preestablecidas (no por proyecto). La agencia crea
