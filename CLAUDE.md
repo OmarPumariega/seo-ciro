@@ -13,6 +13,10 @@ de fuentes reales y verificables. Nada se inventa ni se estima sin fuente.
 Especificación funcional completa de los 9 módulos: [`docs/spec-original.md`](./docs/spec-original.md).
 Estado de qué está construido: [`docs/01-vision-general.md`](./docs/01-vision-general.md).
 
+Este archivo es específico de Claude Code. [`AGENTS.md`](./AGENTS.md) tiene un
+resumen equivalente para cualquier otra herramienta de IA — si actualizas algo
+importante aquí, actualízalo también allí.
+
 ## Lo que estamos construyendo
 
 Un panel interno de un solo inquilino (la agencia, no multi-tenant como Cirochat) donde
@@ -48,7 +52,11 @@ infraestructura (colas, caché, tablas de coste) para módulos que todavía no e
   (`src/lib/copilot/`, chat de solo lectura con contexto del proyecto inyectado como
   texto plano). Modelo configurable por `OPENROUTER_MODEL`
   (default `openai/gpt-4o-mini`), no hardcodeado — permite cambiar de proveedor
-  (Claude, GPT, Gemini...) sin tocar código
+  (Claude, GPT, Gemini...) sin tocar código. Cliente con `timeout: 90_000` y
+  `maxRetries: 0` explícitos (antes no tenía timeout propio y heredaba los 10 min
+  por defecto del SDK, con reintentos automáticos sobre timeouts — causaba cuelgues
+  silenciosos en Título/Meta, Schema y Contenido que un usuario percibía como "se
+  cuelga siempre" sin relación real con el scraping)
 - **cheerio** (`src/lib/seo/scrape.ts`) — scraping de URLs reales para Módulo 3 y 4
 - **DataForSEO** (`src/lib/keywords/dataforseo.ts`) — Módulo 1: auth HTTP Basic
   (`DATAFORSEO_LOGIN`/`DATAFORSEO_PASSWORD`), dos endpoints — Keywords Data API para
@@ -340,21 +348,33 @@ sitio; ver el apartado "Copilot" más abajo.
   accionable. El botón **"Usar en Contenido"** lleva los temas/términos al Módulo 7.
 - **Auditoría** (Módulo 8): botón "Ejecutar auditoría ahora" → crea `AuditRun` pending
   → se procesa de inmediato (fire-and-forget) y también vía el cron interno como
-  respaldo → rastreo del sitio (enlaces rotos, HTTPS, canonicals, meta robots,
-  sitemap.xml, robots.txt, alts de imagen, títulos/metas/H1 tipo Screaming Frog,
-  redirecciones, duplicados, enlaces externos), PageSpeed Insights de la home, y cruce
-  de impresiones con Search Console si el proyecto tiene GSC conectado. Puntuación
-  0-100 en 5 categorías explicables (indexabilidad, enlaces, on-page, rendimiento,
-  accesibilidad de imágenes — nunca caja negra), con gráfico de tendencia si hay 2+
-  auditorías. Completar una auditoría también genera las Tareas automáticas descritas
-  arriba y dispara avisos por email.
+  respaldo → rastreo del sitio ENTERO, no una muestra (`src/lib/audit/crawler.ts`:
+  techo de seguridad 5000 páginas / profundidad 20, la cola se siembra desde
+  sitemap.xml —siguiendo índices de sitemap— además de seguir enlaces; URLs
+  normalizadas para no duplicar nodos por trailing slash/query params, identidad de
+  cada página = su URL final tras redirect). Si el crawl se trunca por el techo de
+  seguridad, la UI lo avisa (`AuditRun.truncated`). Revisa enlaces rotos, HTTPS,
+  canonicals, meta robots, robots.txt, alts de imagen, títulos/metas/H1 tipo
+  Screaming Frog, redirecciones, duplicados, enlaces externos, PageSpeed Insights de
+  la home, y cruce de impresiones con Search Console si el proyecto tiene GSC
+  conectado. Puntuación 0-100 en 5 categorías explicables (indexabilidad, enlaces,
+  on-page, rendimiento, accesibilidad de imágenes — nunca caja negra), con gráfico
+  de tendencia si hay 2+ auditorías. Completar una auditoría también genera las
+  Tareas automáticas descritas arriba y dispara avisos por email. El procesamiento
+  de auditorías (incluidas las mensuales programadas) va fire-and-forget desde
+  `instrumentation-node.ts`, fuera de la cadena secuencial del cron — un crawl largo
+  no bloquea rank tracking ni geogrid de otros proyectos.
 - **Enlaces**: PageRank interno calculado sobre el grafo de enlaces de la última
   auditoría completada (`AuditRun.linkGraph`), sin coste de API — páginas huérfanas,
   hubs principales, puntuación por página.
 - **Canibalizaciones**: consulta directa a Search Console (mismo query posicionando
   varias URLs en 90 días) — requiere GSC conectado para el proyecto, sin coste de
   DataForSEO/OpenRouter.
-- **Competidores** (Tier 2): trackear dominios competidores → ubicación de análisis
+- **Competidores** (Tier 2): tabla comparativa de un vistazo arriba del todo
+  (proyecto + todos los competidores trackeados, ordenados por tráfico orgánico,
+  con "Sin analizar" para los pendientes) — mismo patrón que la comparativa de
+  Backlinks, 100% frontend, sin llamada nueva a la API. Trackear dominios
+  competidores → ubicación de análisis
   opcional (mismo `LocationPicker`, aplica a "Analizar" y "Gap" de toda la sesión) →
   "Analizar" pide visibilidad real vía DataForSEO Labs (tráfico estimado, nº keywords,
   **distribución de fuerza del dominio** top3/10/100 + posición media, top keywords

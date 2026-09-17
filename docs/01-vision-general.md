@@ -5,30 +5,36 @@ un sistema propio de Agencia Ciro conectado a APIs reales. Cada cliente/dominio 
 **proyecto** con su propio perfil, datos e historial. Ver [`spec-original.md`](./spec-original.md)
 para la especificación funcional completa de los 9 módulos.
 
-## Estado actual (esqueleto inicial)
+## Estado actual
 
-Esta primera fase construye únicamente la base sobre la que colgará el resto:
+Los 9 módulos del spec original están completos, más una capa amplia de
+funcionalidad añadida después (ver más abajo). No es un esqueleto: es la
+herramienta que usa la agencia a diario.
 
 - ✅ Auth de agencia (login único, preparado para multi-usuario)
 - ✅ Módulo 2 (Gestión de Proyecto) — CRUD: perfil, NAP, tono de marca,
-  coordenadas + **lista de To-do por proyecto** (tareas manuales con fecha)
+  coordenadas + **lista de To-do por proyecto** (tareas manuales + auto-generadas
+  desde auditoría) + **Notas** (apuntes internos del negocio del cliente, texto
+  enriquecido y fotos adjuntas — no aparece en el Informe, es info interna de agencia)
 - 🟡 Módulo 1 — Keyword Research: volumen/intención/prioridad reales vía DataForSEO
   (Keywords Data + Labs Search Intent) + generación de estructura de URLs. Solo
   DataForSEO como fuente por ahora; Google Ads queda pendiente (requiere developer
-  token aprobado). Sin expansión de keywords semilla todavía.
+  token aprobado).
 - ✅ Módulo 3 — Título y Meta Descripción (vía OpenRouter, reglas en `docs/seo-rules.md`)
 - ✅ Módulo 4 — Schema (catálogo data-driven de ~20 tipos de schema.org; 4 deterministas + resto vía un prompt LLM genérico parametrizado por las props del tipo)
 - ✅ Módulo 5 — Rank Tracking: seguimiento de posiciones orgánicas (top-100)
   vía DataForSEO SERP API. "Comprobar ahora" síncrono + frecuencias
-  programadas (diaria/semanal/mensual) vía el cron interno. Solo orgánico
-  (Geogrid → Módulo 9), sin competidores en esta fase.
+  programadas (diaria/semanal/mensual, default mensual) vía el cron interno. Solo
+  orgánico (Geogrid → Módulo 9).
 - 🟡 Módulo 6 — Integraciones Google: Search Console + GA4 vía OAuth2 único de la
   agencia; Business Profile pendiente de aprobación de acceso de Google
 - ✅ Módulo 7 — Generador de Contenido (Blog/Página/Producto/Novedad GBP vía OpenRouter,
-  reutiliza el tono de marca del proyecto)
-- ✅ Módulo 8 — Auditoría Técnica: crawler propio + PageSpeed Insights (solo home) +
-  cruce de impresiones con Search Console + **programación automática mensual**
-  (el cron crea una AuditRun pending cuando toca, sin disparo manual)
+  reutiliza el tono de marca del proyecto) + "Optimizar URL existente"
+- ✅ Módulo 8 — Auditoría Técnica: crawler propio que rastrea el sitio ENTERO (techo
+  de seguridad 5000 páginas/profundidad 20, siembra desde sitemap.xml, URLs
+  normalizadas, identidad por URL final tras redirect) + PageSpeed Insights (solo
+  home) + cruce de impresiones con Search Console + **programación automática
+  mensual** desacoplada del ciclo del cron (un crawl largo no bloquea otros módulos)
 - ✅ Módulo 9 — Geogrid Local SEO: mapa de calor del posicionamiento en Google
   Maps (rejilla 3×3/5×5/7×7 + radio) vía DataForSEO Maps SERP con coordenadas
   exactas por punto. Asíncrono vía cron (rejilla 5×5 = 25 llamadas ~75s).

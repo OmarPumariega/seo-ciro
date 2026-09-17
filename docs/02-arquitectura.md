@@ -151,6 +151,17 @@ El panel abandonó las pestañas horizontales por proyecto (el antiguo
   produce, TF-IDF consume), no al revés.
 - **`lib/crypto.ts`**: primer consumidor real en el Módulo 6 (refresh token de Google
   cifrado en BD).
+- **`runAuditJob` fuera de la cadena secuencial del cron:** el crawler de Auditoría
+  pasó de rastrear una muestra (50 páginas) a rastrear el sitio entero (techo de
+  seguridad 5000 páginas) — un crawl real puede tardar 30-60+ min. Si
+  `instrumentation-node.ts` lo esperara dentro de su cadena `await` secuencial,
+  bloquearía `runRankJob`/`runGeogridJob`/`runBootstrapJob` de TODOS los proyectos
+  durante ese tiempo. Se lanza fire-and-forget con un guard en memoria
+  (`auditJobInFlight`) que evita solaparlo consigo mismo si un tick de 60s llega
+  mientras el anterior sigue en marcha. El disparo manual ("Ejecutar auditoría
+  ahora") ya era fire-and-forget desde su propia ruta POST; esta excepción cubre el
+  mismo caso para las auditorías mensuales programadas, que dependen del cron para
+  procesarse.
 
 ## Relación con Cirochat
 

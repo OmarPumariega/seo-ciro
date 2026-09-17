@@ -8,6 +8,8 @@ que centraliza el trabajo diario sobre los proyectos (clientes/dominios) de la a
 
 ## Empezar aquí
 
+- **Primera vez viendo el repo (humano o IA)** → [`../README.md`](../README.md) y
+  [`../AGENTS.md`](../AGENTS.md) en la raíz — resumen rápido antes de entrar aquí
 - **Quiero entender qué es esto** → [`spec-original.md`](./spec-original.md) (spec
   funcional completa de los 9 módulos) y [`01-vision-general.md`](./01-vision-general.md)
 - **Voy a desarrollar** → [`03-entorno-desarrollo.md`](./03-entorno-desarrollo.md) y
