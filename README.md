@@ -1,10 +1,12 @@
 # SEO Ciro
 
-Herramienta SEO interna de Agencia Ciro: centraliza el trabajo diario del equipo
-(keyword research, títulos/metas, schema, rank tracking, integraciones de Google,
-generación de contenido, auditoría técnica y geogrid local) sobre APIs reales, en
-vez de depender de Ahrefs/Semrush/LocalFalcon. Cada cliente/dominio de la agencia es
-un **proyecto** dentro de la misma app — no es multi-tenant por login.
+Herramienta SEO creada por **Omar Pumariega** — actualmente en uso por Agencia Ciro
+(de ahí el nombre y que esté alojada en su dominio), pero el proyecto es suyo, no de
+la agencia. Centraliza el trabajo diario de SEO (keyword research, títulos/metas,
+schema, rank tracking, integraciones de Google, generación de contenido, auditoría
+técnica y geogrid local) sobre APIs reales, en vez de depender de
+Ahrefs/Semrush/LocalFalcon. Cada cliente/dominio gestionado es un **proyecto**
+dentro de la misma app — no es multi-tenant por login.
 
 **Principio no negociable:** todos los datos que muestra la app vienen de una fuente
 real y verificable (DataForSEO, Google Search Console/GA4, scraping real, PageSpeed
