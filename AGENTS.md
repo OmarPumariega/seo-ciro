@@ -10,12 +10,13 @@ cambias algo importante del proyecto, actualiza los dos.
 
 ## Qué es esto
 
-**SEO Ciro** es una herramienta interna de una agencia de marketing (Agencia Ciro)
-que centraliza el trabajo SEO diario del equipo, sustituyendo herramientas de
-terceros (Ahrefs, Semrush, LocalFalcon) por un sistema propio conectado a APIs
-reales. Es de un solo inquilino: la agencia, no multi-cliente por login — cada
-cliente/dominio real es una fila `Project` dentro de la misma app, no una cuenta
-separada.
+**SEO Ciro** es una herramienta SEO creada por **Omar Pumariega**. Está en uso por
+Agencia Ciro (de ahí el nombre y que esté alojada en su dominio), pero el proyecto
+es suyo, no de la agencia. Centraliza el trabajo SEO diario, sustituyendo
+herramientas de terceros (Ahrefs, Semrush, LocalFalcon) por un sistema propio
+conectado a APIs reales. Es de un solo inquilino: no hay multi-cliente por login —
+cada cliente/dominio gestionado es una fila `Project` dentro de la misma app, no
+una cuenta separada.
 
 **Principio no negociable:** todos los datos que muestra la app vienen de una fuente
 real y verificable (DataForSEO, Google Search Console/GA4, scraping real, PageSpeed
