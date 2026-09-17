@@ -29,6 +29,16 @@
  * re-chequear la misma keyword dos veces (gasto duplicado). El setTimeout
  * recursivo solo agenda el siguiente tick cuando el actual ha terminado del
  * todo (los tres jobs + notificaciones).
+ *
+ * Excepción: `runAuditJob` (crawl de sitio completo, Módulo 8) NO se espera
+ * dentro de esa cadena — se lanza fire-and-forget con un guard en memoria
+ * (`auditJobInFlight`) que evita solaparlo consigo mismo. Con el crawler
+ * pudiendo rastrear miles de páginas, un audit real puede tardar 30-60+ min;
+ * si el tick esperara a que terminara, bloquearía rank tracking/geogrid de
+ * TODOS los proyectos durante ese tiempo. El disparo manual desde la UI
+ * ("Ejecutar auditoría ahora") ya es fire-and-forget desde su propia ruta
+ * POST — esta excepción cubre el mismo caso para las auditorías mensuales
+ * programadas, que dependen de este cron para procesarse.
  */
 
 const TIMER_GLOBAL_KEY = "__seoCiroAuditTimer" as const;
@@ -59,12 +69,25 @@ export async function register() {
     import("@/lib/notifications/notify"),
   ]);
 
+  // Guard anti-solapamiento: si un crawl largo sigue en marcha cuando llega
+  // el siguiente tick de 60s, no se relanza (la propia transición
+  // pending→running en BD ya evita reprocesar el mismo run, pero sin este
+  // guard se desperdiciarían conexiones/CPU intentándolo cada tick).
+  let auditJobInFlight = false;
+
   const run = async () => {
-    try {
-      const audit = await runAuditJob();
-      if (audit.processed > 0) console.log(`[audit] procesadas=${audit.processed}`);
-    } catch (e) {
-      console.error("[audit] error en run:", e);
+    if (!auditJobInFlight) {
+      auditJobInFlight = true;
+      runAuditJob()
+        .then((audit) => {
+          if (audit.processed > 0) console.log(`[audit] procesadas=${audit.processed}`);
+        })
+        .catch((e) => console.error("[audit] error en run:", e))
+        .finally(() => {
+          auditJobInFlight = false;
+        });
+    } else {
+      console.log("[audit] tick omitido: la auditoría anterior sigue en curso");
     }
     try {
       const rank = await runRankJob();

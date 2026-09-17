@@ -72,6 +72,7 @@ type AuditRun = {
   startUrl: string;
   triggeredAt: string;
   pagesCrawled: number;
+  truncated: boolean;
   sitemapFound: boolean | null;
   robotsBlocked: boolean;
   overallScore: number | null;
@@ -403,6 +404,10 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
     topKeywords: TopKeyword[] | null;
     fetchedAt: string;
   } | null>(null);
+  // Páginas huérfanas del último AuditRun completado — cálculo gratis a partir
+  // del linkGraph ya persistido (mismo dato que usa el módulo Enlaces). Solo
+  // un indicador aquí, con enlace al detalle completo en Enlaces.
+  const [orphanCount, setOrphanCount] = useState<number | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   function stopPolling() {
@@ -487,6 +492,15 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
             fetchedAt: d.projectSnapshot.fetchedAt,
           });
         }
+      })
+      .catch(() => {});
+
+    // Huérfanas: mismo cálculo (gratis) que el módulo Enlaces sobre el
+    // linkGraph del último AuditRun completado.
+    fetch(`/api/proyectos/${projectId}/enlaces`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d?.orphans)) setOrphanCount(d.orphans.length);
       })
       .catch(() => {});
 
@@ -610,8 +624,8 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
           )}
           {current.status === "running" && (
             <p className="text-xs text-gray-500 pl-6">
-              Un análisis completo (rastreo de hasta 50 páginas + PageSpeed de la
-              home) puede tardar varios minutos en sitios grandes. No cierres la
+              Rastrea el sitio entero (hasta 5000 páginas) + PageSpeed de la home —
+              puede tardar varios minutos, o más en sitios grandes. No cierres la
               página — los resultados aparecerán aquí automáticamente.
             </p>
           )}
@@ -630,6 +644,14 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
           <AlertTriangle className="h-4 w-4 shrink-0" />
           El robots.txt de este sitio bloquea el rastreo — no se ha podido calcular una
           puntuación.
+        </div>
+      )}
+
+      {current?.status === "completed" && current.truncated && (
+        <div className="flex items-center gap-2 text-sm bg-amber-50 text-amber-700 px-3 py-2 rounded-lg">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          El rastreo alcanzó el límite de seguridad ({current.pagesCrawled.toLocaleString("es-ES")}{" "}
+          páginas) — puede haber más páginas del sitio sin analizar.
         </div>
       )}
 
@@ -660,6 +682,17 @@ export default function AuditoriaView({ projectId }: { projectId: string }) {
                 <KpiTile label="Páginas con incidencias" value={pagesWithIssuesCount} />
                 <KpiTile label="Incidencias totales" value={totalIssueInstances} />
               </div>
+
+              {orphanCount !== null && orphanCount > 0 && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                  {orphanCount} página{orphanCount === 1 ? "" : "s"} huérfana{orphanCount === 1 ? "" : "s"} (sin
+                  enlaces internos entrantes) detectada{orphanCount === 1 ? "" : "s"} en el último rastreo —{" "}
+                  <Link href={`/admin/proyectos/${projectId}/enlaces`} className="underline font-medium">
+                    ver detalle en Enlaces
+                  </Link>
+                  .
+                </p>
+              )}
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 {(Object.keys(CATEGORY_LABELS) as (keyof CategoryScores)[]).map((key) => {

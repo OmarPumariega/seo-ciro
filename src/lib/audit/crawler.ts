@@ -2,8 +2,16 @@ import * as cheerio from "cheerio";
 import { loadRobotsRules, CRAWLER_USER_AGENT } from "@/lib/audit/robots";
 import { normalizeUrl } from "@/lib/seo/normalize-url";
 
-const MAX_PAGES = 50;
-const MAX_DEPTH = 4;
+// Techo de seguridad para "rastrear el sitio entero" (tipo Screaming Frog),
+// no un límite pensado para recortar de partida — un sitio de agencia normal
+// nunca lo alcanza. Si lo alcanza, `truncated: true` en el resultado avisa de
+// que puede haber más páginas sin analizar.
+const MAX_PAGES = 5000;
+// Red barata contra trampas de profundidad real (calendarios, facetados por
+// enlace) — con MAX_PAGES como freno principal y la normalización de URL ya
+// deduplicando bien, esto casi nunca se alcanza en un sitio normal (rara vez
+// pasan de 6-8 niveles).
+const MAX_DEPTH = 20;
 const PAGE_TIMEOUT_MS = 10000;
 const PAGE_DELAY_MS = 400;
 // Concurrency control: rastrea varias páginas en paralelo para no sumar
@@ -12,7 +20,14 @@ const PAGE_DELAY_MS = 400;
 // esperan todas las del lote antes de añadir sus enlaces a la cola (mantiene
 // el orden BFS y la deduplicación del visited/queue).
 const CRAWL_CONCURRENCY = 4;
-const EXTRA_LINK_CHECK_CAP = 100;
+// Con MAX_PAGES cubriendo ya "el sitio entero" en el caso normal, esto solo
+// importa cuando el crawl se trunca — sigue acotado para no martillear
+// indefinidamente un sitio con decenas de miles de enlaces salientes rotos.
+const EXTRA_LINK_CHECK_CAP = 2000;
+// Sitemaps índice (habituales en WordPress/Yoast/RankMath) apuntan a
+// sub-sitemaps en vez de páginas — sin seguirlos, la siembra por sitemap no
+// funcionaría en la mayoría de sitios reales.
+const MAX_SITEMAP_INDEX_FOLLOW = 20;
 const LINK_CHECK_TIMEOUT_MS = 5000;
 const LINK_CHECK_DELAY_MS = 200;
 const LINK_CHECK_CONCURRENCY = 5;
@@ -63,6 +78,9 @@ export type CrawlResult = {
   // Grafo de enlaces internos: { url, links: [urls internas] }. Lo usa el
   // módulo de PageRank/enlazado interno. Vacío si robots bloqueó.
   linkGraph: { url: string; links: string[] }[];
+  // true si el crawl alcanzó MAX_PAGES sin agotar la cola — puede haber más
+  // páginas del sitio sin analizar.
+  truncated: boolean;
 };
 
 function sleep(ms: number) {
@@ -128,6 +146,10 @@ async function fetchAndAnalyzePage(url: string, origin: string): Promise<PageAna
     return { page: base, internalLinks: [] };
   }
 
+  // Identidad del nodo = URL final tras redirect, no la solicitada — evita
+  // entradas fantasma en el linkGraph y de paso unifica http/https cuando el
+  // servidor redirige de uno a otro.
+  base.url = normalizeUrl(res.url) ?? url;
   base.statusCode = res.status;
   base.isRedirect = res.redirected; // fetch sigue la redirección; esto marca que hubo 3xx
   base.xRobotsTag = res.headers.get("x-robots-tag");
@@ -244,7 +266,7 @@ async function checkLinkStatus(url: string): Promise<number | null> {
 
 export async function crawlSite(startUrl: string): Promise<CrawlResult> {
   const start = normalizeUrl(startUrl);
-  if (!start) return { pages: [], robotsBlocked: false, sitemapFound: false, robotsContent: null, sitemapUrlCount: null, sitemapUrls: [], linkGraph: [] };
+  if (!start) return { pages: [], robotsBlocked: false, sitemapFound: false, robotsContent: null, sitemapUrlCount: null, sitemapUrls: [], linkGraph: [], truncated: false };
 
   const origin = new URL(start).origin;
   const robots = await loadRobotsRules(origin);
@@ -253,18 +275,34 @@ export async function crawlSite(startUrl: string): Promise<CrawlResult> {
   const robotsContent = await fetchRobotsContent(origin).catch(() => null);
 
   if (!robots.isAllowed(start)) {
-    return { pages: [], robotsBlocked: true, sitemapFound: false, robotsContent, sitemapUrlCount: null, sitemapUrls: [], linkGraph: [] };
+    return { pages: [], robotsBlocked: true, sitemapFound: false, robotsContent, sitemapUrlCount: null, sitemapUrls: [], linkGraph: [], truncated: false };
   }
 
   const sitemapFound = await checkSitemap(origin);
-  // Sitemap detallado: parsear URLs.
-  const sitemapData = sitemapFound ? await parseSitemap(origin).catch(() => ({ count: null, urls: [] as string[] })) : { count: null, urls: [] as string[] };
+  // Sitemap detallado: parsear URLs (sigue índices de sitemap si los hay).
+  // `urls` aquí es la lista COMPLETA (para sembrar la cola), no la muestra.
+  const sitemapData = sitemapFound
+    ? await parseSitemap(origin).catch(() => ({ count: null, urls: [] as string[] }))
+    : { count: null, urls: [] as string[] };
 
-  const visited = new Set<string>();
+  const visited = new Set<string>(); // marca "ya dequeuado/procesado", NO "ya en cola" — ver dedupe de queue.some() abajo
   const queue: { url: string; depth: number }[] = [{ url: start, depth: 0 }];
   const pages: CrawledPage[] = [];
   const pageLinks = new Map<string, string[]>(); // url de la página -> enlaces internos encontrados en ella
   const allDiscoveredLinks = new Set<string>();
+
+  // Siembra con el sitemap: además de descubrir por enlaces, encola de
+  // partida las URLs propias del sitio que trae el sitemap.xml — cubre
+  // páginas huérfanas de navegación pero presentes en el sitemap. Llegan a
+  // profundidad 0 (no hay razón para penalizarlas, vienen "gratis").
+  for (const raw of sitemapData.urls) {
+    const normalized = normalizeUrl(raw);
+    if (!normalized) continue;
+    if (new URL(normalized).origin !== origin) continue;
+    if (normalized === start) continue;
+    if (queue.some((q) => q.url === normalized)) continue;
+    queue.push({ url: normalized, depth: 0 });
+  }
 
   while (queue.length > 0 && pages.length < MAX_PAGES) {
     // Construye un lote de hasta CRAWL_CONCURRENCY URLs válidas (no
@@ -290,9 +328,16 @@ export async function crawlSite(startUrl: string): Promise<CrawlResult> {
 
     for (let i = 0; i < results.length; i++) {
       const { page, internalLinks } = results[i];
-      const { url, depth } = batch[i];
-      pages.push(page);
-      pageLinks.set(url, internalLinks);
+      const { depth } = batch[i];
+      // Identidad del nodo = URL final tras redirect (page.url), no la
+      // solicitada — si otra URL de la cola ya convergió en la misma página
+      // final, no se duplica el nodo en pages/linkGraph (pero sus enlaces
+      // igualmente sirven para seguir descubriendo).
+      if (!pageLinks.has(page.url)) {
+        pages.push(page);
+        pageLinks.set(page.url, internalLinks);
+      }
+      visited.add(page.url);
       internalLinks.forEach((l) => allDiscoveredLinks.add(l));
 
       if (depth < MAX_DEPTH) {
@@ -339,7 +384,16 @@ export async function crawlSite(startUrl: string): Promise<CrawlResult> {
     page.brokenLinksSample = broken.slice(0, MAX_BROKEN_SAMPLE);
   }
 
-  return { pages, robotsBlocked: false, sitemapFound, robotsContent, sitemapUrlCount: sitemapData.count, sitemapUrls: sitemapData.urls, linkGraph: pages.map((p) => ({ url: p.url, links: pageLinks.get(p.url) ?? [] })) };
+  return {
+    pages,
+    robotsBlocked: false,
+    sitemapFound,
+    robotsContent,
+    sitemapUrlCount: sitemapData.count,
+    sitemapUrls: sitemapData.urls.slice(0, 100), // muestra para la UI — la lista completa ya se usó arriba para sembrar la cola
+    linkGraph: pages.map((p) => ({ url: p.url, links: pageLinks.get(p.url) ?? [] })),
+    truncated: pages.length >= MAX_PAGES,
+  };
 }
 
 // Fetch del robots.txt en texto plano para mostrar las reglas en la UI.
@@ -356,23 +410,64 @@ async function fetchRobotsContent(origin: string): Promise<string | null> {
   }
 }
 
-// Parse del sitemap.xml: cuenta URLs y guarda una muestra (hasta 100).
-async function parseSitemap(origin: string): Promise<{ count: number; urls: string[] }> {
+async function fetchSitemapXml(url: string): Promise<string | null> {
   try {
-    const res = await fetch(`${origin}/sitemap.xml`, {
+    const res = await fetch(url, {
       headers: { "User-Agent": CRAWLER_USER_AGENT },
       signal: AbortSignal.timeout(10000),
     });
-    if (!res.ok) return { count: 0, urls: [] };
-    const xml = await res.text();
-    const $ = cheerio.load(xml, { xml: true });
-    const allUrls: string[] = [];
-    $("loc").each((_, el) => {
-      const loc = $(el).text().trim();
+    if (!res.ok) return null;
+    return await res.text();
+  } catch {
+    return null;
+  }
+}
+
+// Parse del sitemap.xml: devuelve la lista COMPLETA de URLs de página (para
+// sembrar la cola de crawl) — el llamador decide si recorta a una muestra
+// para mostrar en la UI. Sigue sitemapindex (WordPress/Yoast/RankMath sirven
+// casi siempre un índice, no un urlset directo) hasta MAX_SITEMAP_INDEX_FOLLOW
+// sub-sitemaps; sin esto, la siembra devolvería URLs de sub-sitemaps XML en
+// vez de páginas reales.
+async function parseSitemap(origin: string): Promise<{ count: number; urls: string[] }> {
+  const rootXml = await fetchSitemapXml(`${origin}/sitemap.xml`);
+  if (!rootXml) return { count: 0, urls: [] };
+
+  const $root = cheerio.load(rootXml, { xml: true });
+  const isIndex = $root("sitemapindex").length > 0;
+
+  if (!isIndex) {
+    const urls: string[] = [];
+    $root("url > loc").each((_, el) => {
+      const loc = $root(el).text().trim();
+      if (loc) urls.push(loc);
+    });
+    // Fallback por si el sitemap no usa el namespace esperado y `url > loc`
+    // no matchea nada: cualquier <loc> suelto.
+    if (urls.length === 0) {
+      $root("loc").each((_, el) => {
+        const loc = $root(el).text().trim();
+        if (loc) urls.push(loc);
+      });
+    }
+    return { count: urls.length, urls };
+  }
+
+  const subSitemapUrls: string[] = [];
+  $root("sitemap > loc").each((_, el) => {
+    const loc = $root(el).text().trim();
+    if (loc) subSitemapUrls.push(loc);
+  });
+
+  const allUrls: string[] = [];
+  for (const subUrl of subSitemapUrls.slice(0, MAX_SITEMAP_INDEX_FOLLOW)) {
+    const subXml = await fetchSitemapXml(subUrl);
+    if (!subXml) continue;
+    const $sub = cheerio.load(subXml, { xml: true });
+    $sub("loc").each((_, el) => {
+      const loc = $sub(el).text().trim();
       if (loc) allUrls.push(loc);
     });
-    return { count: allUrls.length, urls: allUrls.slice(0, 100) };
-  } catch {
-    return { count: 0, urls: [] };
   }
+  return { count: allUrls.length, urls: allUrls };
 }

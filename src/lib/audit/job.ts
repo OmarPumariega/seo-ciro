@@ -7,7 +7,15 @@ import { computeScore } from "@/lib/audit/scoring";
 import { notify } from "@/lib/notifications/notify";
 import { ISSUE_META } from "@/lib/audit/issue-meta";
 
-const STALE_RUN_TIMEOUT_MIN = 30;
+// Con MAX_PAGES=5000 (crawler.ts) un sitio grande puede tardar legítimamente
+// 30-60+ min — 30 min mataría auditorías reales a mitad. 180 min sigue
+// detectando el caso real que motivó el guard (proceso reiniciado a media
+// auditoría).
+const STALE_RUN_TIMEOUT_MIN = 180;
+// Postgres tiene un límite duro de ~65535 parámetros bind por statement. Cada
+// fila de AuditPage manda ~20 campos, así que se trocea el createMany para no
+// acercarse a ese límite en sitios con miles de páginas.
+const AUDIT_PAGE_BATCH_SIZE = 1000;
 const MONTHLY_AUDIT_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
 const THIN_CONTENT_WORDS = 300; // bajo este nº de palabras → thin content
 
@@ -165,53 +173,61 @@ export async function runAuditJob(): Promise<{ processed: number }> {
       if (m) metaCounts.set(m, (metaCounts.get(m) ?? 0) + 1);
     }
 
+    const pageRows = crawl.pages.map((page) => {
+      const inSearchConsole = gscChecked ? (impressedUrls as Set<string>).has(page.url) : null;
+      const issues = buildIssues(page, inSearchConsole);
+      // Marca duplicados (título/meta repetidos entre páginas).
+      const tl = page.title?.toLowerCase().trim();
+      if (tl && (titleCounts.get(tl) ?? 0) > 1) issues.push("duplicate_title");
+      const ml = page.metaDescription?.toLowerCase().trim();
+      if (ml && (metaCounts.get(ml) ?? 0) > 1) issues.push("duplicate_meta");
+      return {
+        auditRunId: run.id,
+        url: page.url,
+        statusCode: page.statusCode,
+        isHttps: page.isHttps,
+        isRedirect: page.isRedirect,
+        canonicalUrl: page.canonicalUrl,
+        metaRobots: page.metaRobots,
+        title: page.title,
+        titleLength: page.titleLength,
+        metaDescription: page.metaDescription,
+        metaLength: page.metaLength,
+        h1Count: page.h1Count,
+        h1Text: page.h1Text,
+        imagesTotal: page.imagesTotal,
+        imagesMissingAlt: page.imagesMissingAlt,
+        brokenLinksCount: page.brokenLinksCount,
+        brokenLinksSample: page.brokenLinksSample as Prisma.InputJsonValue,
+        wordCount: page.wordCount,
+        externalLinksCount: page.externalLinksCount,
+        externalDomains: page.externalDomains as Prisma.InputJsonValue,
+        inSearchConsole,
+        issues: issues as Prisma.InputJsonValue,
+        xRobotsTag: page.xRobotsTag,
+        hreflangCount: page.hreflangCount,
+        hasStructuredData: page.hasStructuredData,
+        structuredDataTypes: page.structuredDataTypes as Prisma.InputJsonValue,
+        hasOpenGraph: page.hasOpenGraph,
+      };
+    });
+
+    const createManyOps = [];
+    for (let i = 0; i < pageRows.length; i += AUDIT_PAGE_BATCH_SIZE) {
+      createManyOps.push(
+        prisma.auditPage.createMany({ data: pageRows.slice(i, i + AUDIT_PAGE_BATCH_SIZE) })
+      );
+    }
+
     await prisma.$transaction([
-      prisma.auditPage.createMany({
-        data: crawl.pages.map((page) => {
-          const inSearchConsole = gscChecked ? (impressedUrls as Set<string>).has(page.url) : null;
-          const issues = buildIssues(page, inSearchConsole);
-          // Marca duplicados (título/meta repetidos entre páginas).
-          const tl = page.title?.toLowerCase().trim();
-          if (tl && (titleCounts.get(tl) ?? 0) > 1) issues.push("duplicate_title");
-          const ml = page.metaDescription?.toLowerCase().trim();
-          if (ml && (metaCounts.get(ml) ?? 0) > 1) issues.push("duplicate_meta");
-          return {
-            auditRunId: run.id,
-            url: page.url,
-            statusCode: page.statusCode,
-            isHttps: page.isHttps,
-            isRedirect: page.isRedirect,
-            canonicalUrl: page.canonicalUrl,
-            metaRobots: page.metaRobots,
-            title: page.title,
-            titleLength: page.titleLength,
-            metaDescription: page.metaDescription,
-            metaLength: page.metaLength,
-            h1Count: page.h1Count,
-            h1Text: page.h1Text,
-            imagesTotal: page.imagesTotal,
-            imagesMissingAlt: page.imagesMissingAlt,
-            brokenLinksCount: page.brokenLinksCount,
-            brokenLinksSample: page.brokenLinksSample as Prisma.InputJsonValue,
-            wordCount: page.wordCount,
-            externalLinksCount: page.externalLinksCount,
-            externalDomains: page.externalDomains as Prisma.InputJsonValue,
-            inSearchConsole,
-            issues: issues as Prisma.InputJsonValue,
-            xRobotsTag: page.xRobotsTag,
-            hreflangCount: page.hreflangCount,
-            hasStructuredData: page.hasStructuredData,
-            structuredDataTypes: page.structuredDataTypes as Prisma.InputJsonValue,
-            hasOpenGraph: page.hasOpenGraph,
-          };
-        }),
-      }),
+      ...createManyOps,
       prisma.auditRun.update({
         where: { id: run.id },
         data: {
           status: "completed",
           completedAt: new Date(),
           pagesCrawled: crawl.pages.length,
+          truncated: crawl.truncated,
           sitemapFound: crawl.sitemapFound,
           overallScore,
           categoryScores: categoryScores as unknown as Prisma.InputJsonValue,

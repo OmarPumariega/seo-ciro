@@ -239,6 +239,7 @@ model AuditRun {
   startedAt       DateTime?
   completedAt     DateTime?
   pagesCrawled    Int         @default(0)
+  truncated       Boolean     @default(false) // true si el crawl alcanzó el techo de seguridad (MAX_PAGES) sin agotar la cola
   sitemapFound    Boolean?
   robotsBlocked   Boolean     @default(false)
   robotsContent   String? // texto plano del robots.txt (para mostrar las reglas)
