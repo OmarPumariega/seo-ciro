@@ -11,7 +11,11 @@ export async function getOpenRouterClient(): Promise<OpenAI> {
   if (!apiKey) {
     throw new Error("Falta la clave de OpenRouter — configúrala en Configuración o en OPENROUTER_API_KEY");
   }
-  return new OpenAI({ apiKey, baseURL: "https://openrouter.ai/api/v1" });
+  // timeout explícito: el default del SDK son 10 min (con hasta 2 reintentos
+  // sobre timeouts, hasta 30 min reales) — eso es lo que hacía que Título/Meta
+  // pareciera "colgado" cuando en realidad era OpenRouter tardando. maxRetries:0
+  // para que el timeout sea el límite real, no el primero de varios intentos.
+  return new OpenAI({ apiKey, baseURL: "https://openrouter.ai/api/v1", timeout: 90_000, maxRetries: 0 });
 }
 
 export async function getDefaultOpenRouterModel(): Promise<string> {
@@ -43,6 +47,9 @@ export async function getCopilotSystemPrompt(): Promise<string> {
 // (p.ej. "401 Missing Authentication header"), que parecía "la función está
 // rota" en vez de "falta configurar la clave de OpenRouter".
 export function friendlyLlmErrorMessage(error: unknown): string {
+  if (error instanceof OpenAI.APIConnectionTimeoutError) {
+    return "La IA está tardando más de lo normal en responder (más de 90s). Puede que OpenRouter esté saturado — inténtalo de nuevo en unos minutos.";
+  }
   if (error instanceof OpenAI.APIError) {
     if (error.status === 401) {
       return "OpenRouter ha rechazado la clave configurada. Revísala en Configuración.";

@@ -115,11 +115,12 @@ export default function TitulosMetaView({ projectId }: { projectId: string }) {
     setLoading(true);
     setCurrent(null);
 
-    // Timeout defensivo: si OpenRouter tarda demasiado, el usuario ve un
-    // error accionable en vez de un spinner girando sin fin ni forma de
-    // reintentar.
+    // Red de seguridad para una conexión colgada del todo (sin respuesta ni
+    // cabeceras) — el caso normal de "el LLM tarda" ya lo corta antes el
+    // timeout de 90s del backend (src/lib/seo/llm.ts) devolviendo un error
+    // claro, así que este abort rara vez debería dispararse.
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45000);
+    const timeout = setTimeout(() => controller.abort(), 120000);
 
     try {
       const res = await fetch(`/api/proyectos/${projectId}/titulos-meta`, {
@@ -140,7 +141,7 @@ export default function TitulosMetaView({ projectId }: { projectId: string }) {
     } catch (err) {
       setError(
         err instanceof DOMException && err.name === "AbortError"
-          ? "La generación está tardando demasiado. Inténtalo de nuevo."
+          ? "La conexión se ha quedado colgada más de 2 minutos sin respuesta. Inténtalo de nuevo."
           : "Error de conexión. Inténtalo de nuevo."
       );
     } finally {
