@@ -873,6 +873,14 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
 
   if (loading) return <Loader2 className="h-5 w-5 animate-spin text-gray-400" />;
 
+  // Comparativa arriba del todo (mismo patrón que Backlinks): proyecto +
+  // todos los competidores trackeados, analizados o no, para ver de un
+  // vistazo cómo se está frente a la competencia sin abrir cada tarjeta.
+  const comparisonRows = [
+    ...(data?.projectDomain ? [{ domain: data.projectDomain, snapshot: data.projectSnapshot, isOwn: true }] : []),
+    ...(data?.competitors.map((c) => ({ domain: c.domain, snapshot: c.snapshot, isOwn: false })) ?? []),
+  ].sort((a, b) => (b.snapshot?.organicTraffic ?? -1) - (a.snapshot?.organicTraffic ?? -1));
+
   return (
     <div className="space-y-6">
       <div>
@@ -917,6 +925,53 @@ export default function CompetidoresView({ projectId }: { projectId: string }) {
         <span className="inline-flex items-center gap-1"><Target className="h-3.5 w-3.5 text-gray-400" /> Analizar visibilidad <strong className="text-gray-900">~${analyzeCost.toFixed(2)}</strong></span>
         <span className="inline-flex items-center gap-1"><Target className="h-3.5 w-3.5 text-gray-400" /> Content gap <strong className="text-gray-900">~${gapCost.toFixed(2)}</strong></span>
       </div>
+
+      {comparisonRows.length > 1 && (
+        <div className="bg-white rounded-xl border border-gray-100 p-4">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">Comparativa frente a la competencia</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-gray-400 border-b border-gray-100">
+                  <th className="py-1.5 pr-2 font-medium">Dominio</th>
+                  <th className="py-1.5 px-2 font-medium text-right">Tráfico</th>
+                  <th className="py-1.5 px-2 font-medium text-right">Keywords</th>
+                  <th className="py-1.5 px-2 font-medium text-right">Posición media</th>
+                  <th className="py-1.5 pl-2 font-medium">Fuerza del dominio</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparisonRows.map((r, i) => {
+                  const useful = hasUsefulSnapshot(r.snapshot);
+                  return (
+                    <tr key={i} className="border-t border-gray-50">
+                      <td className="py-1.5 pr-2 text-gray-900 font-medium">
+                        {r.domain} {r.isOwn && <span className="text-[10px] text-emerald-700 font-semibold">· TÚ</span>}
+                      </td>
+                      {useful ? (
+                        <>
+                          <td className="py-1.5 px-2 text-right tabular-nums text-gray-600">{fmtTraffic(r.snapshot?.organicTraffic)}</td>
+                          <td className="py-1.5 px-2 text-right tabular-nums text-gray-600">{r.snapshot?.organicKeywords?.toLocaleString("es-ES") ?? "—"}</td>
+                          <td className="py-1.5 px-2 text-right tabular-nums text-gray-600">{r.snapshot?.avgPosition?.toFixed(1) ?? "—"}</td>
+                          <td className="py-1.5 pl-2">
+                            {r.snapshot?.positionBuckets ? (
+                              <PositionDistribution buckets={r.snapshot.positionBuckets} avgPosition={r.snapshot.avgPosition} />
+                            ) : (
+                              <span className="text-gray-300">—</span>
+                            )}
+                          </td>
+                        </>
+                      ) : (
+                        <td colSpan={4} className="py-1.5 px-2 text-gray-400 text-xs">Sin analizar</td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Visibilidad del propio dominio */}
       <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
